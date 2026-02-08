@@ -1,0 +1,14 @@
+{
+    "name": "ProjectGuild.Simulation",
+    "rootNamespace": "ProjectGuild.Simulation",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

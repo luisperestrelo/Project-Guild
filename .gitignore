@@ -1,0 +1,51 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Unity asset meta files should be committed, but these are generated
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crashlytics
+crashlytics-build.properties
+
+# Plastic SCM
+*.private.0
+*.private
+
+# Gradle (Android)
+/ExportedObj/
+/.gradle/
+**/build/
+local.properties

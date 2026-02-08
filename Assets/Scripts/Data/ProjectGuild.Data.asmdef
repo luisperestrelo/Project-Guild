@@ -1,0 +1,16 @@
+{
+    "name": "ProjectGuild.Data",
+    "rootNamespace": "ProjectGuild.Data",
+    "references": [
+        "ProjectGuild.Simulation"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

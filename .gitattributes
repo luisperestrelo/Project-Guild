@@ -1,0 +1,65 @@
+# Unity LFS tracking
+# 3D models
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.dae filter=lfs diff=lfs merge=lfs -text
+*.3ds filter=lfs diff=lfs merge=lfs -text
+*.max filter=lfs diff=lfs merge=lfs -text
+
+# Textures
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.tga filter=lfs diff=lfs merge=lfs -text
+*.psd filter=lfs diff=lfs merge=lfs -text
+*.tif filter=lfs diff=lfs merge=lfs -text
+*.tiff filter=lfs diff=lfs merge=lfs -text
+*.exr filter=lfs diff=lfs merge=lfs -text
+*.hdr filter=lfs diff=lfs merge=lfs -text
+
+# Audio
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+*.aif filter=lfs diff=lfs merge=lfs -text
+*.aiff filter=lfs diff=lfs merge=lfs -text
+
+# Video
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+
+# Fonts
+*.ttf filter=lfs diff=lfs merge=lfs -text
+*.otf filter=lfs diff=lfs merge=lfs -text
+
+# Unity binary assets
+*.unity filter=lfs diff=lfs merge=lfs -text
+*.prefab filter=lfs diff=lfs merge=lfs -text
+*.asset filter=lfs diff=lfs merge=lfs -text
+*.controller filter=lfs diff=lfs merge=lfs -text
+*.anim filter=lfs diff=lfs merge=lfs -text
+*.overrideController filter=lfs diff=lfs merge=lfs -text
+*.mask filter=lfs diff=lfs merge=lfs -text
+*.mat filter=lfs diff=lfs merge=lfs -text
+*.physicMaterial filter=lfs diff=lfs merge=lfs -text
+*.physicsMaterial2D filter=lfs diff=lfs merge=lfs -text
+*.lighting filter=lfs diff=lfs merge=lfs -text
+*.terrainlayer filter=lfs diff=lfs merge=lfs -text
+*.cubemap filter=lfs diff=lfs merge=lfs -text
+*.flare filter=lfs diff=lfs merge=lfs -text
+*.renderTexture filter=lfs diff=lfs merge=lfs -text
+*.spriteatlas filter=lfs diff=lfs merge=lfs -text
+*.mixer filter=lfs diff=lfs merge=lfs -text
+*.shadergraph filter=lfs diff=lfs merge=lfs -text
+*.shadersubgraph filter=lfs diff=lfs merge=lfs -text
+
+# Compiled shaders
+*.cginc filter=lfs diff=lfs merge=lfs -text
+
+# Other binary
+*.dll filter=lfs diff=lfs merge=lfs -text
+*.so filter=lfs diff=lfs merge=lfs -text
+*.dylib filter=lfs diff=lfs merge=lfs -text
+*.exe filter=lfs diff=lfs merge=lfs -text
