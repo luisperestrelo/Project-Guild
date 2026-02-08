@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using ProjectGuild.Simulation.World;
+
 namespace ProjectGuild.Simulation.Core
 {
     /// <summary>
@@ -33,15 +36,18 @@ namespace ProjectGuild.Simulation.Core
         public void LoadState(GameState state)
         {
             State = state;
+            State.Map?.Initialize();
         }
 
         /// <summary>
         /// Initialize a new game with hand-tuned starting runners.
         /// Takes an array of RunnerDefinitions so you have full control over starter balance.
         /// </summary>
-        public void StartNewGame(RunnerFactory.RunnerDefinition[] starterDefinitions, string hubNodeId = "hub")
+        public void StartNewGame(RunnerFactory.RunnerDefinition[] starterDefinitions,
+            WorldMap map = null, string hubNodeId = "hub")
         {
             State = new GameState();
+            State.Map = map ?? WorldMap.CreateStarterMap();
 
             foreach (var def in starterDefinitions)
             {
@@ -60,7 +66,7 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public void StartNewGame(string hubNodeId = "hub")
         {
-            StartNewGame(DefaultStarterDefinitions(), hubNodeId);
+            StartNewGame(DefaultStarterDefinitions(), hubNodeId: hubNodeId);
         }
 
         /// <summary>
@@ -159,7 +165,47 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Command a runner to travel to a world node.
+        /// Command a runner to travel to a world node. Uses the world map to find
+        /// the shortest path and calculate total distance. If the runner is already
+        /// at the target node, does nothing.
+        /// </summary>
+        /// <returns>True if travel was started, false if impossible or unnecessary.</returns>
+        public bool CommandTravel(string runnerId, string targetNodeId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null || runner.State == RunnerState.Dead) return false;
+            if (runner.CurrentNodeId == targetNodeId) return false;
+
+            float distance = State.Map.FindPath(runner.CurrentNodeId, targetNodeId, out var path);
+            if (distance < 0) return false;
+
+            string fromNode = runner.CurrentNodeId;
+            runner.State = RunnerState.Traveling;
+            runner.Travel = new TravelState
+            {
+                FromNodeId = fromNode,
+                ToNodeId = targetNodeId,
+                TotalDistance = distance,
+                DistanceCovered = 0f,
+            };
+
+            float speed = GetTravelSpeed(runner);
+            float estimatedDuration = distance / speed;
+
+            Events.Publish(new RunnerStartedTravel
+            {
+                RunnerId = runner.Id,
+                FromNodeId = fromNode,
+                ToNodeId = targetNodeId,
+                EstimatedDurationSeconds = estimatedDuration,
+            });
+
+            return true;
+        }
+
+        /// <summary>
+        /// Command a runner to travel with an explicit distance (for testing).
+        /// Prefer the single-argument overload which uses the world map.
         /// </summary>
         public void CommandTravel(string runnerId, string targetNodeId, float distance)
         {

@@ -198,5 +198,46 @@ namespace ProjectGuild.Tests
 
             Assert.AreEqual("mine", arrivedNodeId);
         }
+
+        // ─── Map-based travel ────────────────────────────────────────
+
+        [Test]
+        public void CommandTravel_MapBased_UsesMapDistance()
+        {
+            var sim = new GameSimulation(tickRate: 10f);
+            sim.StartNewGame("hub");
+
+            var runner = sim.State.Runners[0];
+            float expectedDist = sim.State.Map.GetDirectDistance("hub", "copper_mine");
+
+            bool started = sim.CommandTravel(runner.Id, "copper_mine");
+
+            Assert.IsTrue(started);
+            Assert.AreEqual(RunnerState.Traveling, runner.State);
+            Assert.AreEqual(expectedDist, runner.Travel.TotalDistance);
+        }
+
+        [Test]
+        public void CommandTravel_MapBased_AlreadyAtNode_ReturnsFalse()
+        {
+            var sim = new GameSimulation();
+            sim.StartNewGame("hub");
+
+            var runner = sim.State.Runners[0];
+            bool started = sim.CommandTravel(runner.Id, "hub");
+
+            Assert.IsFalse(started);
+            Assert.AreEqual(RunnerState.Idle, runner.State);
+        }
+
+        [Test]
+        public void StartNewGame_CreatesWorldMap()
+        {
+            var sim = new GameSimulation();
+            sim.StartNewGame("hub");
+
+            Assert.IsNotNull(sim.State.Map);
+            Assert.IsNotNull(sim.State.Map.GetNode("hub"));
+        }
     }
 }

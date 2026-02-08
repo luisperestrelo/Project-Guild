@@ -72,11 +72,14 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float EasterEggNameChance = 0.02f;
 
-        // ─── Death ───────────────────────────────────────────────────
+        // ─── Death (Non-Raid) ────────────────────────────────────────
 
         /// <summary>
-        /// Seconds a runner is unavailable after dying (non-raid) before respawning at hub.
-        /// Prevents suicide-teleporting from being faster than walking.
+        /// Seconds a runner is unavailable after dying before respawning at hub.
+        /// This is a secondary deterrent — the primary anti-suicide-teleport mechanism
+        /// is that runners DROP THEIR INVENTORY on death in the overworld.
+        /// Losing a full inventory of gathered resources makes dying strictly worse
+        /// than walking back in every scenario.
         /// </summary>
         public float DeathRespawnDelay = 45f;
     }

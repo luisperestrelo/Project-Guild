@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectGuild.Simulation.World;
 
 namespace ProjectGuild.Simulation.Core
 {
@@ -14,8 +15,9 @@ namespace ProjectGuild.Simulation.Core
         public long TickCount;
         public float TotalTimeElapsed;
 
-        // World state (TODO)
-        // Bank/inventory state(TODO)
+        public WorldMap Map;
+
+        // Bank/inventory state (TODO)
         // Economy state (TODO)
     }
 }
