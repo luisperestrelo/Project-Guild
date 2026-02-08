@@ -37,7 +37,7 @@ namespace ProjectGuild.Tests
                 new RunnerFactory.RunnerDefinition { Name = "Custom Guy" }
                     .WithSkill(SkillType.Melee, 50, passion: true),
             };
-            sim.StartNewGame(defs, "hub");
+            sim.StartNewGame(defs, hubNodeId: "hub");
 
             Assert.AreEqual(1, sim.State.Runners.Count);
             Assert.AreEqual("Custom Guy", sim.State.Runners[0].Name);
@@ -130,7 +130,7 @@ namespace ProjectGuild.Tests
                 new RunnerFactory.RunnerDefinition { Name = "Fast" }
                     .WithSkill(SkillType.Athletics, 50),
             };
-            sim.StartNewGame(defs, "hub");
+            sim.StartNewGame(defs, hubNodeId: "hub");
 
             var slowRunner = sim.State.Runners[0];
             var fastRunner = sim.State.Runners[1];
@@ -160,7 +160,7 @@ namespace ProjectGuild.Tests
                 new RunnerFactory.RunnerDefinition { Name = "Speedy" }
                     .WithSkill(SkillType.Athletics, 1),
             };
-            sim.StartNewGame(defs, "hub");
+            sim.StartNewGame(defs, hubNodeId: "hub");
 
             var runner = sim.State.Runners[0];
             sim.CommandTravel(runner.Id, "mine", 100f);

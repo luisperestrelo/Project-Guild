@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using ProjectGuild.View.Runners;
 
 namespace ProjectGuild.View
@@ -9,9 +10,9 @@ namespace ProjectGuild.View
     /// Controls:
     /// - Right mouse drag: orbit around target
     /// - Scroll wheel: zoom in/out
-    /// - Middle mouse drag: pan offset
     ///
     /// Call SetTarget() to snap to a different runner.
+    /// Uses the New Input System (InputAction inline definitions).
     /// </summary>
     public class CameraController : MonoBehaviour
     {
@@ -34,19 +35,66 @@ namespace ProjectGuild.View
         private float _currentPitch = 35f;
         private float _currentDistance = 15f;
 
+        // Input actions
+        private InputAction _lookAction;
+        private InputAction _orbitButtonAction;
+        private InputAction _zoomAction;
+
         public void SetTarget(Transform target)
         {
             _target = target;
+            SnapToTarget();
         }
 
         public void SetTarget(RunnerVisual runner)
         {
             _target = runner?.transform;
+            SnapToTarget();
+        }
+
+        /// <summary>
+        /// Instantly teleport camera to the correct orbit position around the current target.
+        /// Preserves current yaw, pitch, and distance — just changes what we're looking at.
+        /// </summary>
+        private void SnapToTarget()
+        {
+            if (_target == null) return;
+
+            Vector3 targetPos = _target.position;
+            Quaternion rotation = Quaternion.Euler(_currentPitch, _currentYaw, 0f);
+            Vector3 offset = rotation * new Vector3(0f, 0f, -_currentDistance);
+            transform.position = targetPos + offset;
+            transform.LookAt(targetPos);
+        }
+
+        private void Awake()
+        {
+            _lookAction = new InputAction("Look", InputActionType.Value,
+                binding: "<Pointer>/delta");
+
+            _orbitButtonAction = new InputAction("OrbitButton", InputActionType.Button,
+                binding: "<Mouse>/rightButton");
+
+            _zoomAction = new InputAction("Zoom", InputActionType.Value,
+                binding: "<Mouse>/scroll/y");
+        }
+
+        private void OnEnable()
+        {
+            _lookAction.Enable();
+            _orbitButtonAction.Enable();
+            _zoomAction.Enable();
+        }
+
+        private void OnDisable()
+        {
+            _lookAction.Disable();
+            _orbitButtonAction.Disable();
+            _zoomAction.Disable();
         }
 
         private void Start()
         {
-            // Initialize orbit angles from default offset
             _currentDistance = _defaultOffset.magnitude;
             _currentPitch = 35f;
             _currentYaw = 0f;
@@ -55,18 +103,22 @@ namespace ProjectGuild.View
         private void LateUpdate()
         {
             // Orbit with right mouse button
-            if (Input.GetMouseButton(1))
+            if (_orbitButtonAction.IsPressed())
             {
-                _currentYaw += Input.GetAxis("Mouse X") * _orbitSpeed;
-                _currentPitch -= Input.GetAxis("Mouse Y") * _orbitSpeed;
+                Vector2 lookDelta = _lookAction.ReadValue<Vector2>();
+                _currentYaw += lookDelta.x * _orbitSpeed * 0.1f;
+                _currentPitch -= lookDelta.y * _orbitSpeed * 0.1f;
                 _currentPitch = Mathf.Clamp(_currentPitch, _minPitch, _maxPitch);
             }
 
             // Zoom with scroll wheel
-            float scroll = Input.GetAxis("Mouse ScrollWheel");
-            if (scroll != 0f)
+            float scrollValue = _zoomAction.ReadValue<float>();
+            if (scrollValue != 0f)
             {
-                _currentDistance -= scroll * _zoomSpeed * _currentDistance;
+                // Scroll values from New Input System are larger than old GetAxis,
+                // normalize by dividing by 120 (standard scroll tick delta)
+                float normalizedScroll = scrollValue / 120f;
+                _currentDistance -= normalizedScroll * _zoomSpeed * _currentDistance * 0.1f;
                 _currentDistance = Mathf.Clamp(_currentDistance, _minDistance, _maxDistance);
             }
 
@@ -77,7 +129,7 @@ namespace ProjectGuild.View
             Vector3 offset = rotation * new Vector3(0f, 0f, -_currentDistance);
             Vector3 desiredPosition = targetPos + offset;
 
-            // Smooth follow
+            // Smooth position follow, instant rotation (feels crisp)
             transform.position = Vector3.Lerp(transform.position, desiredPosition, Time.deltaTime * _followSpeed);
             transform.LookAt(targetPos);
         }

@@ -1,9 +1,9 @@
 using UnityEngine;
+using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
-using ProjectGuild.View;
 using ProjectGuild.View.Runners;
 
-namespace ProjectGuild.Bridge
+namespace ProjectGuild.View
 {
     /// <summary>
     /// Entry point that wires up the simulation, visuals, and provides a simple
@@ -27,6 +27,7 @@ namespace ProjectGuild.Bridge
                 _visualSyncSystem = GetComponent<VisualSyncSystem>();
             if (_cameraController == null)
                 _cameraController = FindAnyObjectByType<CameraController>();
+//
 
             // Start a new game
             _simulationRunner.StartNewGame();
@@ -65,9 +66,16 @@ namespace ProjectGuild.Bridge
             var sim = _simulationRunner.Simulation;
             if (sim == null || sim.State.Runners.Count == 0) return;
 
-            GUILayout.BeginArea(new Rect(10, 10, 280, Screen.height - 20));
+            // Scale UI for high-DPI / large resolutions
+            float scale = Mathf.Max(1f, Screen.height / 720f);
+            var matrix = GUI.matrix;
+            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
 
-            GUILayout.Label("<b>Project Guild — Phase 1 Debug</b>", new GUIStyle(GUI.skin.label) { richText = true });
+            float scaledWidth = 300f;
+            float scaledHeight = Screen.height / scale - 20f;
+            GUILayout.BeginArea(new Rect(10, 10, scaledWidth, scaledHeight));
+
+            GUILayout.Label("<b>Project Guild — Phase 1 Debug</b>", new GUIStyle(GUI.skin.label) { richText = true, fontSize = 16 });
             GUILayout.Space(5);
 
             // Runner selector
@@ -119,6 +127,7 @@ namespace ProjectGuild.Bridge
             GUILayout.Label($"Time: {sim.State.TotalTimeElapsed:F1}s");
 
             GUILayout.EndArea();
+            GUI.matrix = matrix;
         }
     }
 }

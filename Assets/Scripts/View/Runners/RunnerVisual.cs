@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 
 namespace ProjectGuild.View.Runners
@@ -24,7 +25,7 @@ namespace ProjectGuild.View.Runners
         private float _interpolationT;
 
         // Name label
-        private TextMesh _nameLabel;
+        private TextMeshPro _nameLabel;
 
         public void Initialize(string runnerId, string runnerName, Vector3 startPosition)
         {
@@ -40,13 +41,12 @@ namespace ProjectGuild.View.Runners
             var labelObj = new GameObject("NameLabel");
             labelObj.transform.SetParent(transform);
             labelObj.transform.localPosition = new Vector3(0f, 2.2f, 0f);
-            _nameLabel = labelObj.AddComponent<TextMesh>();
+            _nameLabel = labelObj.AddComponent<TextMeshPro>();
             _nameLabel.text = runnerName;
-            _nameLabel.characterSize = 0.15f;
-            _nameLabel.anchor = TextAnchor.MiddleCenter;
-            _nameLabel.alignment = TextAlignment.Center;
-            _nameLabel.fontSize = 48;
+            _nameLabel.fontSize = 4f;
+            _nameLabel.alignment = TextAlignmentOptions.Center;
             _nameLabel.color = Color.white;
+            _nameLabel.rectTransform.sizeDelta = new Vector2(6f, 2f);
         }
 
         /// <summary>
@@ -57,6 +57,10 @@ namespace ProjectGuild.View.Runners
         /// </summary>
         public void SetTargetPosition(Vector3 newTarget)
         {
+            // Only reset interpolation when the target actually changes (new sim tick).
+            // This gets called every frame from LateUpdate, but the sim only ticks at 10/sec.
+            if ((_targetPosition - newTarget).sqrMagnitude < 0.0001f) return;
+
             _previousPosition = transform.position;
             _targetPosition = newTarget;
             _interpolationT = 0f;
@@ -86,17 +90,20 @@ namespace ProjectGuild.View.Runners
 
                 // Face movement direction
                 Vector3 direction = _targetPosition - _previousPosition;
+                direction.y = 0f;
                 if (direction.sqrMagnitude > 0.001f)
                 {
-                    direction.y = 0f;
                     transform.rotation = Quaternion.LookRotation(direction);
                 }
             }
 
-            // Make name label face camera
+            // Billboard name label — Y-axis only so it stays upright from any angle
             if (_nameLabel != null && Camera.main != null)
             {
-                _nameLabel.transform.rotation = Camera.main.transform.rotation;
+                var camForward = Camera.main.transform.forward;
+                camForward.y = 0f;
+                if (camForward.sqrMagnitude > 0.001f)
+                    _nameLabel.transform.rotation = Quaternion.LookRotation(camForward);
             }
         }
     }

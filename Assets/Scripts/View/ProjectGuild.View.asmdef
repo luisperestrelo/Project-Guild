@@ -3,7 +3,9 @@
     "rootNamespace": "ProjectGuild.View",
     "references": [
         "ProjectGuild.Simulation",
-        "ProjectGuild.Bridge"
+        "ProjectGuild.Bridge",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

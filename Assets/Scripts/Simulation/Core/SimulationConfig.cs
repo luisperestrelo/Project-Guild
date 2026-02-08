@@ -72,15 +72,19 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float EasterEggNameChance = 0.02f;
 
-        // ─── Death (Non-Raid) ────────────────────────────────────────
+        // ─── Death (Overworld Only — Raid deaths use separate logic) ──
 
         /// <summary>
-        /// Seconds a runner is unavailable after dying before respawning at hub.
-        /// This is a secondary deterrent — the primary anti-suicide-teleport mechanism
-        /// is that runners DROP THEIR INVENTORY on death in the overworld.
-        /// Losing a full inventory of gathered resources makes dying strictly worse
-        /// than walking back in every scenario.
+        /// Minimum respawn time in seconds, even if the runner dies right next to hub.
         /// </summary>
-        public float DeathRespawnDelay = 45f;
+        public float DeathRespawnBaseTime = 10f;
+
+        /// <summary>
+        /// Multiplier applied to the travel-time-to-hub to calculate respawn duration.
+        /// Respawn time = DeathRespawnBaseTime + (travelTimeToHub * DeathRespawnTravelMultiplier).
+        /// Must be > 1.0 so that dying is always slower than walking back.
+        /// A value of 1.2 means respawn takes 20% longer than the walk would have.
+        /// </summary>
+        public float DeathRespawnTravelMultiplier = 1.2f;
     }
 }

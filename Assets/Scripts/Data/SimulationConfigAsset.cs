@@ -47,9 +47,12 @@ namespace ProjectGuild.Data
         [Range(0f, 1f)]
         public float EasterEggNameChance = 0.02f;
 
-        [Header("Death")]
-        [Tooltip("Seconds a runner is unavailable after dying (non-raid) before respawning")]
-        public float DeathRespawnDelay = 45f;
+        [Header("Death (Overworld Only)")]
+        [Tooltip("Minimum respawn time in seconds, even if the runner dies right next to hub")]
+        public float DeathRespawnBaseTime = 10f;
+
+        [Tooltip("Multiplier on travel-time-to-hub for respawn duration. Must be > 1.0 so dying is always slower than walking back. 1.2 = 20% longer than the walk.")]
+        public float DeathRespawnTravelMultiplier = 1.2f;
 
         /// <summary>
         /// Convert this ScriptableObject's values into a plain C# SimulationConfig
@@ -69,7 +72,8 @@ namespace ProjectGuild.Data
                 MaxStartingLevel = MaxStartingLevel,
                 PassionChance = PassionChance,
                 EasterEggNameChance = EasterEggNameChance,
-                DeathRespawnDelay = DeathRespawnDelay,
+                DeathRespawnBaseTime = DeathRespawnBaseTime,
+                DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,
             };
         }
     }
