@@ -62,7 +62,8 @@ namespace ProjectGuild.Simulation.Core
         /// Get the effective level of a skill (including passion bonus).
         /// This is the value used in all gameplay calculations.
         /// </summary>
-        public float GetEffectiveLevel(SkillType type) => Skills[(int)type].EffectiveLevel;
+        public float GetEffectiveLevel(SkillType type, SimulationConfig config) =>
+            Skills[(int)type].GetEffectiveLevel(config);
     }
 
     /// <summary>

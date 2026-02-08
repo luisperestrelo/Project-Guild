@@ -2,7 +2,7 @@ namespace ProjectGuild.Simulation.Core
 {
     /// <summary>
     /// All 15 skills in the game. The integer value is used as an array index
-    /// for efficient storage (Runner stores skills as float[SkillCount]).
+    /// for efficient storage (Runner stores skills as Skill[SkillCount]).
     /// </summary>
     public enum SkillType
     {

@@ -16,50 +16,51 @@ namespace ProjectGuild.Simulation.Core
         public bool HasPassion;
 
         /// <summary>
-        /// Passion multiplier applied to the effective level.
-        /// A runner with level 10 and passion has 10 * 1.05 = 10.5 effective level.
-        /// </summary>
-        public const float PassionEffectivenessMultiplier = 1.05f;
-
-        /// <summary>
-        /// Passion multiplier applied to XP gain rate.
-        /// </summary>
-        public const float PassionXpMultiplier = 1.5f;
-
-        /// <summary>
         /// The effective level, accounting for passion bonus.
         /// This is the value used in all gameplay calculations and displayed in UI.
+        /// Requires a config reference to know the passion multiplier.
         /// </summary>
-        public float EffectiveLevel => HasPassion
-            ? Level * PassionEffectivenessMultiplier
-            : Level;
+        public float GetEffectiveLevel(SimulationConfig config)
+        {
+            return HasPassion
+                ? Level * config.PassionEffectivenessMultiplier
+                : Level;
+        }
 
         /// <summary>
         /// XP required to reach the next level from the current level.
-        /// Uses a scaled curve so early levels are fast and later levels are slow.
         /// </summary>
-        public float XpToNextLevel => GetXpForLevel(Level + 1) - GetXpForLevel(Level);
+        public float GetXpToNextLevel(SimulationConfig config)
+        {
+            return GetXpForLevel(Level + 1, config) - GetXpForLevel(Level, config);
+        }
 
         /// <summary>
         /// Progress toward the next level, 0.0 to 1.0.
         /// </summary>
-        public float LevelProgress => XpToNextLevel > 0 ? Xp / XpToNextLevel : 0f;
+        public float GetLevelProgress(SimulationConfig config)
+        {
+            float xpNeeded = GetXpToNextLevel(config);
+            return xpNeeded > 0 ? Xp / xpNeeded : 0f;
+        }
 
         /// <summary>
         /// Add XP to this skill, applying passion bonus if applicable.
         /// Returns true if the skill leveled up.
         /// </summary>
-        public bool AddXp(float baseXp)
+        public bool AddXp(float baseXp, SimulationConfig config)
         {
-            float actualXp = HasPassion ? baseXp * PassionXpMultiplier : baseXp;
+            float actualXp = HasPassion ? baseXp * config.PassionXpMultiplier : baseXp;
             Xp += actualXp;
 
             bool leveledUp = false;
-            while (Xp >= XpToNextLevel)
+            float xpToNext = GetXpToNextLevel(config);
+            while (Xp >= xpToNext)
             {
-                Xp -= XpToNextLevel;
+                Xp -= xpToNext;
                 Level++;
                 leveledUp = true;
+                xpToNext = GetXpToNextLevel(config);
             }
 
             return leveledUp;
@@ -67,15 +68,14 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Total cumulative XP required to reach a given level from level 0.
-        /// Formula: sum of (level^1.5 * 50) for each level.
-        /// Level 1 requires 50 XP, level 10 requires ~1581 XP cumulative, etc.
+        /// Formula: sum of (level^exponent * base) for each level.
         /// </summary>
-        public static float GetXpForLevel(int level)
+        public static float GetXpForLevel(int level, SimulationConfig config)
         {
             float total = 0;
             for (int i = 1; i <= level; i++)
             {
-                total += (float)Math.Pow(i, 1.5) * 50f;
+                total += (float)Math.Pow(i, config.XpCurveExponent) * config.XpCurveBase;
             }
             return total;
         }

@@ -1,7 +1,7 @@
 namespace ProjectGuild.Simulation.Core
 {
     /// <summary>
-    /// The top-level simulation object. Owns the GameState and EventBus,
+    /// The top-level simulation object. Owns the GameState, EventBus, and Config,
     /// and orchestrates ticking all sub-systems.
     ///
     /// This class is pure C# — no Unity dependency. The Bridge layer's
@@ -11,6 +11,7 @@ namespace ProjectGuild.Simulation.Core
     {
         public GameState State { get; private set; }
         public EventBus Events { get; private set; }
+        public SimulationConfig Config { get; private set; }
 
         /// <summary>
         /// Seconds per simulation tick. At 10 ticks/sec this is 0.1.
@@ -18,10 +19,11 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float TickDeltaTime { get; private set; }
 
-        public GameSimulation(float tickRate = 10f)
+        public GameSimulation(SimulationConfig config = null, float tickRate = 10f)
         {
             State = new GameState();
             Events = new EventBus();
+            Config = config ?? new SimulationConfig();
             TickDeltaTime = 1f / tickRate;
         }
 
@@ -34,15 +36,16 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Initialize a new game. Creates starting runners at the hub.
+        /// Initialize a new game with hand-tuned starting runners.
+        /// Takes an array of RunnerDefinitions so you have full control over starter balance.
         /// </summary>
-        public void StartNewGame(string hubNodeId = "hub")
+        public void StartNewGame(RunnerFactory.RunnerDefinition[] starterDefinitions, string hubNodeId = "hub")
         {
             State = new GameState();
 
-            var starters = RunnerFactory.CreateStartingRunners(hubNodeId);
-            foreach (var runner in starters)
+            foreach (var def in starterDefinitions)
             {
+                var runner = RunnerFactory.CreateFromDefinition(def, hubNodeId);
                 State.Runners.Add(runner);
                 Events.Publish(new RunnerCreated
                 {
@@ -50,6 +53,42 @@ namespace ProjectGuild.Simulation.Core
                     RunnerName = runner.Name,
                 });
             }
+        }
+
+        /// <summary>
+        /// Initialize a new game with default placeholder starters (for quick testing).
+        /// </summary>
+        public void StartNewGame(string hubNodeId = "hub")
+        {
+            StartNewGame(DefaultStarterDefinitions(), hubNodeId);
+        }
+
+        /// <summary>
+        /// Placeholder starting runners. These will be replaced with your hand-tuned
+        /// balance definitions — for now they're simple defaults to keep tests working.
+        /// </summary>
+        public static RunnerFactory.RunnerDefinition[] DefaultStarterDefinitions()
+        {
+            return new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Aldric Stormwind" }
+                    .WithSkill(SkillType.Melee, 5)
+                    .WithSkill(SkillType.Defence, 4)
+                    .WithSkill(SkillType.Hitpoints, 5)
+                    .WithSkill(SkillType.Athletics, 3),
+
+                new RunnerFactory.RunnerDefinition { Name = "Lyra Foxglove" }
+                    .WithSkill(SkillType.Ranged, 4)
+                    .WithSkill(SkillType.Hitpoints, 3)
+                    .WithSkill(SkillType.Mining, 3)
+                    .WithSkill(SkillType.Athletics, 4),
+
+                new RunnerFactory.RunnerDefinition { Name = "Corin Ashford" }
+                    .WithSkill(SkillType.Magic, 4)
+                    .WithSkill(SkillType.Restoration, 3)
+                    .WithSkill(SkillType.Hitpoints, 3)
+                    .WithSkill(SkillType.Athletics, 2),
+            };
         }
 
         /// <summary>
@@ -89,16 +128,17 @@ namespace ProjectGuild.Simulation.Core
             }
         }
 
+        private float GetTravelSpeed(Runner runner)
+        {
+            float athleticsLevel = runner.GetEffectiveLevel(SkillType.Athletics, Config);
+            return Config.BaseTravelSpeed + (athleticsLevel - 1) * Config.AthleticsSpeedPerLevel;
+        }
+
         private void TickTravel(Runner runner)
         {
             if (runner.Travel == null) return;
 
-            // Movement speed is based on Athletics skill
-            // Base speed: 1.0 distance units/sec at level 1
-            // Each level adds ~5% speed
-            float athleticsLevel = runner.GetEffectiveLevel(SkillType.Athletics);
-            float speed = 1.0f + (athleticsLevel - 1) * 0.05f;
-
+            float speed = GetTravelSpeed(runner);
             runner.Travel.DistanceCovered += speed * TickDeltaTime;
 
             if (runner.Travel.DistanceCovered >= runner.Travel.TotalDistance)
@@ -136,8 +176,7 @@ namespace ProjectGuild.Simulation.Core
                 DistanceCovered = 0f,
             };
 
-            float athleticsLevel = runner.GetEffectiveLevel(SkillType.Athletics);
-            float speed = 1.0f + (athleticsLevel - 1) * 0.05f;
+            float speed = GetTravelSpeed(runner);
             float estimatedDuration = distance / speed;
 
             Events.Publish(new RunnerStartedTravel

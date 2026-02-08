@@ -16,9 +16,18 @@ namespace ProjectGuild.Simulation.Core
     ///   // Unsubscribe
     ///   eventBus.Unsubscribe<RunnerLeveledUp>(OnRunnerLeveledUp);
     ///
-    /// Events should be structs to avoid allocations. The EventBus does not queue events —
-    /// handlers are called synchronously during Publish(). This is intentional: simulation
-    /// publishes events during its tick, and the view layer reacts immediately.
+    /// Events are structs (not classes) so that publishing an event doesn't allocate
+    /// heap memory. Since Tick() runs 10x/sec and may publish dozens of events per tick,
+    /// using classes would create garbage for the GC to collect, causing micro-stutters.
+    /// Structs live on the stack and are free.
+    ///
+    /// Events are delivered synchronously: when Publish() is called, all handlers run
+    /// immediately before Publish() returns. There is no queue or "process events later"
+    /// step. This means when the simulation calls Publish(RunnerArrivedAtNode),
+    /// any subscribed view code (e.g. play arrival animation) runs right then and there,
+    /// mid-tick. This is simple and predictable — the downside is that a slow handler
+    /// would block the tick, but our handlers should be lightweight (just trigger
+    /// animations or update UI state, not do heavy work).
     /// </summary>
     public class EventBus
     {

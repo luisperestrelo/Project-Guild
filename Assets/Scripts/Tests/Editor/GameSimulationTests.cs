@@ -29,6 +29,23 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
+        public void StartNewGame_WithDefinitions_UsesExactStats()
+        {
+            var sim = new GameSimulation();
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Custom Guy" }
+                    .WithSkill(SkillType.Melee, 50, passion: true),
+            };
+            sim.StartNewGame(defs, "hub");
+
+            Assert.AreEqual(1, sim.State.Runners.Count);
+            Assert.AreEqual("Custom Guy", sim.State.Runners[0].Name);
+            Assert.AreEqual(50, sim.State.Runners[0].GetSkill(SkillType.Melee).Level);
+            Assert.IsTrue(sim.State.Runners[0].GetSkill(SkillType.Melee).HasPassion);
+        }
+
+        [Test]
         public void Tick_IncrementsTickCount()
         {
             var sim = new GameSimulation();
@@ -105,13 +122,18 @@ namespace ProjectGuild.Tests
         public void Travel_HigherAthletics_FasterTravel()
         {
             var sim = new GameSimulation(tickRate: 10f);
-            sim.StartNewGame("hub");
+            // Create two runners with different Athletics levels
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Slow" }
+                    .WithSkill(SkillType.Athletics, 1),
+                new RunnerFactory.RunnerDefinition { Name = "Fast" }
+                    .WithSkill(SkillType.Athletics, 50),
+            };
+            sim.StartNewGame(defs, "hub");
 
             var slowRunner = sim.State.Runners[0];
-            slowRunner.Skills[(int)SkillType.Athletics].Level = 1;
-
             var fastRunner = sim.State.Runners[1];
-            fastRunner.Skills[(int)SkillType.Athletics].Level = 50;
 
             sim.CommandTravel(slowRunner.Id, "mine", 100f);
             sim.CommandTravel(fastRunner.Id, "mine", 100f);
@@ -122,6 +144,31 @@ namespace ProjectGuild.Tests
                 fastRunner.Travel.DistanceCovered,
                 slowRunner.Travel.DistanceCovered
             );
+        }
+
+        [Test]
+        public void Travel_SpeedRespectsConfig()
+        {
+            var config = new SimulationConfig
+            {
+                BaseTravelSpeed = 5.0f,
+                AthleticsSpeedPerLevel = 0.1f,
+            };
+            var sim = new GameSimulation(config, tickRate: 10f);
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Speedy" }
+                    .WithSkill(SkillType.Athletics, 1),
+            };
+            sim.StartNewGame(defs, "hub");
+
+            var runner = sim.State.Runners[0];
+            sim.CommandTravel(runner.Id, "mine", 100f);
+            sim.Tick();
+
+            // At Athletics 1, speed = BaseTravelSpeed + (1-1)*0.1 = 5.0
+            // In one tick (0.1s): distance = 5.0 * 0.1 = 0.5
+            Assert.AreEqual(0.5f, runner.Travel.DistanceCovered, 0.001f);
         }
 
         [Test]

@@ -1,5 +1,6 @@
 using UnityEngine;
 using ProjectGuild.Simulation.Core;
+using ProjectGuild.Data;
 
 namespace ProjectGuild.Bridge
 {
@@ -23,6 +24,9 @@ namespace ProjectGuild.Bridge
         [Tooltip("Maximum ticks to process per frame (prevents spiral of death)")]
         [SerializeField] private int _maxTicksPerFrame = 3;
 
+        [Tooltip("Drag a SimulationConfig asset here. If left empty, default values are used.")]
+        [SerializeField] private SimulationConfigAsset _configAsset;
+
         public GameSimulation Simulation { get; private set; }
 
         /// <summary>
@@ -36,7 +40,8 @@ namespace ProjectGuild.Bridge
         private void Awake()
         {
             _tickInterval = 1f / _tickRate;
-            Simulation = new GameSimulation(_tickRate);
+            var config = _configAsset != null ? _configAsset.ToConfig() : new SimulationConfig();
+            Simulation = new GameSimulation(config, _tickRate);
         }
 
         /// <summary>

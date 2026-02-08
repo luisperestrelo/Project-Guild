@@ -2,7 +2,8 @@
     "name": "ProjectGuild.Bridge",
     "rootNamespace": "ProjectGuild.Bridge",
     "references": [
-        "ProjectGuild.Simulation"
+        "ProjectGuild.Simulation",
+        "ProjectGuild.Data"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
