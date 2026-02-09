@@ -41,7 +41,7 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Initialize a new game with hand-tuned starting runners.
-        /// Takes an array of RunnerDefinitions so you have full control over starter balance.
+        /// Takes an array of RunnerDefinitions for full control over starter balance — no RNG.
         /// </summary>
         public void StartNewGame(RunnerFactory.RunnerDefinition[] starterDefinitions,
             WorldMap map = null, string hubNodeId = "hub")
@@ -70,7 +70,7 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Placeholder starting runners. These will be replaced with your hand-tuned
+        /// Placeholder starting runners. Will be replaced with proper hand-tuned
         /// balance definitions — for now they're simple defaults to keep tests working.
         /// </summary>
         public static RunnerFactory.RunnerDefinition[] DefaultStarterDefinitions()
@@ -205,7 +205,7 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Command a runner to travel with an explicit distance (for testing).
-        /// Prefer the single-argument overload which uses the world map.
+        /// The single-argument overload that uses the world map is generally preferred.
         /// </summary>
         public void CommandTravel(string runnerId, string targetNodeId, float distance)
         {

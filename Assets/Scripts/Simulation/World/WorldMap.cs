@@ -39,7 +39,7 @@ namespace ProjectGuild.Simulation.World
 
     /// <summary>
     /// A connection between two world nodes with a travel distance.
-    /// Edges are bidirectional — if A connects to B, you can travel both ways.
+    /// Edges are bidirectional — if A connects to B, travel works both ways.
     /// </summary>
     [Serializable]
     public class WorldEdge

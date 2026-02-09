@@ -6,7 +6,7 @@ namespace ProjectGuild.Simulation.Core
     /// <summary>
     /// Creates runners with various generation strategies:
     /// - Fully random (standard acquisition)
-    /// - Hand-tuned (starting runners with exact stats you define)
+    /// - Hand-tuned (starting runners with exact, predefined stats)
     /// - Biased (semi-deterministic, e.g. tutorial reward runner skewed toward gathering)
     ///
     /// All generation reads tuning values from SimulationConfig rather than hardcoding them.
@@ -35,7 +35,7 @@ namespace ProjectGuild.Simulation.Core
 
         private static readonly string[] EasterEggNames =
         {
-            // Add full names here. These are rolled as-is (no first+last combination).
+            // Full names go here. These are rolled as-is (no first+last combination).
             // Example: "Luis Perestrelo"
         };
 
@@ -68,7 +68,7 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Definition for a hand-tuned runner with exact stats.
-        /// Used for starting runners where you want full control over balance.
+        /// Used for starting runners where we need full control over balance.
         /// </summary>
         public class RunnerDefinition
         {

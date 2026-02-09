@@ -7,7 +7,7 @@ namespace ProjectGuild.Simulation.Core
     /// everything references this config. The Bridge/Data layer populates this from
     /// a ScriptableObject so values are tweakable in the Unity inspector.
     ///
-    /// For tests, you can just new up a SimulationConfig() and get sensible defaults.
+    /// For tests, just new up a SimulationConfig() to get sensible defaults.
     /// </summary>
     [Serializable]
     public class SimulationConfig
