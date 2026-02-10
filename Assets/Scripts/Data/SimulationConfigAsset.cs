@@ -54,7 +54,13 @@ namespace ProjectGuild.Data
         [Tooltip("Global multiplier on gathering speed. 1.0 = normal, 0.5 = twice as fast")]
         public float GlobalGatheringSpeedMultiplier = 1.0f;
 
-        [Tooltip("Per-level speed scaling for gathering. Each level beyond 1 reduces gather time")]
+        [Tooltip("Which formula to use for skill-level-based gathering speed scaling")]
+        public GatheringSpeedFormula GatheringFormula = GatheringSpeedFormula.PowerCurve;
+
+        [Tooltip("Exponent for PowerCurve formula. 0.5 = gentle (~10x at 99), 0.7 = moderate (~30x), 1.0 = linear (99x)")]
+        public float GatheringSpeedExponent = 0.55f;
+
+        [Tooltip("Per-level flat factor for Hyperbolic formula. At 0.08: level 99 is ~8.8x faster")]
         public float GatheringSkillSpeedPerLevel = 0.08f;
 
         [Header("Inventory")]
@@ -87,6 +93,8 @@ namespace ProjectGuild.Data
                 PassionChance = PassionChance,
                 EasterEggNameChance = EasterEggNameChance,
                 GlobalGatheringSpeedMultiplier = GlobalGatheringSpeedMultiplier,
+                GatheringFormula = GatheringFormula,
+                GatheringSpeedExponent = GatheringSpeedExponent,
                 GatheringSkillSpeedPerLevel = GatheringSkillSpeedPerLevel,
                 InventorySize = InventorySize,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,

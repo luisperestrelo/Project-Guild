@@ -303,13 +303,26 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Calculate how many ticks it takes for a runner to gather one item.
-        /// Formula: (GlobalGatheringSpeedMultiplier * BaseTicksToGather) / (1 + (effectiveLevel - 1) * GatheringSkillSpeedPerLevel)
+        /// The selected GatheringFormula determines how skill level translates to speed.
+        /// Result: baseTicks / speedMultiplier (higher multiplier = faster gathering).
         /// </summary>
         private float CalculateTicksRequired(Runner runner, GatherableConfig gatherable)
         {
             float effectiveLevel = runner.GetEffectiveLevel(gatherable.RequiredSkill, Config);
-            float divisor = 1f + (effectiveLevel - 1f) * Config.GatheringSkillSpeedPerLevel;
-            return (Config.GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather) / divisor;
+            float baseTicks = Config.GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather;
+
+            float speedMultiplier = Config.GatheringFormula switch
+            {
+                GatheringSpeedFormula.PowerCurve =>
+                    (float)Math.Pow(effectiveLevel, Config.GatheringSpeedExponent),
+
+                GatheringSpeedFormula.Hyperbolic =>
+                    1f + (effectiveLevel - 1f) * Config.GatheringSkillSpeedPerLevel,
+
+                _ => 1f,
+            };
+
+            return baseTicks / Math.Max(speedMultiplier, 0.01f);
         }
 
         private void TickGathering(Runner runner)

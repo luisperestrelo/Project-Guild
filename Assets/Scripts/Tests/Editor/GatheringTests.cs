@@ -244,16 +244,17 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void Gathering_TicksRequired_MatchesFormula()
+        public void Gathering_TicksRequired_MatchesPowerCurveFormula()
         {
             SetupRunnerAtMine(miningLevel: 10);
             _sim.CommandGather(_runner.Id);
 
-            // Formula: (GlobalGatheringSpeedMultiplier * BaseTicksToGather) / (1 + (effectiveLevel - 1) * GatheringSkillSpeedPerLevel)
-            // = (1.0 * 10) / (1 + (10 - 1) * 0.08)
-            // = 10 / 1.72
-            // ≈ 5.814
-            float expected = (1.0f * 10f) / (1f + (10f - 1f) * 0.08f);
+            // Default formula is PowerCurve with exponent 0.55.
+            // speedMultiplier = effectiveLevel ^ exponent = 10 ^ 0.55 ≈ 3.548
+            // ticksRequired = (1.0 * 10) / 3.548 ≈ 2.819
+            var config = new SimulationConfig();
+            float speedMultiplier = (float)System.Math.Pow(10f, config.GatheringSpeedExponent);
+            float expected = (config.GlobalGatheringSpeedMultiplier * 10f) / speedMultiplier;
 
             Assert.AreEqual(expected, _runner.Gathering.TicksRequired, 0.01f);
         }

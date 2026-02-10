@@ -6,6 +6,33 @@ using ProjectGuild.Simulation.World;
 namespace ProjectGuild.Simulation.Core
 {
     /// <summary>
+    /// Determines how skill level affects gathering speed.
+    /// Each formula produces a speed multiplier from the runner's effective level.
+    /// </summary>
+    public enum GatheringSpeedFormula
+    {
+        /// <summary>
+        /// Power curve: speedMultiplier = effectiveLevel ^ exponent.
+        /// Higher levels are proportionally more impactful than lower levels.
+        /// The grind from 90→99 is more rewarding per-level than 1→10.
+        /// Controlled by GatheringSpeedExponent.
+        ///   Exponent 0.5: level 1 = 1x, level 10 = 3.2x, level 50 = 7.1x, level 99 = 10x
+        ///   Exponent 0.7: level 1 = 1x, level 10 = 5x,   level 50 = 18x,  level 99 = 30x
+        ///   Exponent 1.0: level 1 = 1x, level 10 = 10x,  level 50 = 50x,  level 99 = 99x (linear)
+        /// </summary>
+        PowerCurve,
+
+        /// <summary>
+        /// Hyperbolic (diminishing returns): speedMultiplier = 1 + (effectiveLevel - 1) * perLevelFactor.
+        /// Each level adds the same flat amount to the divisor, but the marginal speed gain shrinks.
+        /// Early levels feel most impactful; high-level grinding yields diminishing improvements.
+        /// Controlled by GatheringSkillSpeedPerLevel.
+        ///   At 0.08: level 1 = 1x, level 10 = 1.7x, level 50 = 4.9x, level 99 = 8.8x
+        /// </summary>
+        Hyperbolic,
+    }
+
+    /// <summary>
     /// All tunable simulation parameters live here. No magic numbers in game logic —
     /// everything references this config. The Bridge/Data layer populates this from
     /// a ScriptableObject so values are tweakable in the Unity inspector.
@@ -80,14 +107,31 @@ namespace ProjectGuild.Simulation.Core
         /// <summary>
         /// Global multiplier on all gathering speed. Affects how many ticks it takes
         /// to gather anything. 1.0 = normal, 0.5 = twice as fast, 2.0 = twice as slow.
-        /// Formula: ticksRequired = (GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather)
-        ///                          / (1 + (effectiveLevel - 1) * GatheringSkillSpeedPerLevel)
+        /// Applied regardless of which formula is selected.
         /// </summary>
         public float GlobalGatheringSpeedMultiplier = 1.0f;
 
         /// <summary>
-        /// Per-level speed scaling for gathering. Each skill level beyond 1 reduces gather time.
-        /// At 0.08: level 10 divisor = 1.72 (~42% faster), level 99 divisor = 8.84 (~9x faster).
+        /// Which formula to use for skill-level-based gathering speed scaling.
+        /// See <see cref="GatheringSpeedFormula"/> for detailed descriptions of each option.
+        /// </summary>
+        public GatheringSpeedFormula GatheringFormula = GatheringSpeedFormula.PowerCurve;
+
+        /// <summary>
+        /// Exponent for the PowerCurve formula. Controls how aggressively speed scales with level.
+        /// speedMultiplier = effectiveLevel ^ GatheringSpeedExponent.
+        /// 0.5 = gentle (level 99 is ~10x faster than level 1).
+        /// 0.7 = moderate (level 99 is ~30x faster).
+        /// 1.0 = linear (level 99 is 99x faster).
+        /// Only used when GatheringFormula == PowerCurve.
+        /// </summary>
+        public float GatheringSpeedExponent = 0.55f;
+
+        /// <summary>
+        /// Per-level flat speed factor for the Hyperbolic formula (diminishing returns).
+        /// speedMultiplier = 1 + (effectiveLevel - 1) * GatheringSkillSpeedPerLevel.
+        /// At 0.08: level 10 = ~1.7x faster, level 99 = ~8.8x faster.
+        /// Only used when GatheringFormula == Hyperbolic.
         /// </summary>
         public float GatheringSkillSpeedPerLevel = 0.08f;
 
