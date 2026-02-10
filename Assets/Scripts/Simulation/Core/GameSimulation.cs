@@ -53,8 +53,8 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState = new GameState();
             CurrentGameState.Map = map ?? WorldMap.CreateStarterMap();
 
-            // Wire gatherables from config onto map nodes
-            WireNodeGatherables(CurrentGameState.Map);
+            // HubNodeId is set by the map itself (CreateStarterMap or WorldMapAsset.ToWorldMap).
+            // The hubNodeId parameter below is for runner spawning, not hub identification.
 
             // Populate item registry from config
             ItemRegistry = new ItemRegistry();
@@ -88,20 +88,7 @@ namespace ProjectGuild.Simulation.Core
             });
         }
 
-        /// <summary>
-        /// Attach gatherables from Config.NodeGatherables onto the corresponding WorldNodes.
-        /// Called after map creation — the map defines topology, this wires in the content.
-        /// If a node already has gatherables (e.g. from test setup via AddNode), they're replaced.
-        /// </summary>
-        private void WireNodeGatherables(WorldMap map)
-        {
-            foreach (var ng in Config.NodeGatherables)
-            {
-                var node = map.GetNode(ng.NodeId);
-                if (node != null && ng.Gatherables != null && ng.Gatherables.Length > 0)
-                    node.Gatherables = ng.Gatherables;
-            }
-        }
+
 
         /// <summary>
         /// Initialize a new game with default placeholder starters (for quick testing).
@@ -483,16 +470,7 @@ namespace ProjectGuild.Simulation.Core
         {
             runner.Gathering.SubState = GatheringSubState.TravelingToBank;
 
-            // Find the hub node (first Hub-type node in the map)
-            string hubNodeId = null;
-            for (int i = 0; i < CurrentGameState.Map.Nodes.Count; i++)
-            {
-                if (CurrentGameState.Map.Nodes[i].Type == NodeType.Hub)
-                {
-                    hubNodeId = CurrentGameState.Map.Nodes[i].Id;
-                    break;
-                }
-            }
+            string hubNodeId = CurrentGameState.Map.HubNodeId;
 
             if (hubNodeId == null || runner.CurrentNodeId == hubNodeId)
             {

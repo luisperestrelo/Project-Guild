@@ -5,22 +5,6 @@ using ProjectGuild.Simulation.Gathering;
 namespace ProjectGuild.Simulation.World
 {
     /// <summary>
-    /// Cosmetic/categorical label for a world node. Used for visuals, UI icons,
-    /// and flavor — NOT for gameplay logic. What you can do at a node is determined
-    /// by its data (Gatherables[], future combat configs, etc.), not its type.
-    /// </summary>
-    public enum NodeType
-    {
-        Hub,        // Home base — bank, crafting stations, respawn point
-        Mine,       // Mining location
-        Forest,     // Woodcutting location
-        Lake,       // Fishing location
-        HerbPatch,  // Foraging location
-        MobZone,    // Overworld mob farming
-        Raid,       // Raid entrance
-    }
-
-    /// <summary>
     /// A location in the world that runners can travel to and interact with.
     /// Nodes are connected by edges with travel distances.
     /// </summary>
@@ -29,7 +13,6 @@ namespace ProjectGuild.Simulation.World
     {
         public string Id;
         public string Name;
-        public NodeType Type;
 
         /// <summary>
         /// Position in world-space for visual placement. X and Z only (Y is ground level).
@@ -38,6 +21,15 @@ namespace ProjectGuild.Simulation.World
         /// </summary>
         public float WorldX;
         public float WorldZ;
+
+        /// <summary>
+        /// Node color for visual representation (RGB, 0-1 range).
+        /// Stored as floats to keep the simulation layer free of UnityEngine dependencies.
+        /// The view layer constructs a Color from these values.
+        /// </summary>
+        public float ColorR = 0.5f;
+        public float ColorG = 0.5f;
+        public float ColorB = 0.5f;
 
         /// <summary>
         /// Gatherables available at this node. Empty for non-gathering nodes (hub, raids, etc.).
@@ -74,6 +66,12 @@ namespace ProjectGuild.Simulation.World
         public List<WorldNode> Nodes = new();
         public List<WorldEdge> Edges = new();
 
+        /// <summary>
+        /// The node ID of the hub (home base). Used by BeginAutoReturn to know
+        /// where to send runners for deposits. Set during map creation.
+        /// </summary>
+        public string HubNodeId;
+
         // Runtime lookups (not serialized)
         [NonSerialized] private Dictionary<string, WorldNode> _nodeLookup;
         [NonSerialized] private Dictionary<string, List<WorldEdge>> _adjacency;
@@ -105,6 +103,22 @@ namespace ProjectGuild.Simulation.World
         {
             if (_nodeLookup == null) Initialize();
             return _nodeLookup.TryGetValue(nodeId, out var node) ? node : null;
+        }
+
+        /// <summary>
+        /// Euclidean distance between two nodes based on their world positions.
+        /// Always returns a positive value if both nodes exist, -1 if either is missing.
+        /// Used as a fallback when no edge path exists.
+        /// </summary>
+        public float GetEuclideanDistance(string fromNodeId, string toNodeId)
+        {
+            var from = GetNode(fromNodeId);
+            var to = GetNode(toNodeId);
+            if (from == null || to == null) return -1f;
+
+            float dx = to.WorldX - from.WorldX;
+            float dz = to.WorldZ - from.WorldZ;
+            return (float)Math.Sqrt(dx * dx + dz * dz);
         }
 
         /// <summary>
@@ -196,7 +210,17 @@ namespace ProjectGuild.Simulation.World
             }
 
             if (!prev.ContainsKey(toNodeId) && fromNodeId != toNodeId)
+            {
+                // No edge path — fall back to direct Euclidean distance.
+                // For V1 any node can travel to any node regardless of edges.
+                float euclidean = GetEuclideanDistance(fromNodeId, toNodeId);
+                if (euclidean > 0)
+                {
+                    path = new List<string> { fromNodeId, toNodeId };
+                    return euclidean;
+                }
                 return -1f;
+            }
 
             // Reconstruct path
             path = new List<string>();
@@ -212,13 +236,13 @@ namespace ProjectGuild.Simulation.World
 
         // ─── Builder helpers for creating maps in code ───────────────
 
-        public WorldMap AddNode(string id, string name, NodeType type, float worldX = 0f, float worldZ = 0f, params GatherableConfig[] gatherables)
+        public WorldMap AddNode(string id, string name, float worldX = 0f, float worldZ = 0f,
+            params GatherableConfig[] gatherables)
         {
             Nodes.Add(new WorldNode
             {
                 Id = id,
                 Name = name,
-                Type = type,
                 WorldX = worldX,
                 WorldZ = worldZ,
                 Gatherables = gatherables ?? Array.Empty<GatherableConfig>(),
@@ -245,38 +269,32 @@ namespace ProjectGuild.Simulation.World
         /// <summary>
         /// Create a small starter map for testing and early development.
         /// Hub in the center, gathering nodes nearby, mixed-gatherable test nodes, one mob zone further out.
-        /// Topology only — gatherables are wired onto nodes from Config.NodeGatherables
-        /// after map creation (see GameSimulation.WireNodeGatherables).
+        /// Topology only — gatherables come from WorldNodeAsset SOs via the WorldMapAsset pipeline.
+        /// This method is a fallback when no WorldMapAsset is assigned.
         /// </summary>
         public static WorldMap CreateStarterMap()
         {
             var map = new WorldMap();
+            map.HubNodeId = "hub";
 
-            // Hub at origin
-            map.AddNode("hub", "Guild Hall", NodeType.Hub, 0f, 0f);
+            // Hub at origin (blue)
+            map.AddNode("hub", "Guild Hall", 0f, 0f);
+            map.GetNode("hub").ColorR = 0.2f; map.GetNode("hub").ColorG = 0.6f; map.GetNode("hub").ColorB = 1f;
 
             // ─── Single-gatherable nodes (tutorial-distance) ────────
-            map.AddNode("copper_mine", "Copper Mine", NodeType.Mine, -15f, 10f);
-            map.AddNode("pine_forest", "Pine Forest", NodeType.Forest, 10f, 15f);
-            map.AddNode("sunlit_pond", "Sunlit Pond", NodeType.Lake, 15f, -5f);
-            map.AddNode("herb_garden", "Herb Garden", NodeType.HerbPatch, -10f, -12f);
+            map.AddNode("copper_mine", "Copper Mine", -15f, 10f);
+            map.AddNode("pine_forest", "Pine Forest", 10f, 15f);
+            map.AddNode("sunlit_pond", "Sunlit Pond", 15f, -5f);
+            map.AddNode("herb_garden", "Herb Garden", -10f, -12f);
 
             // ─── Mixed-gatherable test nodes ────────────────────────
-            // "Overgrown Mine": trees grew over this mine — index 0 = pine logs, index 1 = copper ore.
-            // Sending a runner here with default (index 0) will chop trees, not mine ore.
-            map.AddNode("overgrown_mine", "Overgrown Mine (Trees first, Ore second)", NodeType.Mine, -20f, -5f);
-
-            // "Deep Mine": copper (index 0, no level req) + iron (index 1, requires Mining 15).
-            // Low-level runner can only mine copper. Tests MinLevel gating on specific indices.
-            map.AddNode("deep_mine", "Deep Mine (Copper + Iron Lv15)", NodeType.Mine, -30f, 15f);
-
-            // "Lakeside Grove": pine logs (index 0) + raw trout (index 1) + sage leaves (index 2).
-            // Three gatherables, three different skills at one node.
-            map.AddNode("lakeside_grove", "Lakeside Grove (Logs, Fish, Herbs)", NodeType.Forest, 20f, 25f);
+            map.AddNode("overgrown_mine", "Overgrown Mine (Trees first, Ore second)", -20f, -5f);
+            map.AddNode("deep_mine", "Deep Mine (Copper + Iron Lv15)", -30f, 15f);
+            map.AddNode("lakeside_grove", "Lakeside Grove (Logs, Fish, Herbs)", 20f, 25f);
 
             // ─── Combat zones ───────────────────────────────────────
-            map.AddNode("goblin_camp", "Goblin Camp", NodeType.MobZone, -25f, 30f);
-            map.AddNode("dark_cavern", "Dark Cavern", NodeType.Raid, 0f, 50f);
+            map.AddNode("goblin_camp", "Goblin Camp", -25f, 30f);
+            map.AddNode("dark_cavern", "Dark Cavern", 0f, 50f);
 
             // ─── Edges ──────────────────────────────────────────────
             // Nearby nodes: ~5-10 seconds of travel

@@ -145,33 +145,6 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float HyperbolicSpeedPerLevel = 0.08f;
 
-        // ─── Node Gatherables ──────────────────────────────────────
-
-        /// <summary>
-        /// Maps world node IDs to their gatherable configs.
-        /// Populated from GatherableConfigAsset ScriptableObjects via SimulationConfigAsset.ToConfig().
-        /// After map creation, GameSimulation wires these onto the corresponding WorldNodes.
-        /// Tests can set these directly, or use AddNode(..., gatherables) to put them on nodes.
-        /// </summary>
-        public NodeGatherable[] NodeGatherables = Array.Empty<NodeGatherable>();
-
-        /// <summary>
-        /// Associates a world node with its gatherables. The order of the Gatherables array
-        /// determines the gatherable index — index 0 is what a runner gathers by default.
-        /// </summary>
-        [Serializable]
-        public struct NodeGatherable
-        {
-            public string NodeId;
-            public GatherableConfig[] Gatherables;
-
-            public NodeGatherable(string nodeId, params GatherableConfig[] gatherables)
-            {
-                NodeId = nodeId;
-                Gatherables = gatherables;
-            }
-        }
-
         // ─── Items ─────────────────────────────────────────────────
 
         /// <summary>

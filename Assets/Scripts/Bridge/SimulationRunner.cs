@@ -27,6 +27,10 @@ namespace ProjectGuild.Bridge
         [Tooltip("Drag a SimulationConfig asset here. If left empty, default values are used.")]
         [SerializeField] private SimulationConfigAsset _configAsset;
 
+        [Header("World")]
+        [Tooltip("Drag a WorldMap asset here. If left empty, a default starter map is used.")]
+        [SerializeField] private WorldMapAsset _worldMapAsset;
+
         public GameSimulation Simulation { get; private set; }
 
         /// <summary>
@@ -49,7 +53,9 @@ namespace ProjectGuild.Bridge
         /// </summary>
         public void StartNewGame()
         {
-            Simulation.StartNewGame("hub");
+            var map = _worldMapAsset != null ? _worldMapAsset.ToWorldMap() : null;
+            string hubNodeId = map != null ? map.HubNodeId : "hub";
+            Simulation.StartNewGame(GameSimulation.DefaultStarterDefinitions(), map, hubNodeId);
             Debug.Log($"[SimulationRunner] New game started with {Simulation.CurrentGameState.Runners.Count} runners.");
         }
 

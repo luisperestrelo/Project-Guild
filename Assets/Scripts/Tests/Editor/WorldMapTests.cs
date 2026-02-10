@@ -14,11 +14,12 @@ namespace ProjectGuild.Tests
         {
             // Simple test map: hub -> A -> B, hub -> C
             _map = new WorldMap();
-            _map.AddNode("hub", "Hub", NodeType.Hub, 0f, 0f);
-            _map.AddNode("a", "Node A", NodeType.Mine, 10f, 0f);
-            _map.AddNode("b", "Node B", NodeType.MobZone, 20f, 0f);
-            _map.AddNode("c", "Node C", NodeType.Forest, 0f, 10f);
-            _map.AddNode("isolated", "Isolated", NodeType.HerbPatch, 50f, 50f);
+            _map.HubNodeId = "hub";
+            _map.AddNode("hub", "Hub", 0f, 0f);
+            _map.AddNode("a", "Node A", 10f, 0f);
+            _map.AddNode("b", "Node B", 20f, 0f);
+            _map.AddNode("c", "Node C", 0f, 10f);
+            _map.AddNode("isolated", "Isolated", 50f, 50f);
 
             _map.AddEdge("hub", "a", 5f);
             _map.AddEdge("a", "b", 8f);
@@ -33,7 +34,6 @@ namespace ProjectGuild.Tests
         {
             var node = _map.GetNode("hub");
             Assert.AreEqual("Hub", node.Name);
-            Assert.AreEqual(NodeType.Hub, node.Type);
         }
 
         [Test]
@@ -89,12 +89,18 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void FindPath_Unreachable_ReturnsNegative()
+        public void FindPath_NoEdges_FallsBackToEuclidean()
         {
             float dist = _map.FindPath("hub", "isolated", out var path);
 
-            Assert.AreEqual(-1f, dist);
-            Assert.IsNull(path);
+            // No edge path exists, so FindPath falls back to Euclidean distance.
+            // hub=(0,0) to isolated=(50,50) = sqrt(50^2 + 50^2) ≈ 70.71
+            Assert.Greater(dist, 0f);
+            Assert.AreEqual(70.71f, dist, 0.1f);
+            Assert.IsNotNull(path);
+            Assert.AreEqual(2, path.Count);
+            Assert.AreEqual("hub", path[0]);
+            Assert.AreEqual("isolated", path[1]);
         }
 
         [Test]

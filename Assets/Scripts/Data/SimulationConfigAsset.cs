@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Gathering;
@@ -87,25 +86,6 @@ namespace ProjectGuild.Data
         [Tooltip("All item definitions in the game. Each item is its own ScriptableObject asset.")]
         public ItemDefinitionAsset[] ItemDefinitions = new ItemDefinitionAsset[0];
 
-        [Header("Node Gatherables")]
-        [Tooltip("Maps world nodes to their gatherables. Each entry pairs a node ID with an ordered list of gatherable configs.\n" +
-            "The array order within each node determines the gatherable index (index 0 = default auto-gather target).")]
-        public NodeGatherableSetup[] NodeGatherables = new NodeGatherableSetup[0];
-
-        /// <summary>
-        /// Associates a world node ID with an ordered list of GatherableConfigAssets.
-        /// The Inspector shows this as an array of expandable entries.
-        /// </summary>
-        [Serializable]
-        public struct NodeGatherableSetup
-        {
-            [Tooltip("The world node ID this gatherable setup applies to (e.g. 'copper_mine', 'deep_mine').")]
-            public string NodeId;
-
-            [Tooltip("Gatherables available at this node, in order. Index 0 is the default gather target.")]
-            public GatherableConfigAsset[] Gatherables;
-        }
-
         [Header("Inventory")]
         [Tooltip("Number of inventory slots per runner (OSRS-style: 28)")]
         public int InventorySize = 28;
@@ -128,18 +108,6 @@ namespace ProjectGuild.Data
             for (int i = 0; i < ItemDefinitions.Length; i++)
                 itemDefs[i] = ItemDefinitions[i].ToItemDefinition();
 
-            // Convert node-gatherable SO mappings to plain C# structs
-            var nodeGatherables = new SimulationConfig.NodeGatherable[NodeGatherables.Length];
-            for (int i = 0; i < NodeGatherables.Length; i++)
-            {
-                var setup = NodeGatherables[i];
-                var gatherables = new GatherableConfig[setup.Gatherables != null ? setup.Gatherables.Length : 0];
-                for (int j = 0; j < gatherables.Length; j++)
-                    gatherables[j] = setup.Gatherables[j].ToGatherableConfig();
-
-                nodeGatherables[i] = new SimulationConfig.NodeGatherable(setup.NodeId, gatherables);
-            }
-
             return new SimulationConfig
             {
                 BaseTravelSpeed = BaseTravelSpeed,
@@ -158,7 +126,6 @@ namespace ProjectGuild.Data
                 GatheringSpeedExponent = GatheringSpeedExponent,
                 HyperbolicSpeedPerLevel = HyperbolicSpeedPerLevel,
                 ItemDefinitions = itemDefs,
-                NodeGatherables = nodeGatherables,
                 InventorySize = InventorySize,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
                 DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,

@@ -99,11 +99,11 @@ namespace ProjectGuild.View
                 marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 marker.transform.localScale = new Vector3(3f, 0.1f, 3f);
 
-                // Color by node type
+                // Color from node data
                 var renderer = marker.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    renderer.material.color = GetNodeColor(node.Type);
+                    renderer.material.color = new Color(node.ColorR, node.ColorG, node.ColorB);
                 }
             }
 
@@ -232,20 +232,6 @@ namespace ProjectGuild.View
             return new Vector3(node.WorldX, 0f, node.WorldZ);
         }
 
-        private Color GetNodeColor(NodeType type)
-        {
-            return type switch
-            {
-                NodeType.Hub => new Color(0.2f, 0.6f, 1f),          // Blue
-                NodeType.Mine => new Color(0.6f, 0.4f, 0.2f), // Brown
-                NodeType.Forest => new Color(0.2f, 0.7f, 0.2f), // Green
-                NodeType.Lake => new Color(0.3f, 0.7f, 0.9f),  // Light blue
-                NodeType.HerbPatch => new Color(0.5f, 0.8f, 0.3f),  // Yellow-green
-                NodeType.MobZone => new Color(0.8f, 0.2f, 0.2f),         // Red
-                NodeType.Raid => new Color(0.6f, 0.1f, 0.6f),            // Purple
-                _ => Color.gray,
-            };
-        }
 
         // ─── Event Handlers ──────────────────────────────────────────
 

@@ -37,8 +37,9 @@ namespace ProjectGuild.Tests
             };
 
             var map = new WorldMap();
-            map.AddNode("hub", "Hub", NodeType.Hub);
-            map.AddNode("mine", "Mine", NodeType.Mine, 0f, 0f, CopperGatherable);
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("mine", "Mine", 0f, 0f, CopperGatherable);
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
 
@@ -136,7 +137,8 @@ namespace ProjectGuild.Tests
             };
 
             var map = new WorldMap();
-            map.AddNode("hub", "Hub", NodeType.Hub);
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
             map.Initialize();
 
             _sim.StartNewGame(defs, map, "hub");
