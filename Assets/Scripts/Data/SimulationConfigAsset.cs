@@ -29,11 +29,15 @@ namespace ProjectGuild.Data
         [Tooltip("Multiplier on XP gain when runner has passion")]
         public float PassionXpMultiplier = 1.5f;
 
-        [Tooltip("Base multiplier for XP curve. Each level costs: level^exponent * base")]
-        public float XpCurveBase = 50f;
+        [Tooltip("Base XP for the exponential XP curve. Each level costs: base * growth^level.\n" +
+            "Higher values = more XP needed at all levels.")]
+        public float XpCurveBase = 75f;
 
-        [Tooltip("Exponent for XP curve. Higher = steeper at high levels. OSRS-like is ~2.0")]
-        public float XpCurveExponent = 1.5f;
+        [Tooltip("Growth factor for the exponential XP curve. Each level costs growth^level more than the base.\n\n" +
+            "1.104 (OSRS-like): XP doubles every ~7 levels. '92 is half of 99'.\n" +
+            "1.15: XP doubles every ~5 levels, steeper wall.\n" +
+            "1.05: XP doubles every ~14 levels, gentler curve.")]
+        public float XpCurveGrowth = 1.104f;
 
         [Header("Runner Generation")]
         [Tooltip("Minimum starting skill level for random runners")]
@@ -98,7 +102,7 @@ namespace ProjectGuild.Data
                 PassionEffectivenessMultiplier = PassionEffectivenessMultiplier,
                 PassionXpMultiplier = PassionXpMultiplier,
                 XpCurveBase = XpCurveBase,
-                XpCurveExponent = XpCurveExponent,
+                XpCurveGrowth = XpCurveGrowth,
                 MinStartingLevel = MinStartingLevel,
                 MaxStartingLevel = MaxStartingLevel,
                 PassionChance = PassionChance,

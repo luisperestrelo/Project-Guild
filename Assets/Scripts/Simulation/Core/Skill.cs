@@ -68,14 +68,15 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Total cumulative XP required to reach a given level from level 0.
-        /// Formula: sum of (level^exponent * base) for each level.
+        /// Exponential formula (OSRS-like): each level costs base * growth^level.
+        /// At growth=1.104, XP doubles every ~7 levels. "92 is half of 99."
         /// </summary>
         public static float GetXpForLevel(int level, SimulationConfig config)
         {
             float total = 0;
             for (int i = 1; i <= level; i++)
             {
-                total += (float)Math.Pow(i, config.XpCurveExponent) * config.XpCurveBase;
+                total += config.XpCurveBase * (float)Math.Pow(config.XpCurveGrowth, i);
             }
             return total;
         }

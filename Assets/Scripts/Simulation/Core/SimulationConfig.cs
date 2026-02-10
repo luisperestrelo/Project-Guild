@@ -69,15 +69,19 @@ namespace ProjectGuild.Simulation.Core
         public float PassionXpMultiplier = 1.5f;
 
         /// <summary>
-        /// Base multiplier for the XP curve. Each level costs: level^XpCurveExponent * XpCurveBase.
+        /// Base XP for the exponential XP curve. Each level costs: XpCurveBase * XpCurveGrowth^level.
+        /// This is the scaling factor — higher values mean more XP needed at all levels.
         /// </summary>
-        public float XpCurveBase = 50f;
+        public float XpCurveBase = 75f;
 
         /// <summary>
-        /// Exponent for the XP curve. Higher = steeper curve at high levels.
-        /// OSRS-like feel ( "92 is half of 99") is around 2.0. Current default 1.5 is gentler.
+        /// Growth factor for the exponential XP curve. Each level costs growth^level more than the base.
+        /// This determines how steep the high-level wall is.
+        /// At 1.104 (OSRS-like): XP doubles every ~7 levels, "92 is half of 99".
+        /// At 1.15: XP doubles every ~5 levels, steeper wall.
+        /// At 1.05: XP doubles every ~14 levels, gentler curve.
         /// </summary>
-        public float XpCurveExponent = 1.5f;
+        public float XpCurveGrowth = 1.104f;
 
         // ─── Runner Generation ───────────────────────────────────────
 
