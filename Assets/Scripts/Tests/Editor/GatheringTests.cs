@@ -58,10 +58,36 @@ namespace ProjectGuild.Tests
         }
 
         /// <summary>
-        /// How many ticks to fill inventory completely at level 1 (no passion).
-        /// At level 1, speedMultiplier = 1, so ticksPerItem = baseTicksToGather.
+        /// Tick the sim until the runner's inventory is full, or until the safety limit is hit.
+        /// Can't precompute this because the runner levels up mid-gather, changing speed.
+        /// Returns the number of ticks executed.
         /// </summary>
-        private int TicksToFillInventory => TicksPerItem(1f) * _config.InventorySize;
+        private int TickUntilInventoryFull(int safetyLimit = 500)
+        {
+            int ticks = 0;
+            while (_runner.Inventory.FreeSlots > 0
+                && _runner.State == RunnerState.Gathering
+                && ticks < safetyLimit)
+            {
+                _sim.Tick();
+                ticks++;
+            }
+            return ticks;
+        }
+
+        /// <summary>
+        /// Tick the sim until a condition is met, or until the safety limit is hit.
+        /// </summary>
+        private int TickUntil(System.Func<bool> condition, int safetyLimit = 1000)
+        {
+            int ticks = 0;
+            while (!condition() && ticks < safetyLimit)
+            {
+                _sim.Tick();
+                ticks++;
+            }
+            return ticks;
+        }
 
         // ─── CommandGather validation ──────────────────────────────
 
@@ -318,9 +344,8 @@ namespace ProjectGuild.Tests
             InventoryFull? received = null;
             _sim.Events.Subscribe<InventoryFull>(e => received = e);
 
-            int ticksToFill = TicksToFillInventory;
-            for (int i = 0; i < ticksToFill; i++)
-                _sim.Tick();
+            // Tick until inventory fills (can't precompute — runner levels up mid-gather)
+            TickUntilInventoryFull();
 
             Assert.IsNotNull(received);
             Assert.AreEqual(_config.InventorySize, _runner.Inventory.CountItem("copper_ore"));
@@ -332,9 +357,7 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            int ticksToFill = TicksToFillInventory;
-            for (int i = 0; i < ticksToFill; i++)
-                _sim.Tick();
+            TickUntilInventoryFull();
 
             Assert.AreEqual(RunnerState.Traveling, _runner.State,
                 "Runner should start traveling to hub after inventory fills");
@@ -352,12 +375,8 @@ namespace ProjectGuild.Tests
             RunnerDeposited? deposited = null;
             _sim.Events.Subscribe<RunnerDeposited>(e => deposited = e);
 
-            // Fill inventory + generous travel time to hub and back
-            // Mine-to-hub distance is 8, travel ticks depend on config
-            int ticksToFill = TicksToFillInventory;
-            int generousTravelBuffer = 200;
-            for (int i = 0; i < ticksToFill + generousTravelBuffer; i++)
-                _sim.Tick();
+            // Tick until the runner has deposited at the hub
+            TickUntil(() => deposited != null);
 
             Assert.IsNotNull(deposited, "Runner should have deposited at hub");
             Assert.AreEqual(_config.InventorySize, deposited.Value.ItemsDeposited);
@@ -381,13 +400,13 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // Fill inventory + round-trip travel + some extra gathering time
-            int ticksToFill = TicksToFillInventory;
-            int generousFullLoop = ticksToFill + 300;
-            for (int i = 0; i < generousFullLoop; i++)
-                _sim.Tick();
+            // Tick until the runner completes a full loop and is back gathering at the mine
+            TickUntil(() =>
+                _runner.CurrentNodeId == "mine"
+                && _runner.State == RunnerState.Gathering
+                && _runner.Gathering?.SubState == GatheringSubState.Gathering
+                && _sim.CurrentGameState.Bank.CountItem("copper_ore") > 0);
 
-            // Runner should be back at the mine and gathering again
             Assert.AreEqual("mine", _runner.CurrentNodeId);
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
             Assert.AreEqual(GatheringSubState.Gathering, _runner.Gathering.SubState);
@@ -395,7 +414,11 @@ namespace ProjectGuild.Tests
             // Bank should have the first batch
             Assert.AreEqual(_config.InventorySize, _sim.CurrentGameState.Bank.CountItem("copper_ore"));
 
-            // Inventory should have some new items from resumed gathering
+            // Tick a bit more — runner should produce new items
+            int ticksNeeded = TicksPerItem(1f) * 2; // generous: even at level 1 speed, 2 items
+            for (int i = 0; i < ticksNeeded; i++)
+                _sim.Tick();
+
             Assert.Greater(_runner.Inventory.CountItem("copper_ore"), 0,
                 "Runner should have started producing items again after returning");
         }
@@ -406,14 +429,10 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // Run enough ticks for 2+ full loops (gather + travel + gather + travel + some extra)
-            int ticksPerLoop = TicksToFillInventory + 200; // gather + round-trip travel
-            int totalTicks = ticksPerLoop * 2 + 200;
-            for (int i = 0; i < totalTicks; i++)
-                _sim.Tick();
-
-            // Bank should have at least 2 batches worth
+            // Tick until the bank has at least 2 full batches
             int expectedMinimum = _config.InventorySize * 2;
+            TickUntil(() => _sim.CurrentGameState.Bank.CountItem("copper_ore") >= expectedMinimum, safetyLimit: 2000);
+
             Assert.GreaterOrEqual(_sim.CurrentGameState.Bank.CountItem("copper_ore"), expectedMinimum,
                 "Bank should have accumulated items from multiple auto-return loops");
         }
@@ -427,13 +446,9 @@ namespace ProjectGuild.Tests
             int gatheringStartedCount = 0;
             _sim.Events.Subscribe<GatheringStarted>(e => gatheringStartedCount++);
 
-            // Full loop: fill + travel to hub + travel back + resume
-            int ticksToFill = TicksToFillInventory;
-            for (int i = 0; i < ticksToFill + 300; i++)
-                _sim.Tick();
+            // Tick until gathering resumes after a deposit cycle
+            TickUntil(() => gatheringStartedCount >= 1);
 
-            // Should have fired at least once for the resume (the initial CommandGather
-            // was before we subscribed, so this only catches the resume event)
             Assert.GreaterOrEqual(gatheringStartedCount, 1,
                 "GatheringStarted should fire when gathering resumes after auto-return");
         }
