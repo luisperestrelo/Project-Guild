@@ -48,10 +48,10 @@ namespace ProjectGuild.View
         private void SelectRunner(int index)
         {
             var sim = _simulationRunner.Simulation;
-            if (sim == null || index < 0 || index >= sim.State.Runners.Count) return;
+            if (sim == null || index < 0 || index >= sim.CurrentGameState.Runners.Count) return;
 
             _selectedRunnerIndex = index;
-            var runner = sim.State.Runners[index];
+            var runner = sim.CurrentGameState.Runners[index];
             var visual = _visualSyncSystem.GetRunnerVisual(runner.Id);
 
             if (_cameraController != null && visual != null)
@@ -66,7 +66,7 @@ namespace ProjectGuild.View
         private void OnGUI()
         {
             var sim = _simulationRunner.Simulation;
-            if (sim == null || sim.State.Runners.Count == 0) return;
+            if (sim == null || sim.CurrentGameState.Runners.Count == 0) return;
 
             // Scale UI for high-DPI / large resolutions
             float scale = Mathf.Max(1f, Screen.height / 720f);
@@ -82,9 +82,9 @@ namespace ProjectGuild.View
 
             // Runner selector
             GUILayout.Label("Select Runner:");
-            for (int i = 0; i < sim.State.Runners.Count; i++)
+            for (int i = 0; i < sim.CurrentGameState.Runners.Count; i++)
             {
-                var runner = sim.State.Runners[i];
+                var runner = sim.CurrentGameState.Runners[i];
                 string label = $"{runner.Name} [{runner.State}]";
                 if (i == _selectedRunnerIndex)
                     label = $">> {label} <<";
@@ -95,7 +95,7 @@ namespace ProjectGuild.View
 
             GUILayout.Space(10);
 
-            var selected = sim.State.Runners[_selectedRunnerIndex];
+            var selected = sim.CurrentGameState.Runners[_selectedRunnerIndex];
 
             // Runner info
             GUILayout.Label($"<b>{selected.Name}</b>", new GUIStyle(GUI.skin.label) { richText = true });
@@ -145,8 +145,17 @@ namespace ProjectGuild.View
 
             GUILayout.Space(10);
 
+            // Stop gathering button — visible when in gather loop (gathering or auto-returning)
+            if (selected.Gathering != null)
+            {
+                if (GUILayout.Button("Stop Gathering"))
+                {
+                    sim.CancelGathering(selected.Id);
+                }
+            }
+
             // Commands — context-sensitive based on where the runner is
-            var currentNode = sim.State.Map.GetNode(selected.CurrentNodeId);
+            var currentNode = sim.CurrentGameState.Map.GetNode(selected.CurrentNodeId);
 
             // Gather button — only at gathering nodes, only when idle
             if (selected.State == RunnerState.Idle && currentNode != null)
@@ -167,7 +176,7 @@ namespace ProjectGuild.View
             if (selected.State == RunnerState.Idle)
             {
                 GUILayout.Label("Send to:");
-                foreach (var node in sim.State.Map.Nodes)
+                foreach (var node in sim.CurrentGameState.Map.Nodes)
                 {
                     if (node.Id == selected.CurrentNodeId) continue;
 
@@ -181,13 +190,13 @@ namespace ProjectGuild.View
             // Bank summary
             GUILayout.Space(10);
             GUILayout.Label("<b>Guild Bank</b>", new GUIStyle(GUI.skin.label) { richText = true });
-            if (sim.State.Bank.Stacks.Count == 0)
+            if (sim.CurrentGameState.Bank.Stacks.Count == 0)
             {
                 GUILayout.Label("  (empty)");
             }
             else
             {
-                foreach (var stack in sim.State.Bank.Stacks)
+                foreach (var stack in sim.CurrentGameState.Bank.Stacks)
                 {
                     var def = sim.ItemRegistry?.Get(stack.ItemId);
                     string name = def != null ? def.Name : stack.ItemId;
@@ -196,8 +205,8 @@ namespace ProjectGuild.View
             }
 
             GUILayout.Space(10);
-            GUILayout.Label($"Tick: {sim.State.TickCount}");
-            GUILayout.Label($"Time: {sim.State.TotalTimeElapsed:F1}s");
+            GUILayout.Label($"Tick: {sim.CurrentGameState.TickCount}");
+            GUILayout.Label($"Time: {sim.CurrentGameState.TotalTimeElapsed:F1}s");
 
             GUILayout.EndArea();
             GUI.matrix = matrix;

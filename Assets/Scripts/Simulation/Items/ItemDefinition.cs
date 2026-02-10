@@ -10,7 +10,7 @@ namespace ProjectGuild.Simulation.Items
         Herb,
         Consumable,
         Currency,
-        CraftedGear,
+        Gear,
         Misc,
     }
 

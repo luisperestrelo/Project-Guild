@@ -87,10 +87,9 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Per-level speed scaling for gathering. Each skill level beyond 1 reduces gather time.
-        /// At level 10: divisor = 1 + 9 * 0.03 = 1.27, so ~21% faster. Hmm, At 99, 2.97, so a maxed out pawn is only twice as fast as a level 10 pawn at 0.03. TODO: tweak this value,
-        ///                                                                                                                                                     then remove this comment
+        /// At 0.08: level 10 divisor = 1.72 (~42% faster), level 99 divisor = 8.84 (~9x faster).
         /// </summary>
-        public float GatheringSkillSpeedPerLevel = 0.03f;
+        public float GatheringSkillSpeedPerLevel = 0.08f;
 
         /// <summary>
         /// Gatherable definitions — what each gathering node type produces.

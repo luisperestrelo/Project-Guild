@@ -101,15 +101,24 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Create a runner from an exact definition. No RNG involved.
+        /// Create a runner from an exact definition.
+        /// If Name is null, a random name is generated using the provided RNG and config.
         /// </summary>
         public static Runner CreateFromDefinition(RunnerDefinition def, string startingNodeId = "hub",
-            int inventorySize = 28)
+            int inventorySize = 28, Random rng = null, SimulationConfig config = null)
         {
+            string name = def.Name;
+            if (name == null)
+            {
+                rng ??= new Random();
+                config ??= new SimulationConfig();
+                name = GenerateName(rng, config);
+            }
+
             var runner = new Runner
             {
                 Id = Guid.NewGuid().ToString(),
-                Name = def.Name,
+                Name = name,
                 State = RunnerState.Idle,
                 CurrentNodeId = startingNodeId,
                 Inventory = new Inventory(inventorySize),
@@ -144,6 +153,12 @@ namespace ProjectGuild.Simulation.Core
             public SkillType[] WeakenedSkills;
 
             /// <summary>
+            /// Skills in this list will have their levels boosted (upper half of range).
+            /// Unlike GuaranteedPassionPool, this doesn't grant passion — just higher starting levels.
+            /// </summary>
+            public SkillType[] StrengthenedSkills;
+
+            /// <summary>
             /// Optional override name. If null, uses normal name generation.
             /// </summary>
             public string ForcedName;
@@ -173,6 +188,17 @@ namespace ProjectGuild.Simulation.Core
                 {
                     int idx = (int)skill;
                     runner.Skills[idx].Level = rng.Next(config.MinStartingLevel, midpoint + 1);
+                }
+            }
+
+            // Strengthen specified skills (upper half of starting range, no passion)
+            if (bias.StrengthenedSkills != null)
+            {
+                int midpoint = (config.MinStartingLevel + config.MaxStartingLevel) / 2;
+                foreach (var skill in bias.StrengthenedSkills)
+                {
+                    int idx = (int)skill;
+                    runner.Skills[idx].Level = rng.Next(midpoint + 1, config.MaxStartingLevel + 1);
                 }
             }
 

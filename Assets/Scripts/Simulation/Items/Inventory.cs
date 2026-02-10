@@ -78,11 +78,14 @@ namespace ProjectGuild.Simulation.Items
         }
 
         /// <summary>
-        /// Remove a quantity of an item. Returns true if the full amount was removed.
+        /// Remove a specific number of items by ID, scanning across all slots.
+        /// For example, RemoveItem("gold_ore", 3) removes 3 gold ore total,
+        /// pulling from multiple slots if necessary (iterates backwards to safely handle slot deletion).
+        /// Returns true if the full amount was removed, false if not enough items existed.
         /// </summary>
-        public bool Remove(string itemId, int quantity = 1)
+        public bool RemoveItem(string itemId, int count = 1)
         {
-            int remaining = quantity;
+            int remaining = count;
 
             for (int i = Slots.Count - 1; i >= 0 && remaining > 0; i--)
             {

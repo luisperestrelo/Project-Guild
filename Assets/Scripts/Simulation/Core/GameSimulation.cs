@@ -15,7 +15,7 @@ namespace ProjectGuild.Simulation.Core
     /// </summary>
     public class GameSimulation
     {
-        public GameState State { get; private set; }
+        public GameState CurrentGameState { get; private set; }
         public EventBus Events { get; private set; }
         public SimulationConfig Config { get; private set; }
         public ItemRegistry ItemRegistry { get; private set; }
@@ -28,7 +28,7 @@ namespace ProjectGuild.Simulation.Core
 
         public GameSimulation(SimulationConfig config = null, float tickRate = 10f)
         {
-            State = new GameState();
+            CurrentGameState = new GameState();
             Events = new EventBus();
             Config = config ?? new SimulationConfig();
             TickDeltaTime = 1f / tickRate;
@@ -39,8 +39,8 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public void LoadState(GameState state)
         {
-            State = state;
-            State.Map?.Initialize();
+            CurrentGameState = state;
+            CurrentGameState.Map?.Initialize();
         }
 
         /// <summary>
@@ -50,33 +50,25 @@ namespace ProjectGuild.Simulation.Core
         public void StartNewGame(RunnerFactory.RunnerDefinition[] starterDefinitions,
             WorldMap map = null, string hubNodeId = "hub")
         {
-            State = new GameState();
-            State.Map = map ?? WorldMap.CreateStarterMap();
+            CurrentGameState = new GameState();
+            CurrentGameState.Map = map ?? WorldMap.CreateStarterMap();
 
             // Populate item registry from config
             ItemRegistry = new ItemRegistry();
             foreach (var itemDef in Config.ItemDefinitions)
                 ItemRegistry.Register(itemDef);
 
+            var rng = new Random();
             foreach (var def in starterDefinitions)
             {
-                var runner = RunnerFactory.CreateFromDefinition(def, hubNodeId, Config.InventorySize);
-                State.Runners.Add(runner);
+                var runner = RunnerFactory.CreateFromDefinition(def, hubNodeId, Config.InventorySize, rng, Config);
+                CurrentGameState.Runners.Add(runner);
                 Events.Publish(new RunnerCreated
                 {
                     RunnerId = runner.Id,
                     RunnerName = runner.Name,
                 });
             }
-
-            //Random rnd = new Random();
-            //var newRunner = RunnerFactory.Create(rnd, Config);
-            //State.Runners.Add(newRunner);
-            //Events.Publish(new RunnerCreated
-            //{
-            //    RunnerId = newRunner.Id,
-            //    RunnerName = newRunner.Name,
-            //});
 
         }
 
@@ -113,8 +105,8 @@ namespace ProjectGuild.Simulation.Core
                     .WithSkill(SkillType.Restoration, 3)
                     .WithSkill(SkillType.Hitpoints, 3)
                     .WithSkill(SkillType.Athletics, 2),
-                //new RunnerFactory.RunnerDefinition{ Name = "Bob"}.WithSkill(SkillType.Athletics, 17, true).WithSkill(SkillType.Magic, 17),
-                //new RunnerFactory.RunnerDefinition{ Name = RunnerFactory.GenerateName(new Random(123), Config) } //TODO: do this another way, make GenerateName private
+                // To create a definition with a random name, leave Name as null:
+                // new RunnerFactory.RunnerDefinition().WithSkill(SkillType.Athletics, 17, true)
 
             }; 
         }
@@ -125,16 +117,16 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public void Tick()
         {
-            State.TickCount++;
-            State.TotalTimeElapsed += TickDeltaTime;
+            CurrentGameState.TickCount++;
+            CurrentGameState.TotalTimeElapsed += TickDeltaTime;
 
             // Process all runners
-            for (int i = 0; i < State.Runners.Count; i++)
+            for (int i = 0; i < CurrentGameState.Runners.Count; i++)
             {
-                TickRunner(State.Runners[i]);
+                TickRunner(CurrentGameState.Runners[i]);
             }
 
-            Events.Publish(new SimulationTickCompleted { TickNumber = State.TickCount });
+            Events.Publish(new SimulationTickCompleted { TickNumber = CurrentGameState.TickCount });
         }
 
         private void TickRunner(Runner runner)
@@ -204,7 +196,7 @@ namespace ProjectGuild.Simulation.Core
             if (runner == null || runner.State == RunnerState.Dead) return false;
             if (runner.CurrentNodeId == targetNodeId) return false;
 
-            float distance = State.Map.FindPath(runner.CurrentNodeId, targetNodeId, out var path);
+            float distance = CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out var path);
             if (distance < 0) return false;
 
             string fromNode = runner.CurrentNodeId;
@@ -233,7 +225,7 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Command a runner to travel with an explicit distance (for testing).
-        /// The single-argument overload that uses the world map is generally preferred.
+        /// The two-argument overload that uses the world map is generally preferred.
         /// </summary>
         public void CommandTravel(string runnerId, string targetNodeId, float distance)
         {
@@ -274,11 +266,18 @@ namespace ProjectGuild.Simulation.Core
             var runner = FindRunner(runnerId);
             if (runner == null || runner.State != RunnerState.Idle) return false;
 
-            var node = State.Map.GetNode(runner.CurrentNodeId);
+            var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
             if (node == null) return false;
 
             var gatherableConfig = Config.GetGatherableConfig(node.Type);
             if (gatherableConfig == null) return false;
+
+            // Check minimum skill level requirement
+            if (gatherableConfig.MinLevel > 0)
+            {
+                var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
+                if (skill.Level < gatherableConfig.MinLevel) return false;
+            }
 
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
 
@@ -318,7 +317,7 @@ namespace ProjectGuild.Simulation.Core
             if (runner.Gathering == null || runner.Gathering.SubState != GatheringSubState.Gathering)
                 return;
 
-            var node = State.Map.GetNode(runner.Gathering.NodeId);
+            var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
             if (node == null) return;
 
             var gatherableConfig = Config.GetGatherableConfig(node.Type);
@@ -380,7 +379,7 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         private void StartTravelInternal(Runner runner, string targetNodeId)
         {
-            float distance = State.Map.FindPath(runner.CurrentNodeId, targetNodeId, out _);
+            float distance = CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out _);
             if (distance < 0) return; // shouldn't happen, but safety
 
             string fromNode = runner.CurrentNodeId;
@@ -413,11 +412,11 @@ namespace ProjectGuild.Simulation.Core
 
             // Find the hub node (first Hub-type node in the map)
             string hubNodeId = null;
-            for (int i = 0; i < State.Map.Nodes.Count; i++)
+            for (int i = 0; i < CurrentGameState.Map.Nodes.Count; i++)
             {
-                if (State.Map.Nodes[i].Type == NodeType.Hub)
+                if (CurrentGameState.Map.Nodes[i].Type == NodeType.Hub)
                 {
-                    hubNodeId = State.Map.Nodes[i].Id;
+                    hubNodeId = CurrentGameState.Map.Nodes[i].Id;
                     break;
                 }
             }
@@ -456,7 +455,7 @@ namespace ProjectGuild.Simulation.Core
         private void DepositAndReturn(Runner runner)
         {
             int itemCount = runner.Inventory.Slots.Count;
-            State.Bank.DepositAll(runner.Inventory);
+            CurrentGameState.Bank.DepositAll(runner.Inventory);
 
             Events.Publish(new RunnerDeposited
             {
@@ -482,7 +481,7 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         private void ResumeGathering(Runner runner)
         {
-            var node = State.Map.GetNode(runner.Gathering.NodeId);
+            var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
             var gatherableConfig = Config.GetGatherableConfig(node.Type);
 
             runner.State = RunnerState.Gathering;
@@ -499,12 +498,28 @@ namespace ProjectGuild.Simulation.Core
             });
         }
 
+        /// <summary>
+        /// Cancel a runner's gathering session (including auto-return loop).
+        /// Runner returns to Idle at their current location.
+        /// </summary>
+        public bool CancelGathering(string runnerId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return false;
+            if (runner.Gathering == null) return false;
+
+            runner.Gathering = null;
+            runner.State = RunnerState.Idle;
+            runner.Travel = null; // cancel any in-progress auto-return travel too
+            return true;
+        }
+
         public Runner FindRunner(string runnerId)
         {
-            for (int i = 0; i < State.Runners.Count; i++)
+            for (int i = 0; i < CurrentGameState.Runners.Count; i++)
             {
-                if (State.Runners[i].Id == runnerId)
-                    return State.Runners[i];
+                if (CurrentGameState.Runners[i].Id == runnerId)
+                    return CurrentGameState.Runners[i];
             }
             return null;
         }

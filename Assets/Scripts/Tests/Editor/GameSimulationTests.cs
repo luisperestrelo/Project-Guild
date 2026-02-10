@@ -12,7 +12,7 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation();
             sim.StartNewGame("hub");
 
-            Assert.AreEqual(3, sim.State.Runners.Count);
+            Assert.AreEqual(3, sim.CurrentGameState.Runners.Count);
         }
 
         [Test]
@@ -21,7 +21,7 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation();
             sim.StartNewGame("hub");
 
-            foreach (var runner in sim.State.Runners)
+            foreach (var runner in sim.CurrentGameState.Runners)
             {
                 Assert.AreEqual("hub", runner.CurrentNodeId);
                 Assert.AreEqual(RunnerState.Idle, runner.State);
@@ -39,10 +39,10 @@ namespace ProjectGuild.Tests
             };
             sim.StartNewGame(defs, hubNodeId: "hub");
 
-            Assert.AreEqual(1, sim.State.Runners.Count);
-            Assert.AreEqual("Custom Guy", sim.State.Runners[0].Name);
-            Assert.AreEqual(50, sim.State.Runners[0].GetSkill(SkillType.Melee).Level);
-            Assert.IsTrue(sim.State.Runners[0].GetSkill(SkillType.Melee).HasPassion);
+            Assert.AreEqual(1, sim.CurrentGameState.Runners.Count);
+            Assert.AreEqual("Custom Guy", sim.CurrentGameState.Runners[0].Name);
+            Assert.AreEqual(50, sim.CurrentGameState.Runners[0].GetSkill(SkillType.Melee).Level);
+            Assert.IsTrue(sim.CurrentGameState.Runners[0].GetSkill(SkillType.Melee).HasPassion);
         }
 
         [Test]
@@ -52,10 +52,10 @@ namespace ProjectGuild.Tests
             sim.StartNewGame();
 
             sim.Tick();
-            Assert.AreEqual(1, sim.State.TickCount);
+            Assert.AreEqual(1, sim.CurrentGameState.TickCount);
 
             sim.Tick();
-            Assert.AreEqual(2, sim.State.TickCount);
+            Assert.AreEqual(2, sim.CurrentGameState.TickCount);
         }
 
         [Test]
@@ -67,7 +67,7 @@ namespace ProjectGuild.Tests
             sim.Tick(); // 0.1 sec
             sim.Tick(); // 0.2 sec
 
-            Assert.AreEqual(0.2f, sim.State.TotalTimeElapsed, 0.001f);
+            Assert.AreEqual(0.2f, sim.CurrentGameState.TotalTimeElapsed, 0.001f);
         }
 
         [Test]
@@ -76,7 +76,7 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation();
             sim.StartNewGame("hub");
 
-            var runner = sim.State.Runners[0];
+            var runner = sim.CurrentGameState.Runners[0];
             sim.CommandTravel(runner.Id, "mine", 10f);
 
             Assert.AreEqual(RunnerState.Traveling, runner.State);
@@ -92,7 +92,7 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation(tickRate: 10f);
             sim.StartNewGame("hub");
 
-            var runner = sim.State.Runners[0];
+            var runner = sim.CurrentGameState.Runners[0];
             sim.CommandTravel(runner.Id, "mine", 10f);
 
             float initialProgress = runner.Travel.DistanceCovered;
@@ -107,7 +107,7 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation(tickRate: 10f);
             sim.StartNewGame("hub");
 
-            var runner = sim.State.Runners[0];
+            var runner = sim.CurrentGameState.Runners[0];
             // Very short distance so it completes in a few ticks
             sim.CommandTravel(runner.Id, "mine", 0.05f);
 
@@ -132,8 +132,8 @@ namespace ProjectGuild.Tests
             };
             sim.StartNewGame(defs, hubNodeId: "hub");
 
-            var slowRunner = sim.State.Runners[0];
-            var fastRunner = sim.State.Runners[1];
+            var slowRunner = sim.CurrentGameState.Runners[0];
+            var fastRunner = sim.CurrentGameState.Runners[1];
 
             sim.CommandTravel(slowRunner.Id, "mine", 100f);
             sim.CommandTravel(fastRunner.Id, "mine", 100f);
@@ -162,7 +162,7 @@ namespace ProjectGuild.Tests
             };
             sim.StartNewGame(defs, hubNodeId: "hub");
 
-            var runner = sim.State.Runners[0];
+            var runner = sim.CurrentGameState.Runners[0];
             sim.CommandTravel(runner.Id, "mine", 100f);
             sim.Tick();
 
@@ -192,7 +192,7 @@ namespace ProjectGuild.Tests
             string arrivedNodeId = null;
             sim.Events.Subscribe<RunnerArrivedAtNode>(e => arrivedNodeId = e.NodeId);
 
-            var runner = sim.State.Runners[0];
+            var runner = sim.CurrentGameState.Runners[0];
             sim.CommandTravel(runner.Id, "mine", 0.01f);
             sim.Tick();
 
@@ -207,8 +207,8 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation(tickRate: 10f);
             sim.StartNewGame("hub");
 
-            var runner = sim.State.Runners[0];
-            float expectedDist = sim.State.Map.GetDirectDistance("hub", "copper_mine");
+            var runner = sim.CurrentGameState.Runners[0];
+            float expectedDist = sim.CurrentGameState.Map.GetDirectDistance("hub", "copper_mine");
 
             bool started = sim.CommandTravel(runner.Id, "copper_mine");
 
@@ -223,7 +223,7 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation();
             sim.StartNewGame("hub");
 
-            var runner = sim.State.Runners[0];
+            var runner = sim.CurrentGameState.Runners[0];
             bool started = sim.CommandTravel(runner.Id, "hub");
 
             Assert.IsFalse(started);
@@ -236,8 +236,8 @@ namespace ProjectGuild.Tests
             var sim = new GameSimulation();
             sim.StartNewGame("hub");
 
-            Assert.IsNotNull(sim.State.Map);
-            Assert.IsNotNull(sim.State.Map.GetNode("hub"));
+            Assert.IsNotNull(sim.CurrentGameState.Map);
+            Assert.IsNotNull(sim.CurrentGameState.Map.GetNode("hub"));
         }
     }
 }

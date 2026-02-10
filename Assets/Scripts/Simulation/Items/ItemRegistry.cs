@@ -22,6 +22,6 @@ namespace ProjectGuild.Simulation.Items
 
         public bool Has(string id) => _items.ContainsKey(id);
 
-        public IEnumerable<ItemDefinition> All => _items.Values;
+        public IEnumerable<ItemDefinition> AllItemDefinitions => _items.Values;
     }
 }

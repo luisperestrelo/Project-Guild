@@ -32,7 +32,7 @@ namespace ProjectGuild.Tests
             map.Initialize();
 
             _sim.StartNewGame(defs, map, "mine");
-            _runner = _sim.State.Runners[0];
+            _runner = _sim.CurrentGameState.Runners[0];
         }
 
         // ─── CommandGather validation ──────────────────────────────
@@ -77,7 +77,7 @@ namespace ProjectGuild.Tests
             map.Initialize();
 
             _sim.StartNewGame(defs, map, "hub");
-            _runner = _sim.State.Runners[0];
+            _runner = _sim.CurrentGameState.Runners[0];
 
             bool result = _sim.CommandGather(_runner.Id);
 
@@ -250,10 +250,10 @@ namespace ProjectGuild.Tests
             _sim.CommandGather(_runner.Id);
 
             // Formula: (GlobalGatheringSpeedMultiplier * BaseTicksToGather) / (1 + (effectiveLevel - 1) * GatheringSkillSpeedPerLevel)
-            // = (1.0 * 10) / (1 + (10 - 1) * 0.03)
-            // = 10 / 1.27
-            // ≈ 7.874
-            float expected = (1.0f * 10f) / (1f + (10f - 1f) * 0.03f);
+            // = (1.0 * 10) / (1 + (10 - 1) * 0.08)
+            // = 10 / 1.72
+            // ≈ 5.814
+            float expected = (1.0f * 10f) / (1f + (10f - 1f) * 0.08f);
 
             Assert.AreEqual(expected, _runner.Gathering.TicksRequired, 0.01f);
         }
@@ -330,7 +330,7 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(28, deposited.Value.ItemsDeposited);
 
             // Bank should have the items
-            Assert.AreEqual(28, _sim.State.Bank.CountItem("copper_ore"));
+            Assert.AreEqual(28, _sim.CurrentGameState.Bank.CountItem("copper_ore"));
 
             // Inventory should be empty after deposit
             Assert.AreEqual(0, _runner.Inventory.CountItem("copper_ore"));
@@ -358,7 +358,7 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(GatheringSubState.Gathering, _runner.Gathering.SubState);
 
             // Bank should have the first batch
-            Assert.AreEqual(28, _sim.State.Bank.CountItem("copper_ore"));
+            Assert.AreEqual(28, _sim.CurrentGameState.Bank.CountItem("copper_ore"));
 
             // Inventory should have some new items from resumed gathering
             Assert.Greater(_runner.Inventory.CountItem("copper_ore"), 0,
@@ -376,7 +376,7 @@ namespace ProjectGuild.Tests
                 _sim.Tick();
 
             // Bank should have at least 2 batches worth (56+ items)
-            Assert.GreaterOrEqual(_sim.State.Bank.CountItem("copper_ore"), 56,
+            Assert.GreaterOrEqual(_sim.CurrentGameState.Bank.CountItem("copper_ore"), 56,
                 "Bank should have accumulated items from multiple auto-return loops");
         }
 

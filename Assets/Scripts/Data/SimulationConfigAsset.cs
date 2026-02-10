@@ -55,7 +55,7 @@ namespace ProjectGuild.Data
         public float GlobalGatheringSpeedMultiplier = 1.0f;
 
         [Tooltip("Per-level speed scaling for gathering. Each level beyond 1 reduces gather time")]
-        public float GatheringSkillSpeedPerLevel = 0.03f;
+        public float GatheringSkillSpeedPerLevel = 0.08f;
 
         [Header("Inventory")]
         [Tooltip("Number of inventory slots per runner (OSRS-style: 28)")]

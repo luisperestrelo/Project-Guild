@@ -18,16 +18,22 @@ namespace ProjectGuild.Simulation.Gathering
         public float BaseTicksToGather;
         public float BaseXpPerGather;
 
+        /// <summary>
+        /// Minimum skill level required to gather this resource. 0 = no requirement.
+        /// </summary>
+        public int MinLevel;
+
         public GatherableConfig() { }
 
         public GatherableConfig(NodeType nodeType, string producedItemId, SkillType requiredSkill,
-            float baseTicksToGather, float baseXpPerGather)
+            float baseTicksToGather, float baseXpPerGather, int minLevel = 0)
         {
             NodeType = nodeType;
             ProducedItemId = producedItemId;
             RequiredSkill = requiredSkill;
             BaseTicksToGather = baseTicksToGather;
             BaseXpPerGather = baseXpPerGather;
+            MinLevel = minLevel;
         }
     }
 }

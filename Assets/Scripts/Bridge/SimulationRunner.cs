@@ -50,7 +50,7 @@ namespace ProjectGuild.Bridge
         public void StartNewGame()
         {
             Simulation.StartNewGame("hub");
-            Debug.Log($"[SimulationRunner] New game started with {Simulation.State.Runners.Count} runners.");
+            Debug.Log($"[SimulationRunner] New game started with {Simulation.CurrentGameState.Runners.Count} runners.");
         }
 
         /// <summary>

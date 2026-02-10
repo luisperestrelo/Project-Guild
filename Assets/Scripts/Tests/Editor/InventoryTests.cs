@@ -101,7 +101,7 @@ namespace ProjectGuild.Tests
         {
             var inv = new Inventory(28);
             inv.TryAdd(_coins, 50);
-            bool removed = inv.Remove("coins", 20);
+            bool removed = inv.RemoveItem("coins", 20);
 
             Assert.IsTrue(removed);
             Assert.AreEqual(30, inv.CountItem("coins"));
@@ -112,7 +112,7 @@ namespace ProjectGuild.Tests
         {
             var inv = new Inventory(28);
             inv.TryAdd(_ore);
-            inv.Remove("copper_ore", 1);
+            inv.RemoveItem("copper_ore", 1);
 
             Assert.AreEqual(0, inv.Slots.Count);
         }
@@ -121,7 +121,7 @@ namespace ProjectGuild.Tests
         public void Remove_NonExistent_ReturnsFalse()
         {
             var inv = new Inventory(28);
-            bool removed = inv.Remove("nonexistent", 1);
+            bool removed = inv.RemoveItem("nonexistent", 1);
             Assert.IsFalse(removed);
         }
 

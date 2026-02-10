@@ -56,13 +56,13 @@ namespace ProjectGuild.View
             if (Sim?.State?.Map == null) return;
 
             // Create node markers
-            foreach (var node in Sim.State.Map.Nodes)
+            foreach (var node in Sim.CurrentGameState.Map.Nodes)
             {
                 CreateNodeMarker(node);
             }
 
             // Create runner visuals
-            foreach (var runner in Sim.State.Runners)
+            foreach (var runner in Sim.CurrentGameState.Runners)
             {
                 CreateRunnerVisual(runner);
             }
@@ -154,7 +154,7 @@ namespace ProjectGuild.View
             if (!_worldBuilt || Sim == null) return;
 
             // Update all runner visual positions
-            foreach (var runner in Sim.State.Runners)
+            foreach (var runner in Sim.CurrentGameState.Runners)
             {
                 if (!_runnerVisuals.TryGetValue(runner.Id, out var visual)) continue;
 
@@ -191,8 +191,8 @@ namespace ProjectGuild.View
         {
             if (runner.State == RunnerState.Traveling && runner.Travel != null)
             {
-                var fromNode = Sim.State.Map.GetNode(runner.Travel.FromNodeId);
-                var toNode = Sim.State.Map.GetNode(runner.Travel.ToNodeId);
+                var fromNode = Sim.CurrentGameState.Map.GetNode(runner.Travel.FromNodeId);
+                var toNode = Sim.CurrentGameState.Map.GetNode(runner.Travel.ToNodeId);
 
                 if (fromNode != null && toNode != null)
                 {
@@ -203,11 +203,11 @@ namespace ProjectGuild.View
             }
 
             // At a node — spread multiple idle runners in a small circle so they don't stack
-            var currentNode = Sim.State.Map.GetNode(runner.CurrentNodeId);
+            var currentNode = Sim.CurrentGameState.Map.GetNode(runner.CurrentNodeId);
             if (currentNode != null)
             {
                 int idleIndex = 0;
-                foreach (var r in Sim.State.Runners)
+                foreach (var r in Sim.CurrentGameState.Runners)
                 {
                     if (r.Id == runner.Id) break;
                     if (r.CurrentNodeId == runner.CurrentNodeId && r.State != RunnerState.Traveling)
