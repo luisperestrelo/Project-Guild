@@ -324,11 +324,16 @@ namespace ProjectGuild.Simulation.Core
             var gatherableConfig = Config.GetGatherableConfig(node.Type);
             if (gatherableConfig == null) return;
 
+            // Always compute from current stats — buffs, level-ups, gear changes
+            // are reflected immediately without explicit recalculation calls.
+            // TicksRequired is also stored on GatheringState for UI progress display.
+            float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
+            runner.Gathering.TicksRequired = ticksRequired;
             runner.Gathering.TickAccumulator += 1f;
 
-            if (runner.Gathering.TickAccumulator >= runner.Gathering.TicksRequired)
+            if (runner.Gathering.TickAccumulator >= ticksRequired)
             {
-                runner.Gathering.TickAccumulator -= runner.Gathering.TicksRequired;
+                runner.Gathering.TickAccumulator -= ticksRequired;
 
                 // Produce item
                 var itemDef = ItemRegistry.Get(gatherableConfig.ProducedItemId);
@@ -346,9 +351,6 @@ namespace ProjectGuild.Simulation.Core
                         Skill = gatherableConfig.RequiredSkill,
                         NewLevel = skill.Level,
                     });
-
-                    // Recalculate ticks required — skill may have gotten faster
-                    runner.Gathering.TicksRequired = CalculateTicksRequired(runner, gatherableConfig);
                 }
 
                 if (added)
