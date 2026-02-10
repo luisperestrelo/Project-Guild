@@ -10,14 +10,16 @@ namespace ProjectGuild.Tests
     {
         private GameSimulation _sim;
         private Runner _runner;
+        private SimulationConfig _config;
 
         /// <summary>
         /// Helper: create a sim with one runner at a copper mine, ready to gather.
+        /// Stores the config so tests can derive expected values from it.
         /// </summary>
         private void SetupRunnerAtMine(int miningLevel = 1, bool passion = false)
         {
-            var config = new SimulationConfig();
-            _sim = new GameSimulation(config, tickRate: 10f);
+            _config = new SimulationConfig();
+            _sim = new GameSimulation(_config, tickRate: 10f);
 
             var defs = new[]
             {
@@ -34,6 +36,32 @@ namespace ProjectGuild.Tests
             _sim.StartNewGame(defs, map, "mine");
             _runner = _sim.CurrentGameState.Runners[0];
         }
+
+        /// <summary>
+        /// Calculate how many ticks it takes to gather one item, matching the sim's formula.
+        /// </summary>
+        private int TicksPerItem(float effectiveLevel)
+        {
+            var gatherable = _config.GatherableConfigs[0]; // copper_ore
+            float baseTicks = _config.GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather;
+
+            float speedMultiplier = _config.GatheringFormula switch
+            {
+                GatheringSpeedFormula.PowerCurve =>
+                    (float)System.Math.Pow(effectiveLevel, _config.GatheringSpeedExponent),
+                GatheringSpeedFormula.Hyperbolic =>
+                    1f + (effectiveLevel - 1f) * _config.GatheringSkillSpeedPerLevel,
+                _ => 1f,
+            };
+
+            return (int)System.Math.Ceiling(baseTicks / System.Math.Max(speedMultiplier, 0.01f));
+        }
+
+        /// <summary>
+        /// How many ticks to fill inventory completely at level 1 (no passion).
+        /// At level 1, speedMultiplier = 1, so ticksPerItem = baseTicksToGather.
+        /// </summary>
+        private int TicksToFillInventory => TicksPerItem(1f) * _config.InventorySize;
 
         // ─── CommandGather validation ──────────────────────────────
 
@@ -64,8 +92,8 @@ namespace ProjectGuild.Tests
         [Test]
         public void CommandGather_AtHub_ReturnsFalse()
         {
-            var config = new SimulationConfig();
-            _sim = new GameSimulation(config, tickRate: 10f);
+            _config = new SimulationConfig();
+            _sim = new GameSimulation(_config, tickRate: 10f);
 
             var defs = new[]
             {
@@ -109,18 +137,18 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // Default config: BaseTicksToGather = 10, level 1, no speed bonus
-            // So it should take 10 ticks to produce one item
-            for (int i = 0; i < 9; i++)
+            int ticksNeeded = TicksPerItem(1f);
+
+            for (int i = 0; i < ticksNeeded - 1; i++)
                 _sim.Tick();
 
             Assert.AreEqual(0, _runner.Inventory.CountItem("copper_ore"),
-                "Should not have produced an item yet after 9 ticks");
+                "Should not have produced an item yet before the final tick");
 
-            _sim.Tick(); // 10th tick
+            _sim.Tick();
 
             Assert.AreEqual(1, _runner.Inventory.CountItem("copper_ore"),
-                "Should have produced 1 item after 10 ticks");
+                "Should have produced 1 item after enough ticks");
         }
 
         [Test]
@@ -132,8 +160,8 @@ namespace ProjectGuild.Tests
             ItemGathered? received = null;
             _sim.Events.Subscribe<ItemGathered>(e => received = e);
 
-            // Tick until item produced (10 ticks at level 1)
-            for (int i = 0; i < 10; i++)
+            int ticksNeeded = TicksPerItem(1f);
+            for (int i = 0; i < ticksNeeded; i++)
                 _sim.Tick();
 
             Assert.IsNotNull(received);
@@ -146,8 +174,8 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // 30 ticks = 3 items at 10 ticks each
-            for (int i = 0; i < 30; i++)
+            int ticksFor3Items = TicksPerItem(1f) * 3;
+            for (int i = 0; i < ticksFor3Items; i++)
                 _sim.Tick();
 
             Assert.AreEqual(3, _runner.Inventory.CountItem("copper_ore"));
@@ -163,8 +191,8 @@ namespace ProjectGuild.Tests
 
             float xpBefore = _runner.GetSkill(SkillType.Mining).Xp;
 
-            // Produce one item
-            for (int i = 0; i < 10; i++)
+            int ticksNeeded = TicksPerItem(1f);
+            for (int i = 0; i < ticksNeeded; i++)
                 _sim.Tick();
 
             float xpAfter = _runner.GetSkill(SkillType.Mining).Xp;
@@ -177,24 +205,22 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // Produce one item — should award BaseXpPerGather (25 for copper)
-            for (int i = 0; i < 10; i++)
+            int ticksNeeded = TicksPerItem(1f);
+            for (int i = 0; i < ticksNeeded; i++)
                 _sim.Tick();
 
-            // At level 1 no passion, XP = BaseXpPerGather = 25
-            Assert.AreEqual(25f, _runner.GetSkill(SkillType.Mining).Xp, 0.01f);
+            float expectedXp = _config.GatherableConfigs[0].BaseXpPerGather;
+            Assert.AreEqual(expectedXp, _runner.GetSkill(SkillType.Mining).Xp, 0.01f);
         }
 
         [Test]
         public void Gathering_LevelUp_PublishesEvent()
         {
-            // Start at a level where we're close to leveling up
             SetupRunnerAtMine(miningLevel: 1);
 
-            // Manually set XP close to level-up threshold so gathering pushes us over
+            // Set XP close to level-up threshold so one gather pushes us over
             var skill = _runner.GetSkill(SkillType.Mining);
             float xpToNext = skill.GetXpToNextLevel(_sim.Config);
-            // Set XP to just under the threshold so one gather (25 XP) levels us up
             skill.Xp = xpToNext - 1f;
 
             _sim.CommandGather(_runner.Id);
@@ -202,7 +228,8 @@ namespace ProjectGuild.Tests
             RunnerSkillLeveledUp? received = null;
             _sim.Events.Subscribe<RunnerSkillLeveledUp>(e => received = e);
 
-            for (int i = 0; i < 10; i++)
+            int ticksNeeded = TicksPerItem(1f);
+            for (int i = 0; i < ticksNeeded; i++)
                 _sim.Tick();
 
             Assert.IsNotNull(received);
@@ -224,7 +251,7 @@ namespace ProjectGuild.Tests
             {
                 _sim.Tick();
                 ticksForLevel1++;
-                if (ticksForLevel1 > 100) break; // safety
+                if (ticksForLevel1 > 1000) break; // safety
             }
 
             // Level 50 runner
@@ -236,7 +263,7 @@ namespace ProjectGuild.Tests
             {
                 _sim.Tick();
                 ticksForLevel50++;
-                if (ticksForLevel50 > 100) break;
+                if (ticksForLevel50 > 1000) break;
             }
 
             Assert.Less(ticksForLevel50, ticksForLevel1,
@@ -244,19 +271,23 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void Gathering_TicksRequired_MatchesPowerCurveFormula()
+        public void Gathering_TicksRequired_MatchesFormula()
         {
             SetupRunnerAtMine(miningLevel: 10);
             _sim.CommandGather(_runner.Id);
 
-            // Default formula is PowerCurve with exponent 0.55.
-            // speedMultiplier = effectiveLevel ^ exponent = 10 ^ 0.55 ≈ 3.548
-            // ticksRequired = (1.0 * 10) / 3.548 ≈ 2.819
-            var config = new SimulationConfig();
-            float speedMultiplier = (float)System.Math.Pow(10f, config.GatheringSpeedExponent);
-            float expected = (config.GlobalGatheringSpeedMultiplier * 10f) / speedMultiplier;
+            // TicksPerItem uses the same formula logic as the sim
+            float expected = _runner.Gathering.TicksRequired;
+            float fromHelper = TicksPerItem(10f);
 
-            Assert.AreEqual(expected, _runner.Gathering.TicksRequired, 0.01f);
+            // The sim stores the exact float; our helper ceiling-rounds for tick counting.
+            // Verify the sim's value is close to our expectation.
+            var gatherable = _config.GatherableConfigs[0];
+            float baseTicks = _config.GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather;
+            float speedMultiplier = (float)System.Math.Pow(10f, _config.GatheringSpeedExponent);
+            float exactExpected = baseTicks / speedMultiplier;
+
+            Assert.AreEqual(exactExpected, expected, 0.01f);
         }
 
         [Test]
@@ -276,7 +307,7 @@ namespace ProjectGuild.Tests
                 "Passion should increase effective level, resulting in fewer ticks");
         }
 
-        // ─── Inventory full → auto-return ─────────────────────────
+        // ─── Inventory full -> auto-return ─────────────────────────
 
         [Test]
         public void Gathering_InventoryFull_PublishesEvent()
@@ -287,12 +318,12 @@ namespace ProjectGuild.Tests
             InventoryFull? received = null;
             _sim.Events.Subscribe<InventoryFull>(e => received = e);
 
-            // 28 items * 10 ticks each = 280 ticks to fill inventory
-            for (int i = 0; i < 280; i++)
+            int ticksToFill = TicksToFillInventory;
+            for (int i = 0; i < ticksToFill; i++)
                 _sim.Tick();
 
             Assert.IsNotNull(received);
-            Assert.AreEqual(28, _runner.Inventory.CountItem("copper_ore"));
+            Assert.AreEqual(_config.InventorySize, _runner.Inventory.CountItem("copper_ore"));
         }
 
         [Test]
@@ -301,8 +332,8 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // Fill inventory
-            for (int i = 0; i < 280; i++)
+            int ticksToFill = TicksToFillInventory;
+            for (int i = 0; i < ticksToFill; i++)
                 _sim.Tick();
 
             Assert.AreEqual(RunnerState.Traveling, _runner.State,
@@ -321,17 +352,18 @@ namespace ProjectGuild.Tests
             RunnerDeposited? deposited = null;
             _sim.Events.Subscribe<RunnerDeposited>(e => deposited = e);
 
-            // Fill inventory (280 ticks) + generous travel time to hub and back
-            // Mine-to-hub distance is 8, base speed 1.0, tick = 0.1s → ~80 ticks each way
-            for (int i = 0; i < 280 + 100; i++)
+            // Fill inventory + generous travel time to hub and back
+            // Mine-to-hub distance is 8, travel ticks depend on config
+            int ticksToFill = TicksToFillInventory;
+            int generousTravelBuffer = 200;
+            for (int i = 0; i < ticksToFill + generousTravelBuffer; i++)
                 _sim.Tick();
 
-            // Should have deposited by now
             Assert.IsNotNull(deposited, "Runner should have deposited at hub");
-            Assert.AreEqual(28, deposited.Value.ItemsDeposited);
+            Assert.AreEqual(_config.InventorySize, deposited.Value.ItemsDeposited);
 
             // Bank should have the items
-            Assert.AreEqual(28, _sim.CurrentGameState.Bank.CountItem("copper_ore"));
+            Assert.AreEqual(_config.InventorySize, _sim.CurrentGameState.Bank.CountItem("copper_ore"));
 
             // Inventory should be empty after deposit
             Assert.AreEqual(0, _runner.Inventory.CountItem("copper_ore"));
@@ -349,8 +381,10 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // Run enough ticks for: fill inventory (280) + travel to hub (~80) + travel back (~80) + some gathering
-            for (int i = 0; i < 500; i++)
+            // Fill inventory + round-trip travel + some extra gathering time
+            int ticksToFill = TicksToFillInventory;
+            int generousFullLoop = ticksToFill + 300;
+            for (int i = 0; i < generousFullLoop; i++)
                 _sim.Tick();
 
             // Runner should be back at the mine and gathering again
@@ -359,7 +393,7 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(GatheringSubState.Gathering, _runner.Gathering.SubState);
 
             // Bank should have the first batch
-            Assert.AreEqual(28, _sim.CurrentGameState.Bank.CountItem("copper_ore"));
+            Assert.AreEqual(_config.InventorySize, _sim.CurrentGameState.Bank.CountItem("copper_ore"));
 
             // Inventory should have some new items from resumed gathering
             Assert.Greater(_runner.Inventory.CountItem("copper_ore"), 0,
@@ -372,12 +406,15 @@ namespace ProjectGuild.Tests
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            // Run enough for 2+ full loops: 2 * (280 gather + ~160 travel) + some extra
-            for (int i = 0; i < 1200; i++)
+            // Run enough ticks for 2+ full loops (gather + travel + gather + travel + some extra)
+            int ticksPerLoop = TicksToFillInventory + 200; // gather + round-trip travel
+            int totalTicks = ticksPerLoop * 2 + 200;
+            for (int i = 0; i < totalTicks; i++)
                 _sim.Tick();
 
-            // Bank should have at least 2 batches worth (56+ items)
-            Assert.GreaterOrEqual(_sim.CurrentGameState.Bank.CountItem("copper_ore"), 56,
+            // Bank should have at least 2 batches worth
+            int expectedMinimum = _config.InventorySize * 2;
+            Assert.GreaterOrEqual(_sim.CurrentGameState.Bank.CountItem("copper_ore"), expectedMinimum,
                 "Bank should have accumulated items from multiple auto-return loops");
         }
 
@@ -390,8 +427,9 @@ namespace ProjectGuild.Tests
             int gatheringStartedCount = 0;
             _sim.Events.Subscribe<GatheringStarted>(e => gatheringStartedCount++);
 
-            // Full loop: fill (280) + travel to hub (~80) + travel back (~80) + resume
-            for (int i = 0; i < 500; i++)
+            // Full loop: fill + travel to hub + travel back + resume
+            int ticksToFill = TicksToFillInventory;
+            for (int i = 0; i < ticksToFill + 300; i++)
                 _sim.Tick();
 
             // Should have fired at least once for the resume (the initial CommandGather
