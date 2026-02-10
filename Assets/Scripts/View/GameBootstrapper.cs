@@ -247,15 +247,78 @@ namespace ProjectGuild.View
             float skillsPanelX = Screen.width / scale - skillsPanelWidth - 10f;
             GUILayout.BeginArea(new Rect(skillsPanelX, 10, skillsPanelWidth, scaledHeight));
 
-            GUILayout.Label($"<b>{selected.Name} — Skills</b>", new GUIStyle(GUI.skin.label) { richText = true });
+            var boldLabel = new GUIStyle(GUI.skin.label) { richText = true };
+
+            GUILayout.Label($"<b>{selected.Name} — Skills</b>", boldLabel);
             for (int s = 0; s < SkillTypeExtensions.SkillCount; s++)
             {
                 var skill = selected.Skills[s];
-                string passionMarker = skill.HasPassion ? "*" : "";
+                string passionMarker = skill.HasPassion ? " <color=yellow>P</color>" : "";
+                float effectiveLevel = selected.GetEffectiveLevel((SkillType)s, sim.Config);
+                string effectiveStr = skill.HasPassion ? $" (eff: {effectiveLevel:F1})" : "";
                 float skillProgress = skill.GetLevelProgress(sim.Config);
                 string bar = ProgressBar(skillProgress, 8);
-                GUILayout.Label($"{(SkillType)s}: {skill.Level}{passionMarker} {bar} {skillProgress:P0}");
+                float xpToNext = skill.GetXpToNextLevel(sim.Config);
+                GUILayout.Label($"{(SkillType)s}: {skill.Level}{passionMarker}{effectiveStr} {bar} {skill.Xp:F0}/{xpToNext:F0}", boldLabel);
             }
+
+            // ─── Live Stats ───
+            GUILayout.Space(10);
+            GUILayout.Label("<b>Live Stats</b>", boldLabel);
+
+            // Travel speed
+            float athleticsLevel = selected.GetEffectiveLevel(SkillType.Athletics, sim.Config);
+            float travelSpeed = sim.Config.BaseTravelSpeed + (athleticsLevel - 1) * sim.Config.AthleticsSpeedPerLevel;
+            GUILayout.Label($"Travel speed: {travelSpeed:F2} u/s (Athletics eff: {athleticsLevel:F1})");
+
+            // Travel progress details
+            if (selected.State == RunnerState.Traveling && selected.Travel != null)
+            {
+                float eta = travelSpeed > 0
+                    ? (selected.Travel.TotalDistance - selected.Travel.DistanceCovered) / travelSpeed
+                    : 0f;
+                GUILayout.Label($"Distance: {selected.Travel.DistanceCovered:F1}/{selected.Travel.TotalDistance:F1}");
+                GUILayout.Label($"ETA: {eta:F1}s");
+                var athSkill = selected.Skills[(int)SkillType.Athletics];
+                float actualAthXp = athSkill.HasPassion
+                    ? sim.Config.AthleticsXpPerTick * sim.Config.PassionXpMultiplier
+                    : sim.Config.AthleticsXpPerTick;
+                string athPassion = athSkill.HasPassion ? " (P)" : "";
+                GUILayout.Label($"Athletics XP/tick: {actualAthXp:F2}{athPassion}");
+            }
+
+            // Gathering stats
+            if (selected.State == RunnerState.Gathering && selected.Gathering != null)
+            {
+                var node = sim.CurrentGameState.Map.GetNode(selected.Gathering.NodeId);
+                var gatherConfig = node != null ? sim.Config.GetGatherableConfig(node.Type) : null;
+                if (gatherConfig != null)
+                {
+                    float ticksReq = selected.Gathering.TicksRequired;
+                    float itemsPerMin = ticksReq > 0 ? 60f * 10f / ticksReq : 0f;
+                    GUILayout.Label($"Ticks/item: {ticksReq:F1} ({itemsPerMin:F1} items/min)");
+                    var gatherSkill = selected.Skills[(int)gatherConfig.RequiredSkill];
+                    float actualXpPerTick = gatherSkill.HasPassion
+                        ? gatherConfig.XpPerTick * sim.Config.PassionXpMultiplier
+                        : gatherConfig.XpPerTick;
+                    string passionNote = gatherSkill.HasPassion ? " (P)" : "";
+                    GUILayout.Label($"XP/tick: {actualXpPerTick:F2}{passionNote} ({actualXpPerTick * 10f:F1} XP/sec)");
+                }
+            }
+
+            // Passion summary
+            int passionCount = 0;
+            string passionList = "";
+            for (int s = 0; s < SkillTypeExtensions.SkillCount; s++)
+            {
+                if (selected.Skills[s].HasPassion)
+                {
+                    passionCount++;
+                    if (passionList.Length > 0) passionList += ", ";
+                    passionList += ((SkillType)s).ToString();
+                }
+            }
+            GUILayout.Label($"Passions ({passionCount}): {(passionList.Length > 0 ? passionList : "none")}");
 
             GUILayout.EndArea();
 

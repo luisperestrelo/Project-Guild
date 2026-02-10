@@ -174,6 +174,20 @@ namespace ProjectGuild.Simulation.Core
         {
             if (runner.Travel == null) return;
 
+            // Award athletics XP every tick while traveling (same decoupling as gathering).
+            var athletics = runner.GetSkill(SkillType.Athletics);
+            bool leveledUp = athletics.AddXp(Config.AthleticsXpPerTick, Config);
+
+            if (leveledUp)
+            {
+                Events.Publish(new RunnerSkillLeveledUp
+                {
+                    RunnerId = runner.Id,
+                    Skill = SkillType.Athletics,
+                    NewLevel = athletics.Level,
+                });
+            }
+
             float speed = GetTravelSpeed(runner);
             runner.Travel.DistanceCovered += speed * TickDeltaTime;
 

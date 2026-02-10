@@ -55,6 +55,13 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float AthleticsSpeedPerLevel = 0.05f;
 
+        /// <summary>
+        /// XP awarded every tick while a runner is traveling.
+        /// Leveling athletics makes runners travel faster, but XP rate is constant
+        /// per resource (same decoupling as gathering: speed = economy, XP = progression).
+        /// </summary>
+        public float AthleticsXpPerTick = 1.0f;
+
         // ─── Skills / XP ────────────────────────────────────────────
 
         /// <summary>
@@ -72,7 +79,7 @@ namespace ProjectGuild.Simulation.Core
         /// Base XP for the exponential XP curve. Each level costs: XpCurveBase * XpCurveGrowth^level.
         /// This is the scaling factor — higher values mean more XP needed at all levels.
         /// </summary>
-        public float XpCurveBase = 75f;
+        public float XpCurveBase = 100f;
 
         /// <summary>
         /// Growth factor for the exponential XP curve. Each level costs growth^level more than the base.
@@ -146,10 +153,10 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public GatherableConfig[] GatherableConfigs = new[]
         {
-            new GatherableConfig(NodeType.GatheringMine,   "copper_ore", SkillType.Mining,      10f, 2.5f),
-            new GatherableConfig(NodeType.GatheringForest, "pine_log",   SkillType.Woodcutting,  10f, 2.0f),
-            new GatherableConfig(NodeType.GatheringWater,  "raw_trout",  SkillType.Fishing,      12f, 1.8f),
-            new GatherableConfig(NodeType.GatheringHerbs,  "sage_leaf",  SkillType.Foraging,      8f, 2.2f),
+            new GatherableConfig(NodeType.GatheringMine,   "copper_ore", SkillType.Mining,      40f, 0.5f),
+            new GatherableConfig(NodeType.GatheringForest, "pine_log",   SkillType.Woodcutting,  35f, 0.4f),
+            new GatherableConfig(NodeType.GatheringWater,  "raw_trout",  SkillType.Fishing,      50f, 0.35f),
+            new GatherableConfig(NodeType.GatheringHerbs,  "sage_leaf",  SkillType.Foraging,     25f, 0.45f),
         };
 
         /// <summary>

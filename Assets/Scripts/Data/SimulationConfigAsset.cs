@@ -22,6 +22,10 @@ namespace ProjectGuild.Data
         [Tooltip("Additional travel speed per Athletics level beyond 1")]
         public float AthleticsSpeedPerLevel = 0.05f;
 
+        [Tooltip("XP awarded every tick while traveling. Athletics leveling is decoupled from travel speed — " +
+            "speed is about getting there faster, XP is about progression.")]
+        public float AthleticsXpPerTick = 1.0f;
+
         [Header("Skills / XP")]
         [Tooltip("Multiplier on effective level when runner has passion (e.g. 1.05 = +5%)")]
         public float PassionEffectivenessMultiplier = 1.05f;
@@ -31,7 +35,7 @@ namespace ProjectGuild.Data
 
         [Tooltip("Base XP for the exponential XP curve. Each level costs: base * growth^level.\n" +
             "Higher values = more XP needed at all levels.")]
-        public float XpCurveBase = 75f;
+        public float XpCurveBase = 100f;
 
         [Tooltip("Growth factor for the exponential XP curve. Each level costs growth^level more than the base.\n\n" +
             "1.104 (OSRS-like): XP doubles every ~7 levels. '92 is half of 99'.\n" +
@@ -99,6 +103,7 @@ namespace ProjectGuild.Data
             {
                 BaseTravelSpeed = BaseTravelSpeed,
                 AthleticsSpeedPerLevel = AthleticsSpeedPerLevel,
+                AthleticsXpPerTick = AthleticsXpPerTick,
                 PassionEffectivenessMultiplier = PassionEffectivenessMultiplier,
                 PassionXpMultiplier = PassionXpMultiplier,
                 XpCurveBase = XpCurveBase,
