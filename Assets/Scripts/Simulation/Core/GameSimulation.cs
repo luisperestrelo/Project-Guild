@@ -349,6 +349,21 @@ namespace ProjectGuild.Simulation.Core
             var gatherableConfig = Config.GetGatherableConfig(node.Type);
             if (gatherableConfig == null) return;
 
+            // Award XP every tick while gathering (decoupled from item production speed).
+            // The runner learns by practicing, not by completing items.
+            var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
+            bool leveledUp = skill.AddXp(gatherableConfig.XpPerTick, Config);
+
+            if (leveledUp)
+            {
+                Events.Publish(new RunnerSkillLeveledUp
+                {
+                    RunnerId = runner.Id,
+                    Skill = gatherableConfig.RequiredSkill,
+                    NewLevel = skill.Level,
+                });
+            }
+
             // Always compute from current stats — buffs, level-ups, gear changes
             // are reflected immediately without explicit recalculation calls.
             // TicksRequired is also stored on GatheringState for UI progress display.
@@ -363,20 +378,6 @@ namespace ProjectGuild.Simulation.Core
                 // Produce item
                 var itemDef = ItemRegistry.Get(gatherableConfig.ProducedItemId);
                 bool added = runner.Inventory.TryAdd(itemDef, 1);
-
-                // Award XP (even if inventory was full — the work was still done)
-                var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
-                bool leveledUp = skill.AddXp(gatherableConfig.BaseXpPerGather, Config);
-
-                if (leveledUp)
-                {
-                    Events.Publish(new RunnerSkillLeveledUp
-                    {
-                        RunnerId = runner.Id,
-                        Skill = gatherableConfig.RequiredSkill,
-                        NewLevel = skill.Level,
-                    });
-                }
 
                 if (added)
                 {

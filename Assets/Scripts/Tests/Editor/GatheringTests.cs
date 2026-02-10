@@ -207,36 +207,56 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(3, _runner.Inventory.CountItem("copper_ore"));
         }
 
-        // ─── XP awards ────────────────────────────────────────────
+        // ─── XP awards (per-tick, decoupled from item production) ──
 
         [Test]
-        public void Gathering_AwardsXp_OnProduction()
+        public void Gathering_AwardsXpPerTick()
         {
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
             float xpBefore = _runner.GetSkill(SkillType.Mining).Xp;
 
-            int ticksNeeded = TicksPerItem(1f);
-            for (int i = 0; i < ticksNeeded; i++)
-                _sim.Tick();
+            // A single tick should award XP
+            _sim.Tick();
 
             float xpAfter = _runner.GetSkill(SkillType.Mining).Xp;
-            Assert.Greater(xpAfter, xpBefore);
+            Assert.Greater(xpAfter, xpBefore, "XP should be awarded every tick while gathering");
         }
 
         [Test]
-        public void Gathering_XpMatchesConfig()
+        public void Gathering_XpPerTick_MatchesConfig()
         {
             SetupRunnerAtMine();
             _sim.CommandGather(_runner.Id);
 
-            int ticksNeeded = TicksPerItem(1f);
-            for (int i = 0; i < ticksNeeded; i++)
+            // Run 5 ticks
+            for (int i = 0; i < 5; i++)
                 _sim.Tick();
 
-            float expectedXp = _config.GatherableConfigs[0].BaseXpPerGather;
+            float xpPerTick = _config.GatherableConfigs[0].XpPerTick;
+            float expectedXp = xpPerTick * 5f;
             Assert.AreEqual(expectedXp, _runner.GetSkill(SkillType.Mining).Xp, 0.01f);
+        }
+
+        [Test]
+        public void Gathering_XpIsDecoupledFromItemProduction()
+        {
+            // Two runners at different levels gathering the same resource
+            // should get the same XP per tick, even though one gathers items faster
+            SetupRunnerAtMine(miningLevel: 1);
+            _sim.CommandGather(_runner.Id);
+            _sim.Tick();
+            float xpLevel1 = _runner.GetSkill(SkillType.Mining).Xp;
+
+            SetupRunnerAtMine(miningLevel: 50);
+            _sim.CommandGather(_runner.Id);
+            _sim.Tick();
+            float xpLevel50 = _runner.GetSkill(SkillType.Mining).Xp;
+
+            // Same XP per tick regardless of level (no passion on either)
+            Assert.AreEqual(xpLevel1, xpLevel50, 0.01f,
+                "XP per tick should be the same regardless of gathering speed");
         }
 
         [Test]
@@ -244,7 +264,7 @@ namespace ProjectGuild.Tests
         {
             SetupRunnerAtMine(miningLevel: 1);
 
-            // Set XP close to level-up threshold so one gather pushes us over
+            // Set XP close to level-up threshold so a few ticks push us over
             var skill = _runner.GetSkill(SkillType.Mining);
             float xpToNext = skill.GetXpToNextLevel(_sim.Config);
             skill.Xp = xpToNext - 1f;
@@ -254,9 +274,8 @@ namespace ProjectGuild.Tests
             RunnerSkillLeveledUp? received = null;
             _sim.Events.Subscribe<RunnerSkillLeveledUp>(e => received = e);
 
-            int ticksNeeded = TicksPerItem(1f);
-            for (int i = 0; i < ticksNeeded; i++)
-                _sim.Tick();
+            // Tick until level-up happens (should be very fast since we're 1 XP away)
+            TickUntil(() => received != null, safetyLimit: 100);
 
             Assert.IsNotNull(received);
             Assert.AreEqual(SkillType.Mining, received.Value.Skill);

@@ -16,7 +16,14 @@ namespace ProjectGuild.Simulation.Gathering
         public string ProducedItemId;
         public SkillType RequiredSkill;
         public float BaseTicksToGather;
-        public float BaseXpPerGather;
+
+        /// <summary>
+        /// XP awarded every tick while gathering this resource.
+        /// Decoupled from gathering speed — leveling is purely about which resource you're grinding,
+        /// while gathering speed only affects economic output (items per trip).
+        /// Passion XP multiplier still applies on top of this.
+        /// </summary>
+        public float XpPerTick;
 
         /// <summary>
         /// Minimum skill level required to gather this resource. 0 = no requirement.
@@ -26,13 +33,13 @@ namespace ProjectGuild.Simulation.Gathering
         public GatherableConfig() { }
 
         public GatherableConfig(NodeType nodeType, string producedItemId, SkillType requiredSkill,
-            float baseTicksToGather, float baseXpPerGather, int minLevel = 0)
+            float baseTicksToGather, float xpPerTick, int minLevel = 0)
         {
             NodeType = nodeType;
             ProducedItemId = producedItemId;
             RequiredSkill = requiredSkill;
             BaseTicksToGather = baseTicksToGather;
-            BaseXpPerGather = baseXpPerGather;
+            XpPerTick = xpPerTick;
             MinLevel = minLevel;
         }
     }

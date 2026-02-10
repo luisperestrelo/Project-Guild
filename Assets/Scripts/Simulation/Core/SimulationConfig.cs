@@ -137,13 +137,15 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Gatherable definitions — what each gathering node type produces.
+        /// XpPerTick is awarded every tick while gathering (decoupled from gathering speed).
+        /// These are placeholder values — will be tuned once we have content tiers.
         /// </summary>
         public GatherableConfig[] GatherableConfigs = new[]
         {
-            new GatherableConfig(NodeType.GatheringMine,   "copper_ore", SkillType.Mining,      10f, 25f),
-            new GatherableConfig(NodeType.GatheringForest, "pine_log",   SkillType.Woodcutting,  10f, 20f),
-            new GatherableConfig(NodeType.GatheringWater,  "raw_trout",  SkillType.Fishing,      12f, 22f),
-            new GatherableConfig(NodeType.GatheringHerbs,  "sage_leaf",  SkillType.Foraging,      8f, 18f),
+            new GatherableConfig(NodeType.GatheringMine,   "copper_ore", SkillType.Mining,      10f, 2.5f),
+            new GatherableConfig(NodeType.GatheringForest, "pine_log",   SkillType.Woodcutting,  10f, 2.0f),
+            new GatherableConfig(NodeType.GatheringWater,  "raw_trout",  SkillType.Fishing,      12f, 1.8f),
+            new GatherableConfig(NodeType.GatheringHerbs,  "sage_leaf",  SkillType.Foraging,      8f, 2.2f),
         };
 
         /// <summary>
