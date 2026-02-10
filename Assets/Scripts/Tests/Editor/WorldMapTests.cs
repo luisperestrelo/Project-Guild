@@ -15,10 +15,10 @@ namespace ProjectGuild.Tests
             // Simple test map: hub -> A -> B, hub -> C
             _map = new WorldMap();
             _map.AddNode("hub", "Hub", NodeType.Hub, 0f, 0f);
-            _map.AddNode("a", "Node A", NodeType.GatheringMine, 10f, 0f);
+            _map.AddNode("a", "Node A", NodeType.Mine, 10f, 0f);
             _map.AddNode("b", "Node B", NodeType.MobZone, 20f, 0f);
-            _map.AddNode("c", "Node C", NodeType.GatheringForest, 0f, 10f);
-            _map.AddNode("isolated", "Isolated", NodeType.GatheringHerbs, 50f, 50f);
+            _map.AddNode("c", "Node C", NodeType.Forest, 0f, 10f);
+            _map.AddNode("isolated", "Isolated", NodeType.HerbPatch, 50f, 50f);
 
             _map.AddEdge("hub", "a", 5f);
             _map.AddEdge("a", "b", 8f);

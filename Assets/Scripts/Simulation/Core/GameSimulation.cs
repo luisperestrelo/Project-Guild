@@ -53,6 +53,9 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState = new GameState();
             CurrentGameState.Map = map ?? WorldMap.CreateStarterMap();
 
+            // Wire gatherables from config onto map nodes
+            WireNodeGatherables(CurrentGameState.Map);
+
             // Populate item registry from config
             ItemRegistry = new ItemRegistry();
             foreach (var itemDef in Config.ItemDefinitions)
@@ -83,6 +86,21 @@ namespace ProjectGuild.Simulation.Core
                 RunnerId = runner.Id,
                 RunnerName = runner.Name,
             });
+        }
+
+        /// <summary>
+        /// Attach gatherables from Config.NodeGatherables onto the corresponding WorldNodes.
+        /// Called after map creation — the map defines topology, this wires in the content.
+        /// If a node already has gatherables (e.g. from test setup via AddNode), they're replaced.
+        /// </summary>
+        private void WireNodeGatherables(WorldMap map)
+        {
+            foreach (var ng in Config.NodeGatherables)
+            {
+                var node = map.GetNode(ng.NodeId);
+                if (node != null && ng.Gatherables != null && ng.Gatherables.Length > 0)
+                    node.Gatherables = ng.Gatherables;
+            }
         }
 
         /// <summary>
@@ -285,25 +303,39 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Command a runner to start gathering at their current node.
-        /// Runner must be Idle and standing at a gathering-type node.
+        /// Runner must be Idle and standing at a node with gatherables.
+        /// gatherableIndex selects which gatherable to work on (default 0 = first).
+        /// The automation layer decides which index to pass.
         /// </summary>
         /// <returns>True if gathering started, false if invalid.</returns>
-        public bool CommandGather(string runnerId)
+        public bool CommandGather(string runnerId, int gatherableIndex = 0)
         {
             var runner = FindRunner(runnerId);
             if (runner == null || runner.State != RunnerState.Idle) return false;
 
             var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
-            if (node == null) return false;
+            if (node == null || node.Gatherables.Length == 0) return false;
+            if (gatherableIndex < 0 || gatherableIndex >= node.Gatherables.Length) return false;
 
-            var gatherableConfig = Config.GetGatherableConfig(node.Type);
-            if (gatherableConfig == null) return false;
+            var gatherableConfig = node.Gatherables[gatherableIndex];
 
             // Check minimum skill level requirement
             if (gatherableConfig.MinLevel > 0)
             {
                 var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
-                if (skill.Level < gatherableConfig.MinLevel) return false;
+                if (skill.Level < gatherableConfig.MinLevel)
+                {
+                    Events.Publish(new GatheringFailed
+                    {
+                        RunnerId = runner.Id,
+                        NodeId = runner.CurrentNodeId,
+                        ItemId = gatherableConfig.ProducedItemId,
+                        Skill = gatherableConfig.RequiredSkill,
+                        RequiredLevel = gatherableConfig.MinLevel,
+                        CurrentLevel = skill.Level,
+                    });
+                    return false;
+                }
             }
 
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
@@ -312,6 +344,7 @@ namespace ProjectGuild.Simulation.Core
             runner.Gathering = new GatheringState
             {
                 NodeId = runner.CurrentNodeId,
+                GatherableIndex = gatherableIndex,
                 TickAccumulator = 0f,
                 TicksRequired = ticksRequired,
                 SubState = GatheringSubState.Gathering,
@@ -358,10 +391,9 @@ namespace ProjectGuild.Simulation.Core
                 return;
 
             var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
-            if (node == null) return;
+            if (node == null || runner.Gathering.GatherableIndex >= node.Gatherables.Length) return;
 
-            var gatherableConfig = Config.GetGatherableConfig(node.Type);
-            if (gatherableConfig == null) return;
+            var gatherableConfig = node.Gatherables[runner.Gathering.GatherableIndex];
 
             // Award XP every tick while gathering (decoupled from item production speed).
             // The runner learns by practicing, not by completing items.
@@ -523,7 +555,7 @@ namespace ProjectGuild.Simulation.Core
         private void ResumeGathering(Runner runner)
         {
             var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
-            var gatherableConfig = Config.GetGatherableConfig(node.Type);
+            var gatherableConfig = node.Gatherables[runner.Gathering.GatherableIndex];
 
             runner.State = RunnerState.Gathering;
             runner.Gathering.SubState = GatheringSubState.Gathering;

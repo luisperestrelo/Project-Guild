@@ -16,9 +16,18 @@ namespace ProjectGuild.Tests
         /// Helper: create a sim with one runner at a copper mine, ready to gather.
         /// Stores the config so tests can derive expected values from it.
         /// </summary>
+        private static readonly Simulation.Gathering.GatherableConfig CopperGatherable =
+            new Simulation.Gathering.GatherableConfig("copper_ore", SkillType.Mining, 40f, 0.5f);
+
         private void SetupRunnerAtMine(int miningLevel = 1, bool passion = false)
         {
-            _config = new SimulationConfig();
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                },
+            };
             _sim = new GameSimulation(_config, tickRate: 10f);
 
             var defs = new[]
@@ -29,7 +38,7 @@ namespace ProjectGuild.Tests
 
             var map = new WorldMap();
             map.AddNode("hub", "Hub", NodeType.Hub);
-            map.AddNode("mine", "Mine", NodeType.GatheringMine);
+            map.AddNode("mine", "Mine", NodeType.Mine, 0f, 0f, CopperGatherable);
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
 
@@ -42,7 +51,7 @@ namespace ProjectGuild.Tests
         /// </summary>
         private int TicksPerItem(float effectiveLevel)
         {
-            var gatherable = _config.GatherableConfigs[0]; // copper_ore
+            var gatherable = CopperGatherable;
             float baseTicks = _config.GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather;
 
             float speedMultiplier = _config.GatheringFormula switch
@@ -62,7 +71,7 @@ namespace ProjectGuild.Tests
         /// Can't precompute this because the runner levels up mid-gather, changing speed.
         /// Returns the number of ticks executed.
         /// </summary>
-        private int TickUntilInventoryFull(int safetyLimit = 500)
+        private int TickUntilInventoryFull(int safetyLimit = 5000)
         {
             int ticks = 0;
             while (_runner.Inventory.FreeSlots > 0
@@ -78,7 +87,7 @@ namespace ProjectGuild.Tests
         /// <summary>
         /// Tick the sim until a condition is met, or until the safety limit is hit.
         /// </summary>
-        private int TickUntil(System.Func<bool> condition, int safetyLimit = 1000)
+        private int TickUntil(System.Func<bool> condition, int safetyLimit = 10000)
         {
             int ticks = 0;
             while (!condition() && ticks < safetyLimit)
@@ -234,7 +243,7 @@ namespace ProjectGuild.Tests
             for (int i = 0; i < 5; i++)
                 _sim.Tick();
 
-            float xpPerTick = _config.GatherableConfigs[0].XpPerTick;
+            float xpPerTick = CopperGatherable.XpPerTick;
             float expectedXp = xpPerTick * 5f;
             Assert.AreEqual(expectedXp, _runner.GetSkill(SkillType.Mining).Xp, 0.01f);
         }
@@ -327,7 +336,7 @@ namespace ProjectGuild.Tests
 
             // The sim stores the exact float; our helper ceiling-rounds for tick counting.
             // Verify the sim's value is close to our expectation.
-            var gatherable = _config.GatherableConfigs[0];
+            var gatherable = CopperGatherable;
             float baseTicks = _config.GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather;
             float speedMultiplier = (float)System.Math.Pow(10f, _config.GatheringSpeedExponent);
             float exactExpected = baseTicks / speedMultiplier;

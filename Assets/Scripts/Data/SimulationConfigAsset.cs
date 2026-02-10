@@ -1,8 +1,7 @@
+using System;
 using UnityEngine;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Gathering;
-using ProjectGuild.Simulation.Items;
-using ProjectGuild.Simulation.World;
 
 namespace ProjectGuild.Data
 {
@@ -34,13 +33,15 @@ namespace ProjectGuild.Data
         public float PassionXpMultiplier = 1.5f;
 
         [Tooltip("Base XP for the exponential XP curve. Each level costs: base * growth^level.\n" +
-            "Higher values = more XP needed at all levels.")]
+            "Higher values = more XP needed at all levels.\n\n" +
+            "OSRS uses 75. Our default is 100 (1.33x slower than OSRS across the board).")]
         public float XpCurveBase = 100f;
 
         [Tooltip("Growth factor for the exponential XP curve. Each level costs growth^level more than the base.\n\n" +
-            "1.104 (OSRS-like): XP doubles every ~7 levels. '92 is half of 99'.\n" +
-            "1.15: XP doubles every ~5 levels, steeper wall.\n" +
-            "1.05: XP doubles every ~14 levels, gentler curve.")]
+            "OSRS uses 1.104 (= 2^(1/7), XP doubles every ~7 levels, '92 is half of 99').\n\n" +
+            "1.05: XP doubles every ~14 levels, gentler curve.\n" +
+            "1.104: OSRS default.\n" +
+            "1.15: XP doubles every ~5 levels, steeper wall.")]
         public float XpCurveGrowth = 1.104f;
 
         [Header("Runner Generation")]
@@ -82,6 +83,29 @@ namespace ProjectGuild.Data
             "At 0.08: level 1 = 1x, level 10 = 1.7x, level 50 = 4.9x, level 99 = 8.8x")]
         public float HyperbolicSpeedPerLevel = 0.08f;
 
+        [Header("Items")]
+        [Tooltip("All item definitions in the game. Each item is its own ScriptableObject asset.")]
+        public ItemDefinitionAsset[] ItemDefinitions = new ItemDefinitionAsset[0];
+
+        [Header("Node Gatherables")]
+        [Tooltip("Maps world nodes to their gatherables. Each entry pairs a node ID with an ordered list of gatherable configs.\n" +
+            "The array order within each node determines the gatherable index (index 0 = default auto-gather target).")]
+        public NodeGatherableSetup[] NodeGatherables = new NodeGatherableSetup[0];
+
+        /// <summary>
+        /// Associates a world node ID with an ordered list of GatherableConfigAssets.
+        /// The Inspector shows this as an array of expandable entries.
+        /// </summary>
+        [Serializable]
+        public struct NodeGatherableSetup
+        {
+            [Tooltip("The world node ID this gatherable setup applies to (e.g. 'copper_mine', 'deep_mine').")]
+            public string NodeId;
+
+            [Tooltip("Gatherables available at this node, in order. Index 0 is the default gather target.")]
+            public GatherableConfigAsset[] Gatherables;
+        }
+
         [Header("Inventory")]
         [Tooltip("Number of inventory slots per runner (OSRS-style: 28)")]
         public int InventorySize = 28;
@@ -99,6 +123,23 @@ namespace ProjectGuild.Data
         /// </summary>
         public SimulationConfig ToConfig()
         {
+            // Convert item SO array to plain C# array for the simulation
+            var itemDefs = new Simulation.Items.ItemDefinition[ItemDefinitions.Length];
+            for (int i = 0; i < ItemDefinitions.Length; i++)
+                itemDefs[i] = ItemDefinitions[i].ToItemDefinition();
+
+            // Convert node-gatherable SO mappings to plain C# structs
+            var nodeGatherables = new SimulationConfig.NodeGatherable[NodeGatherables.Length];
+            for (int i = 0; i < NodeGatherables.Length; i++)
+            {
+                var setup = NodeGatherables[i];
+                var gatherables = new GatherableConfig[setup.Gatherables != null ? setup.Gatherables.Length : 0];
+                for (int j = 0; j < gatherables.Length; j++)
+                    gatherables[j] = setup.Gatherables[j].ToGatherableConfig();
+
+                nodeGatherables[i] = new SimulationConfig.NodeGatherable(setup.NodeId, gatherables);
+            }
+
             return new SimulationConfig
             {
                 BaseTravelSpeed = BaseTravelSpeed,
@@ -116,6 +157,8 @@ namespace ProjectGuild.Data
                 GatheringFormula = GatheringFormula,
                 GatheringSpeedExponent = GatheringSpeedExponent,
                 HyperbolicSpeedPerLevel = HyperbolicSpeedPerLevel,
+                ItemDefinitions = itemDefs,
+                NodeGatherables = nodeGatherables,
                 InventorySize = InventorySize,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
                 DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,

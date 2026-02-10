@@ -237,10 +237,10 @@ namespace ProjectGuild.View
             return type switch
             {
                 NodeType.Hub => new Color(0.2f, 0.6f, 1f),          // Blue
-                NodeType.GatheringMine => new Color(0.6f, 0.4f, 0.2f), // Brown
-                NodeType.GatheringForest => new Color(0.2f, 0.7f, 0.2f), // Green
-                NodeType.GatheringWater => new Color(0.3f, 0.7f, 0.9f),  // Light blue
-                NodeType.GatheringHerbs => new Color(0.5f, 0.8f, 0.3f),  // Yellow-green
+                NodeType.Mine => new Color(0.6f, 0.4f, 0.2f), // Brown
+                NodeType.Forest => new Color(0.2f, 0.7f, 0.2f), // Green
+                NodeType.Lake => new Color(0.3f, 0.7f, 0.9f),  // Light blue
+                NodeType.HerbPatch => new Color(0.5f, 0.8f, 0.3f),  // Yellow-green
                 NodeType.MobZone => new Color(0.8f, 0.2f, 0.2f),         // Red
                 NodeType.Raid => new Color(0.6f, 0.1f, 0.6f),            // Purple
                 _ => Color.gray,

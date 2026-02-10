@@ -1,18 +1,16 @@
 using System;
 using ProjectGuild.Simulation.Core;
-using ProjectGuild.Simulation.World;
 
 namespace ProjectGuild.Simulation.Gathering
 {
     /// <summary>
-    /// Defines what a gathering node type produces and how.
-    /// Each world node type (GatheringMine, GatheringForest, etc.) maps to one of these.
-    /// BaseTicksToGather is the per-gatherable difficulty — endgame ores take more ticks.
+    /// Defines a gatherable resource — what it produces, what skill it needs, and how fast.
+    /// Gatherables live on WorldNodes, not in a global config. A node can have multiple
+    /// gatherables with different level requirements (e.g. a mine with copper and iron).
     /// </summary>
     [Serializable]
     public class GatherableConfig
     {
-        public NodeType NodeType;
         public string ProducedItemId;
         public SkillType RequiredSkill;
         public float BaseTicksToGather;
@@ -32,10 +30,9 @@ namespace ProjectGuild.Simulation.Gathering
 
         public GatherableConfig() { }
 
-        public GatherableConfig(NodeType nodeType, string producedItemId, SkillType requiredSkill,
+        public GatherableConfig(string producedItemId, SkillType requiredSkill,
             float baseTicksToGather, float xpPerTick, int minLevel = 0)
         {
-            NodeType = nodeType;
             ProducedItemId = producedItemId;
             RequiredSkill = requiredSkill;
             BaseTicksToGather = baseTicksToGather;

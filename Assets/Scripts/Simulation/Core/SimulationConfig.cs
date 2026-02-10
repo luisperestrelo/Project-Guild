@@ -1,7 +1,6 @@
 using System;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
-using ProjectGuild.Simulation.World;
 
 namespace ProjectGuild.Simulation.Core
 {
@@ -146,42 +145,41 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float HyperbolicSpeedPerLevel = 0.08f;
 
+        // ─── Node Gatherables ──────────────────────────────────────
+
         /// <summary>
-        /// Gatherable definitions — what each gathering node type produces.
-        /// XpPerTick is awarded every tick while gathering (decoupled from gathering speed).
-        /// These are placeholder values — will be tuned once we have content tiers.
+        /// Maps world node IDs to their gatherable configs.
+        /// Populated from GatherableConfigAsset ScriptableObjects via SimulationConfigAsset.ToConfig().
+        /// After map creation, GameSimulation wires these onto the corresponding WorldNodes.
+        /// Tests can set these directly, or use AddNode(..., gatherables) to put them on nodes.
         /// </summary>
-        public GatherableConfig[] GatherableConfigs = new[]
+        public NodeGatherable[] NodeGatherables = Array.Empty<NodeGatherable>();
+
+        /// <summary>
+        /// Associates a world node with its gatherables. The order of the Gatherables array
+        /// determines the gatherable index — index 0 is what a runner gathers by default.
+        /// </summary>
+        [Serializable]
+        public struct NodeGatherable
         {
-            new GatherableConfig(NodeType.GatheringMine,   "copper_ore", SkillType.Mining,      40f, 0.5f),
-            new GatherableConfig(NodeType.GatheringForest, "pine_log",   SkillType.Woodcutting,  35f, 0.4f),
-            new GatherableConfig(NodeType.GatheringWater,  "raw_trout",  SkillType.Fishing,      50f, 0.35f),
-            new GatherableConfig(NodeType.GatheringHerbs,  "sage_leaf",  SkillType.Foraging,     25f, 0.45f),
-        };
+            public string NodeId;
+            public GatherableConfig[] Gatherables;
+
+            public NodeGatherable(string nodeId, params GatherableConfig[] gatherables)
+            {
+                NodeId = nodeId;
+                Gatherables = gatherables;
+            }
+        }
+
+        // ─── Items ─────────────────────────────────────────────────
 
         /// <summary>
         /// All item definitions in the game. Registered into ItemRegistry at game start.
+        /// Populated from ItemDefinitionAsset ScriptableObjects via SimulationConfigAsset.ToConfig().
+        /// Tests can set these directly.
         /// </summary>
-        public ItemDefinition[] ItemDefinitions = new[]
-        {
-            new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
-            new ItemDefinition("pine_log",   "Pine Log",   ItemCategory.Log),
-            new ItemDefinition("raw_trout",  "Raw Trout",  ItemCategory.Fish),
-            new ItemDefinition("sage_leaf",  "Sage Leaf",  ItemCategory.Herb),
-        };
-
-        /// <summary>
-        /// Find the gatherable config for a given node type. Returns null if not a gathering node.
-        /// </summary>
-        public GatherableConfig GetGatherableConfig(NodeType nodeType)
-        {
-            for (int i = 0; i < GatherableConfigs.Length; i++)
-            {
-                if (GatherableConfigs[i].NodeType == nodeType)
-                    return GatherableConfigs[i];
-            }
-            return null;
-        }
+        public ItemDefinition[] ItemDefinitions = new ItemDefinition[0];
 
         // ─── Inventory ───────────────────────────────────────────────
 

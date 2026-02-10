@@ -91,6 +91,11 @@ namespace ProjectGuild.Simulation.Core
     public class GatheringState
     {
         public string NodeId;
+        /// <summary>
+        /// Which gatherable in the node's Gatherables[] array the runner is working on.
+        /// Set by CommandGather; preserved across auto-return trips.
+        /// </summary>
+        public int GatherableIndex;
         public float TickAccumulator;
         public float TicksRequired;
         public GatheringSubState SubState;

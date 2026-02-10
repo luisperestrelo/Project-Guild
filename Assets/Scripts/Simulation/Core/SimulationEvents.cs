@@ -41,6 +41,16 @@ namespace ProjectGuild.Simulation.Core
         public SkillType Skill;
     }
 
+    public struct GatheringFailed
+    {
+        public string RunnerId;
+        public string NodeId;
+        public string ItemId;
+        public SkillType Skill;
+        public int RequiredLevel;
+        public int CurrentLevel;
+    }
+
     public struct ItemGathered
     {
         public string RunnerId;

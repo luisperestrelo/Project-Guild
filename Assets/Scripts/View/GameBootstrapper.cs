@@ -160,17 +160,19 @@ namespace ProjectGuild.View
             // Commands — context-sensitive based on where the runner is
             var currentNode = sim.CurrentGameState.Map.GetNode(selected.CurrentNodeId);
 
-            // Gather button — only at gathering nodes, only when idle
-            if (selected.State == RunnerState.Idle && currentNode != null)
+            // Gather buttons — one per gatherable at the current node
+            if (selected.State == RunnerState.Idle && currentNode != null && currentNode.Gatherables.Length > 0)
             {
-                var gatherConfig = sim.Config.GetGatherableConfig(currentNode.Type);
-                if (gatherConfig != null)
+                for (int g = 0; g < currentNode.Gatherables.Length; g++)
                 {
+                    var gatherConfig = currentNode.Gatherables[g];
                     var itemDef = sim.ItemRegistry?.Get(gatherConfig.ProducedItemId);
                     string itemName = itemDef != null ? itemDef.Name : gatherConfig.ProducedItemId;
-                    if (GUILayout.Button($"Gather ({itemName})"))
+                    string levelReq = gatherConfig.MinLevel > 0 ? $" [Lv{gatherConfig.MinLevel}+]" : "";
+                    int gatherIndex = g; // capture for closure
+                    if (GUILayout.Button($"[{g}] Gather ({itemName}{levelReq})"))
                     {
-                        sim.CommandGather(selected.Id);
+                        sim.CommandGather(selected.Id, gatherIndex);
                     }
                 }
             }
@@ -291,7 +293,8 @@ namespace ProjectGuild.View
             if (selected.State == RunnerState.Gathering && selected.Gathering != null)
             {
                 var node = sim.CurrentGameState.Map.GetNode(selected.Gathering.NodeId);
-                var gatherConfig = node != null ? sim.Config.GetGatherableConfig(node.Type) : null;
+                var gatherConfig = (node != null && selected.Gathering.GatherableIndex < node.Gatherables.Length)
+                    ? node.Gatherables[selected.Gathering.GatherableIndex] : null;
                 if (gatherConfig != null)
                 {
                     float ticksReq = selected.Gathering.TicksRequired;
