@@ -45,7 +45,6 @@ namespace ProjectGuild.View
         // ─── Runner Selection + Camera ───────────────────────────────
 
         private int _selectedRunnerIndex = 0;
-        private bool _showSkills = false;
 
         private void SelectRunner(int index)
         {
@@ -103,20 +102,6 @@ namespace ProjectGuild.View
             GUILayout.Label($"<b>{selected.Name}</b>", new GUIStyle(GUI.skin.label) { richText = true });
             GUILayout.Label($"State: {selected.State}");
             GUILayout.Label($"Location: {selected.CurrentNodeId}");
-
-            // Skills display — all 15 skills with level, passion, and XP progress
-            _showSkills = GUILayout.Toggle(_showSkills, "Show Skills");
-            if (_showSkills)
-            {
-                for (int s = 0; s < SkillTypeExtensions.SkillCount; s++)
-                {
-                    var skill = selected.Skills[s];
-                    string passionMarker = skill.HasPassion ? "*" : "";
-                    float progress = skill.GetLevelProgress(sim.Config);
-                    string bar = ProgressBar(progress, 8);
-                    GUILayout.Label($"  {(SkillType)s}: {skill.Level}{passionMarker} {bar} {progress:P0}");
-                }
-            }
 
             if (selected.State == RunnerState.Traveling && selected.Travel != null)
             {
@@ -210,7 +195,6 @@ namespace ProjectGuild.View
                 var rng = new System.Random();
                 var runner = RunnerFactory.Create(rng, sim.Config, "hub");
                 sim.AddRunner(runner);
-                _visualSyncSystem.BuildWorld();
             }
             if (GUILayout.Button("Tutorial Reward Pawn"))
             {
@@ -230,7 +214,6 @@ namespace ProjectGuild.View
                 };
                 var runner = RunnerFactory.CreateBiased(rng, sim.Config, bias, "hub");
                 sim.AddRunner(runner);
-                _visualSyncSystem.BuildWorld();
             }
 
             // Bank summary
@@ -255,6 +238,24 @@ namespace ProjectGuild.View
             GUILayout.Label($"Time: {sim.CurrentGameState.TotalTimeElapsed:F1}s");
 
             GUILayout.EndArea();
+
+            // ─── Right panel: selected runner's skills (always visible) ───
+            float skillsPanelWidth = 260f;
+            float skillsPanelX = Screen.width / scale - skillsPanelWidth - 10f;
+            GUILayout.BeginArea(new Rect(skillsPanelX, 10, skillsPanelWidth, scaledHeight));
+
+            GUILayout.Label($"<b>{selected.Name} — Skills</b>", new GUIStyle(GUI.skin.label) { richText = true });
+            for (int s = 0; s < SkillTypeExtensions.SkillCount; s++)
+            {
+                var skill = selected.Skills[s];
+                string passionMarker = skill.HasPassion ? "*" : "";
+                float skillProgress = skill.GetLevelProgress(sim.Config);
+                string bar = ProgressBar(skillProgress, 8);
+                GUILayout.Label($"{(SkillType)s}: {skill.Level}{passionMarker} {bar} {skillProgress:P0}");
+            }
+
+            GUILayout.EndArea();
+
             GUI.matrix = matrix;
         }
 

@@ -330,7 +330,7 @@ namespace ProjectGuild.Simulation.Core
                     (float)Math.Pow(effectiveLevel, Config.GatheringSpeedExponent),
 
                 GatheringSpeedFormula.Hyperbolic =>
-                    1f + (effectiveLevel - 1f) * Config.GatheringSkillSpeedPerLevel,
+                    1f + (effectiveLevel - 1f) * Config.HyperbolicSpeedPerLevel,
 
                 _ => 1f,
             };

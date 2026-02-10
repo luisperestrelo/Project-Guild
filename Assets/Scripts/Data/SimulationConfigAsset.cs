@@ -54,14 +54,25 @@ namespace ProjectGuild.Data
         [Tooltip("Global multiplier on gathering speed. 1.0 = normal, 0.5 = twice as fast")]
         public float GlobalGatheringSpeedMultiplier = 1.0f;
 
-        [Tooltip("Which formula to use for skill-level-based gathering speed scaling")]
+        [Tooltip("Which formula to use for skill-level-based gathering speed scaling.\n\n" +
+            "PowerCurve: speedMultiplier = level ^ exponent. Higher levels are proportionally more impactful. " +
+            "The grind from 90->99 is more rewarding per-level than 1->10.\n\n" +
+            "Hyperbolic (diminishing returns): speedMultiplier = 1 + (level - 1) * perLevelFactor. " +
+            "Each level adds the same flat amount, but marginal speed gain shrinks. " +
+            "Early levels feel most impactful; high-level grinding yields diminishing improvements.")]
         public GatheringSpeedFormula GatheringFormula = GatheringSpeedFormula.PowerCurve;
 
-        [Tooltip("Exponent for PowerCurve formula. 0.5 = gentle (~10x at 99), 0.7 = moderate (~30x), 1.0 = linear (99x)")]
+        [Tooltip("Only used when GatheringFormula == PowerCurve. Ignored otherwise.\n\n" +
+            "speedMultiplier = effectiveLevel ^ this exponent.\n" +
+            "0.5 = gentle: level 1 = 1x, level 10 = 3.2x, level 50 = 7.1x, level 99 = 10x\n" +
+            "0.7 = moderate: level 1 = 1x, level 10 = 5x, level 50 = 18x, level 99 = 30x\n" +
+            "1.0 = linear: level 1 = 1x, level 10 = 10x, level 50 = 50x, level 99 = 99x")]
         public float GatheringSpeedExponent = 0.55f;
 
-        [Tooltip("Per-level flat factor for Hyperbolic formula. At 0.08: level 99 is ~8.8x faster")]
-        public float GatheringSkillSpeedPerLevel = 0.08f;
+        [Tooltip("Only used when GatheringFormula == Hyperbolic. Ignored otherwise.\n\n" +
+            "speedMultiplier = 1 + (effectiveLevel - 1) * this value.\n" +
+            "At 0.08: level 1 = 1x, level 10 = 1.7x, level 50 = 4.9x, level 99 = 8.8x")]
+        public float HyperbolicSpeedPerLevel = 0.08f;
 
         [Header("Inventory")]
         [Tooltip("Number of inventory slots per runner (OSRS-style: 28)")]
@@ -95,7 +106,7 @@ namespace ProjectGuild.Data
                 GlobalGatheringSpeedMultiplier = GlobalGatheringSpeedMultiplier,
                 GatheringFormula = GatheringFormula,
                 GatheringSpeedExponent = GatheringSpeedExponent,
-                GatheringSkillSpeedPerLevel = GatheringSkillSpeedPerLevel,
+                HyperbolicSpeedPerLevel = HyperbolicSpeedPerLevel,
                 InventorySize = InventorySize,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
                 DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,

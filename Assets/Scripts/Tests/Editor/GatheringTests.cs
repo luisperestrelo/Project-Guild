@@ -50,7 +50,7 @@ namespace ProjectGuild.Tests
                 GatheringSpeedFormula.PowerCurve =>
                     (float)System.Math.Pow(effectiveLevel, _config.GatheringSpeedExponent),
                 GatheringSpeedFormula.Hyperbolic =>
-                    1f + (effectiveLevel - 1f) * _config.GatheringSkillSpeedPerLevel,
+                    1f + (effectiveLevel - 1f) * _config.HyperbolicSpeedPerLevel,
                 _ => 1f,
             };
 

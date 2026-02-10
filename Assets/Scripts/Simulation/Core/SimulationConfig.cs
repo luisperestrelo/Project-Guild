@@ -26,7 +26,7 @@ namespace ProjectGuild.Simulation.Core
         /// Hyperbolic (diminishing returns): speedMultiplier = 1 + (effectiveLevel - 1) * perLevelFactor.
         /// Each level adds the same flat amount to the divisor, but the marginal speed gain shrinks.
         /// Early levels feel most impactful; high-level grinding yields diminishing improvements.
-        /// Controlled by GatheringSkillSpeedPerLevel.
+        /// Controlled by HyperbolicSpeedPerLevel.
         ///   At 0.08: level 1 = 1x, level 10 = 1.7x, level 50 = 4.9x, level 99 = 8.8x
         /// </summary>
         Hyperbolic,
@@ -129,11 +129,11 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Per-level flat speed factor for the Hyperbolic formula (diminishing returns).
-        /// speedMultiplier = 1 + (effectiveLevel - 1) * GatheringSkillSpeedPerLevel.
+        /// speedMultiplier = 1 + (effectiveLevel - 1) * HyperbolicSpeedPerLevel.
         /// At 0.08: level 10 = ~1.7x faster, level 99 = ~8.8x faster.
-        /// Only used when GatheringFormula == Hyperbolic.
+        /// Only used when GatheringFormula == Hyperbolic. Ignored when using PowerCurve.
         /// </summary>
-        public float GatheringSkillSpeedPerLevel = 0.08f;
+        public float HyperbolicSpeedPerLevel = 0.08f;
 
         /// <summary>
         /// Gatherable definitions — what each gathering node type produces.
