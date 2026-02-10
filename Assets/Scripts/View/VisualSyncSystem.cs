@@ -53,7 +53,7 @@ namespace ProjectGuild.View
         {
             ClearWorld();
 
-            if (Sim?.State?.Map == null) return;
+            if (Sim?.CurrentGameState?.Map == null) return;
 
             // Create node markers
             foreach (var node in Sim.CurrentGameState.Map.Nodes)
