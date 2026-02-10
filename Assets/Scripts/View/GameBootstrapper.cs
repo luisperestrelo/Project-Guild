@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
@@ -44,6 +45,7 @@ namespace ProjectGuild.View
         // ─── Runner Selection + Camera ───────────────────────────────
 
         private int _selectedRunnerIndex = 0;
+        private bool _showSkills = false;
 
         private void SelectRunner(int index)
         {
@@ -101,7 +103,20 @@ namespace ProjectGuild.View
             GUILayout.Label($"<b>{selected.Name}</b>", new GUIStyle(GUI.skin.label) { richText = true });
             GUILayout.Label($"State: {selected.State}");
             GUILayout.Label($"Location: {selected.CurrentNodeId}");
-            GUILayout.Label($"Athletics: {selected.GetSkill(SkillType.Athletics).Level}");
+
+            // Skills display — all 15 skills with level, passion, and XP progress
+            _showSkills = GUILayout.Toggle(_showSkills, "Show Skills");
+            if (_showSkills)
+            {
+                for (int s = 0; s < SkillTypeExtensions.SkillCount; s++)
+                {
+                    var skill = selected.Skills[s];
+                    string passionMarker = skill.HasPassion ? "*" : "";
+                    float progress = skill.GetLevelProgress(sim.Config);
+                    string bar = ProgressBar(progress, 8);
+                    GUILayout.Label($"  {(SkillType)s}: {skill.Level}{passionMarker} {bar} {progress:P0}");
+                }
+            }
 
             if (selected.State == RunnerState.Traveling && selected.Travel != null)
             {
@@ -187,6 +202,37 @@ namespace ProjectGuild.View
                 }
             }
 
+            // Pawn generation
+            GUILayout.Space(10);
+            GUILayout.Label("<b>Generate Pawn</b>", new GUIStyle(GUI.skin.label) { richText = true });
+            if (GUILayout.Button("Random Pawn"))
+            {
+                var rng = new System.Random();
+                var runner = RunnerFactory.Create(rng, sim.Config, "hub");
+                sim.AddRunner(runner);
+                _visualSyncSystem.BuildWorld();
+            }
+            if (GUILayout.Button("Tutorial Reward Pawn"))
+            {
+                var rng = new System.Random();
+                var bias = new RunnerFactory.BiasConstraints
+                {
+                    PickOneSkillToBoostedAndPassionate = new[]
+                    {
+                        SkillType.Mining, SkillType.Woodcutting,
+                        SkillType.Fishing, SkillType.Foraging,
+                    },
+                    WeakenedNoPassionSkills = new[]
+                    {
+                        SkillType.Melee, SkillType.Ranged,
+                        SkillType.Magic, SkillType.Defence,
+                    },
+                };
+                var runner = RunnerFactory.CreateBiased(rng, sim.Config, bias, "hub");
+                sim.AddRunner(runner);
+                _visualSyncSystem.BuildWorld();
+            }
+
             // Bank summary
             GUILayout.Space(10);
             GUILayout.Label("<b>Guild Bank</b>", new GUIStyle(GUI.skin.label) { richText = true });
@@ -210,6 +256,12 @@ namespace ProjectGuild.View
 
             GUILayout.EndArea();
             GUI.matrix = matrix;
+        }
+
+        private static string ProgressBar(float progress, int width)
+        {
+            int filled = Mathf.RoundToInt(progress * width);
+            return "[" + new string('=', filled) + new string('-', width - filled) + "]";
         }
     }
 }

@@ -73,6 +73,19 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
+        /// Add a runner to the simulation at runtime. Publishes RunnerCreated.
+        /// </summary>
+        public void AddRunner(Runner runner)
+        {
+            CurrentGameState.Runners.Add(runner);
+            Events.Publish(new RunnerCreated
+            {
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+            });
+        }
+
+        /// <summary>
         /// Initialize a new game with default placeholder starters (for quick testing).
         /// </summary>
         public void StartNewGame(string hubNodeId = "hub")
