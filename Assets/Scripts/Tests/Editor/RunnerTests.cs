@@ -136,12 +136,12 @@ namespace ProjectGuild.Tests
         // ─── RunnerFactory.CreateBiased ──────────────────────────────
 
         [Test]
-        public void RunnerFactory_CreateBiased_GuaranteesPassionOnPoolSkill()
+        public void RunnerFactory_CreateBiased_PickOneSkillGetsPassionAndBoostedLevel()
         {
             var rng = new Random(42);
             var bias = new RunnerFactory.BiasConstraints
             {
-                GuaranteedPassionPool = new[]
+                PickOneSkillToBoostedAndPassionate = new[]
                 {
                     SkillType.Mining, SkillType.Woodcutting,
                     SkillType.Fishing, SkillType.Foraging,
@@ -150,20 +150,19 @@ namespace ProjectGuild.Tests
 
             var runner = RunnerFactory.CreateBiased(rng, _config, bias);
 
-            // At least one gathering skill must have passion
-            bool anyGatheringPassion = false;
-            foreach (var skillType in bias.GuaranteedPassionPool)
+            // Exactly one skill from the pool must have passion + boosted level
+            bool anyPassionate = false;
+            int midpoint = (_config.MinStartingLevel + _config.MaxStartingLevel) / 2;
+            foreach (var skillType in bias.PickOneSkillToBoostedAndPassionate)
             {
                 if (runner.GetSkill(skillType).HasPassion)
                 {
-                    anyGatheringPassion = true;
-                    // And that skill should be in the upper half of the range
-                    int midpoint = (_config.MinStartingLevel + _config.MaxStartingLevel) / 2;
+                    anyPassionate = true;
                     Assert.GreaterOrEqual(runner.GetSkill(skillType).Level, midpoint + 1);
                     break;
                 }
             }
-            Assert.IsTrue(anyGatheringPassion);
+            Assert.IsTrue(anyPassionate);
         }
 
         [Test]

@@ -137,26 +137,27 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Constraints for biased runner generation. Fields left null use default random behavior.
+        /// Each field controls exactly one thing and they compose independently.
         /// </summary>
         public class BiasConstraints
         {
             /// <summary>
-            /// If set, one random skill from this list will be guaranteed to have
-            /// passion and a level in the upper half of the range.
-            /// Currently this is intended to be used for theh tutorial-reward pawn, who's going to be skewed towards 1 gathering skill
+            /// ONE random skill from this pool gets both a boosted level (upper half of range)
+            /// AND passion. Used for the tutorial-reward pawn: e.g. pass in all gathering skills,
+            /// and the pawn will come out with one random gathering skill as their clear specialty.
             /// </summary>
-            public SkillType[] GuaranteedPassionPool;
+            public SkillType[] PickOneSkillToBoostedAndPassionate;
 
             /// <summary>
-            /// Skills in this list will have their levels reduced (lower half of range).
+            /// ALL listed skills get boosted levels (upper half of starting range).
+            /// Does not grant passion — only affects starting level.
+            /// </summary>
+            public SkillType[] BoostedSkills;
+
+            /// <summary>
+            /// ALL listed skills get reduced levels (lower half of starting range).
             /// </summary>
             public SkillType[] WeakenedSkills;
-
-            /// <summary>
-            /// Skills in this list will have their levels boosted (upper half of range).
-            /// Unlike GuaranteedPassionPool, this doesn't grant passion — just higher starting levels.
-            /// </summary>
-            public SkillType[] StrengthenedSkills;
 
             /// <summary>
             /// Optional override name. If null, uses normal name generation.
@@ -180,10 +181,11 @@ namespace ProjectGuild.Simulation.Core
             if (bias.ForcedName != null)
                 runner.Name = bias.ForcedName;
 
+            int midpoint = (config.MinStartingLevel + config.MaxStartingLevel) / 2;
+
             // Weaken specified skills (lower half of starting range)
             if (bias.WeakenedSkills != null)
             {
-                int midpoint = (config.MinStartingLevel + config.MaxStartingLevel) / 2;
                 foreach (var skill in bias.WeakenedSkills)
                 {
                     int idx = (int)skill;
@@ -191,26 +193,23 @@ namespace ProjectGuild.Simulation.Core
                 }
             }
 
-            // Strengthen specified skills (upper half of starting range, no passion)
-            if (bias.StrengthenedSkills != null)
+            // Boost specified skills (upper half of starting range, no passion)
+            if (bias.BoostedSkills != null)
             {
-                int midpoint = (config.MinStartingLevel + config.MaxStartingLevel) / 2;
-                foreach (var skill in bias.StrengthenedSkills)
+                foreach (var skill in bias.BoostedSkills)
                 {
                     int idx = (int)skill;
                     runner.Skills[idx].Level = rng.Next(midpoint + 1, config.MaxStartingLevel + 1);
                 }
             }
 
-            // Guarantee passion + decent level on one random skill from the pool
-            if (bias.GuaranteedPassionPool != null && bias.GuaranteedPassionPool.Length > 0)
+            // Pick one random skill from pool → boosted level + passion
+            if (bias.PickOneSkillToBoostedAndPassionate != null && bias.PickOneSkillToBoostedAndPassionate.Length > 0)
             {
-                var chosen = bias.GuaranteedPassionPool[rng.Next(bias.GuaranteedPassionPool.Length)];
+                var chosen = bias.PickOneSkillToBoostedAndPassionate[
+                    rng.Next(bias.PickOneSkillToBoostedAndPassionate.Length)];
                 int idx = (int)chosen;
                 runner.Skills[idx].HasPassion = true;
-
-                // Upper half of the starting range
-                int midpoint = (config.MinStartingLevel + config.MaxStartingLevel) / 2;
                 runner.Skills[idx].Level = rng.Next(midpoint + 1, config.MaxStartingLevel + 1);
             }
 
