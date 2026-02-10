@@ -156,8 +156,15 @@ namespace ProjectGuild.Simulation.Core
 
             /// <summary>
             /// ALL listed skills get reduced levels (lower half of starting range).
+            /// Does not affect passion — the skill may still randomly have passion.
             /// </summary>
             public SkillType[] WeakenedSkills;
+
+            /// <summary>
+            /// ALL listed skills get reduced levels (lower half of starting range)
+            /// AND passion is removed. The runner has no talent or interest in these skills.
+            /// </summary>
+            public SkillType[] WeakenedNoPassionSkills;
 
             /// <summary>
             /// Optional override name. If null, uses normal name generation.
@@ -183,13 +190,24 @@ namespace ProjectGuild.Simulation.Core
 
             int midpoint = (config.MinStartingLevel + config.MaxStartingLevel) / 2;
 
-            // Weaken specified skills (lower half of starting range)
+            // Weaken specified skills (lower half of starting range, passion untouched)
             if (bias.WeakenedSkills != null)
             {
                 foreach (var skill in bias.WeakenedSkills)
                 {
                     int idx = (int)skill;
                     runner.Skills[idx].Level = rng.Next(config.MinStartingLevel, midpoint + 1);
+                }
+            }
+
+            // Weaken specified skills AND remove passion
+            if (bias.WeakenedNoPassionSkills != null)
+            {
+                foreach (var skill in bias.WeakenedNoPassionSkills)
+                {
+                    int idx = (int)skill;
+                    runner.Skills[idx].Level = rng.Next(config.MinStartingLevel, midpoint + 1);
+                    runner.Skills[idx].HasPassion = false;
                 }
             }
 
