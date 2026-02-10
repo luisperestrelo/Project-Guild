@@ -30,7 +30,6 @@ namespace ProjectGuild.View
                 _visualSyncSystem = GetComponent<VisualSyncSystem>();
             if (_cameraController == null)
                 _cameraController = FindAnyObjectByType<CameraController>();
-//
 
             // Start a new game
             _simulationRunner.StartNewGame();
@@ -95,6 +94,10 @@ namespace ProjectGuild.View
             }
 
             GUILayout.Space(10);
+
+            // Clamp index in case runners were added/removed since last selection
+            if (_selectedRunnerIndex >= sim.CurrentGameState.Runners.Count)
+                _selectedRunnerIndex = 0;
 
             var selected = sim.CurrentGameState.Runners[_selectedRunnerIndex];
 

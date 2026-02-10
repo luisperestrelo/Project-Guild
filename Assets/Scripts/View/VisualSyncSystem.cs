@@ -258,7 +258,7 @@ namespace ProjectGuild.View
 
         private void OnDestroy()
         {
-            Sim?.Events.Unsubscribe<RunnerCreated>(OnRunnerCreated);
+            Sim?.Events?.Unsubscribe<RunnerCreated>(OnRunnerCreated);
         }
     }
 }
