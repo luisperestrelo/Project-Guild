@@ -93,10 +93,10 @@ namespace ProjectGuild.Tests
         {
             float dist = _map.FindPath("hub", "isolated", out var path);
 
-            // No edge path exists, so FindPath falls back to Euclidean distance.
-            // hub=(0,0) to isolated=(50,50) = sqrt(50^2 + 50^2) ≈ 70.71
+            // No edge path exists, so FindPath falls back to Euclidean distance * TravelDistanceScale.
+            // hub=(0,0) to isolated=(50,50) = sqrt(50^2 + 50^2) ≈ 70.71, scaled by default 0.5 ≈ 35.36
             Assert.Greater(dist, 0f);
-            Assert.AreEqual(70.71f, dist, 0.1f);
+            Assert.AreEqual(70.71f * _map.TravelDistanceScale, dist, 0.1f);
             Assert.IsNotNull(path);
             Assert.AreEqual(2, path.Count);
             Assert.AreEqual("hub", path[0]);

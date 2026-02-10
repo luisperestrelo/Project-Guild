@@ -106,25 +106,27 @@ namespace ProjectGuild.Simulation.Core
         {
             return new[]
             {
-                new RunnerFactory.RunnerDefinition { Name = "Aldric Stormwind" }
-                    .WithSkill(SkillType.Melee, 5)
-                    .WithSkill(SkillType.Defence, 4)
+                // Pawn 1: tanky melee fighter (passions: Defence, Melee)
+                new RunnerFactory.RunnerDefinition()
+                    .WithSkill(SkillType.Melee, 5, true)
+                    .WithSkill(SkillType.Defence, 4, true)
                     .WithSkill(SkillType.Hitpoints, 5)
                     .WithSkill(SkillType.Athletics, 3),
 
-                new RunnerFactory.RunnerDefinition { Name = "Lyra Foxglove" }
-                    .WithSkill(SkillType.Ranged, 4)
+                // Pawn 2: agile mage (passions: Magic, Athletics)
+                new RunnerFactory.RunnerDefinition()
+                    .WithSkill(SkillType.Magic, 4, true)
+                    .WithSkill(SkillType.Athletics, 4, true)
                     .WithSkill(SkillType.Hitpoints, 3)
-                    .WithSkill(SkillType.Mining, 3)
-                    .WithSkill(SkillType.Athletics, 4),
+                    .WithSkill(SkillType.Ranged, 2),
 
-                new RunnerFactory.RunnerDefinition { Name = "Corin Ashford" }
-                    .WithSkill(SkillType.Magic, 4)
-                    .WithSkill(SkillType.Restoration, 3)
+                // Pawn 3: healer/precision (passions: Restoration, Execution)
+                new RunnerFactory.RunnerDefinition()
+                    .WithSkill(SkillType.Restoration, 3, true)
+                    .WithSkill(SkillType.Execution, 3, true)
                     .WithSkill(SkillType.Hitpoints, 3)
                     .WithSkill(SkillType.Athletics, 2),
-                // To create a definition with a random name, leave Name as null:
-                // new RunnerFactory.RunnerDefinition().WithSkill(SkillType.Athletics, 17, true)
+                // To create a definition with a forced name, set Name = "Whatever"
 
             }; 
         }
@@ -226,28 +228,81 @@ namespace ProjectGuild.Simulation.Core
         {
             var runner = FindRunner(runnerId);
             if (runner == null || runner.State == RunnerState.Dead) return false;
+
+            // ─── Redirect: runner is already traveling, change destination mid-travel ───
+            if (runner.State == RunnerState.Traveling && runner.Travel != null)
+            {
+                if (targetNodeId == runner.Travel.ToNodeId) return false; // already going there
+
+                var map = CurrentGameState.Map;
+                var fromNode = map.GetNode(runner.Travel.FromNodeId);
+                var toNode = map.GetNode(runner.Travel.ToNodeId);
+                var newTarget = map.GetNode(targetNodeId);
+                if (fromNode == null || toNode == null || newTarget == null) return false;
+
+                // Calculate the runner's virtual position by lerping between origin and destination
+                // using their current travel progress (0.0 = at origin, 1.0 = at destination).
+                //
+                // If the runner already has an overridden start position (from a previous redirect),
+                // lerp from that override instead of the FromNode position.
+                float progress = runner.Travel.Progress;
+                float startX = runner.Travel.StartWorldX ?? fromNode.WorldX;
+                float startZ = runner.Travel.StartWorldZ ?? fromNode.WorldZ;
+                float virtualX = startX + (toNode.WorldX - startX) * progress;
+                float virtualZ = startZ + (toNode.WorldZ - startZ) * progress;
+
+                // Distance from virtual position to new target (Euclidean), scaled for gameplay.
+                float dx = newTarget.WorldX - virtualX;
+                float dz = newTarget.WorldZ - virtualZ;
+                float distToNewTarget = (float)Math.Sqrt(dx * dx + dz * dz) * map.TravelDistanceScale;
+
+                // Store virtual position as the start point so the view can lerp from here
+                // to the new destination without any visual snap/teleport.
+                runner.Travel = new TravelState
+                {
+                    FromNodeId = runner.Travel.FromNodeId,
+                    ToNodeId = targetNodeId,
+                    TotalDistance = distToNewTarget,
+                    DistanceCovered = 0f,
+                    StartWorldX = virtualX,
+                    StartWorldZ = virtualZ,
+                };
+
+                float speed = GetTravelSpeed(runner);
+                Events.Publish(new RunnerStartedTravel
+                {
+                    RunnerId = runner.Id,
+                    FromNodeId = runner.Travel.FromNodeId,
+                    ToNodeId = targetNodeId,
+                    EstimatedDurationSeconds = distToNewTarget / speed,
+                });
+
+                return true;
+            }
+
+            // ─── Normal travel: runner is idle (or gathering — handled by existing guards) ───
             if (runner.CurrentNodeId == targetNodeId) return false;
 
             float distance = CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out var path);
             if (distance < 0) return false;
 
-            string fromNode = runner.CurrentNodeId;
+            string fromNodeId = runner.CurrentNodeId;
             runner.State = RunnerState.Traveling;
             runner.Travel = new TravelState
             {
-                FromNodeId = fromNode,
+                FromNodeId = fromNodeId,
                 ToNodeId = targetNodeId,
                 TotalDistance = distance,
                 DistanceCovered = 0f,
             };
 
-            float speed = GetTravelSpeed(runner);
-            float estimatedDuration = distance / speed;
+            float travelSpeed = GetTravelSpeed(runner);
+            float estimatedDuration = distance / travelSpeed;
 
             Events.Publish(new RunnerStartedTravel
             {
                 RunnerId = runner.Id,
-                FromNodeId = fromNode,
+                FromNodeId = fromNodeId,
                 ToNodeId = targetNodeId,
                 EstimatedDurationSeconds = estimatedDuration,
             });

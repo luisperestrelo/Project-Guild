@@ -116,5 +116,14 @@ namespace ProjectGuild.Simulation.Core
         /// 0.0 to 1.0 progress along the travel path.
         /// </summary>
         public float Progress => TotalDistance > 0 ? DistanceCovered / TotalDistance : 1f;
+
+        /// <summary>
+        /// When set, the view layer uses these coordinates as the travel start point
+        /// instead of the FromNode's world position. Used for redirect so the
+        /// runner's visual position stays continuous (no teleport snap).
+        /// Null means "use FromNode position as usual."
+        /// </summary>
+        public float? StartWorldX;
+        public float? StartWorldZ;
     }
 }

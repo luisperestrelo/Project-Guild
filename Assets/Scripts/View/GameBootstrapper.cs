@@ -63,6 +63,9 @@ namespace ProjectGuild.View
         // ─── Temporary Debug UI ──────────────────────────────────────
         // Simple OnGUI buttons for testing. Will be replaced with proper UI Toolkit later.
 
+        private Vector2 _runnerScrollPos;
+        private Vector2 _zoneScrollPos;
+
         private void OnGUI()
         {
             var sim = _simulationRunner.Simulation;
@@ -73,27 +76,9 @@ namespace ProjectGuild.View
             var matrix = GUI.matrix;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
 
-            float scaledWidth = 300f;
-            float scaledHeight = Screen.height / scale - 20f;
-            GUILayout.BeginArea(new Rect(10, 10, scaledWidth, scaledHeight));
-
-            GUILayout.Label("<b>Project Guild — Phase 1 Debug</b>", new GUIStyle(GUI.skin.label) { richText = true, fontSize = 16 });
-            GUILayout.Space(5);
-
-            // Runner selector
-            GUILayout.Label("Select Runner:");
-            for (int i = 0; i < sim.CurrentGameState.Runners.Count; i++)
-            {
-                var runner = sim.CurrentGameState.Runners[i];
-                string label = $"{runner.Name} [{runner.State}]";
-                if (i == _selectedRunnerIndex)
-                    label = $">> {label} <<";
-
-                if (GUILayout.Button(label))
-                    SelectRunner(i);
-            }
-
-            GUILayout.Space(10);
+            float screenW = Screen.width / scale;
+            float screenH = Screen.height / scale;
+            var richLabel = new GUIStyle(GUI.skin.label) { richText = true };
 
             // Clamp index in case runners were added/removed since last selection
             if (_selectedRunnerIndex >= sim.CurrentGameState.Runners.Count)
@@ -101,25 +86,61 @@ namespace ProjectGuild.View
 
             var selected = sim.CurrentGameState.Runners[_selectedRunnerIndex];
 
-            // Runner info
-            GUILayout.Label($"<b>{selected.Name}</b>", new GUIStyle(GUI.skin.label) { richText = true });
-            GUILayout.Label($"State: {selected.State}");
-            GUILayout.Label($"Location: {selected.CurrentNodeId}");
+            // ─── Top-center: Runner selector (compact table) ───
+            float topH = 140f;
+            float topX = 10f;
+            float topW = screenW - 280f - 30f; // leave room for right skills panel
+            GUILayout.BeginArea(new Rect(topX, 10, topW, topH));
+
+            GUILayout.Label("<b>Project Guild — Debug</b>", new GUIStyle(GUI.skin.label) { richText = true, fontSize = 14 });
+
+            _runnerScrollPos = GUILayout.BeginScrollView(_runnerScrollPos, GUILayout.Height(topH - 30f));
+
+            int runnerColumns = Mathf.Max(1, Mathf.FloorToInt(topW / 200f));
+            int runnerCol = 0;
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < sim.CurrentGameState.Runners.Count; i++)
+            {
+                var runner = sim.CurrentGameState.Runners[i];
+                string stateTag = runner.State.ToString().Substring(0, Mathf.Min(4, runner.State.ToString().Length));
+                string label = i == _selectedRunnerIndex
+                    ? $">> {runner.Name} [{stateTag}]"
+                    : $"{runner.Name} [{stateTag}]";
+
+                if (GUILayout.Button(label, GUILayout.Width(190f), GUILayout.Height(20f)))
+                    SelectRunner(i);
+
+                runnerCol++;
+                if (runnerCol >= runnerColumns)
+                {
+                    runnerCol = 0;
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                }
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+
+            // ─── Left panel: Runner info + Send to (zone list) ───
+            float leftW = 220f;
+            float leftTop = topH + 15f;
+            float leftH = screenH - leftTop - 20f;
+            GUILayout.BeginArea(new Rect(10, leftTop, leftW, leftH));
+
+            // Runner info — always visible
+            GUILayout.Label($"<b>{selected.Name}</b>", richLabel);
+            GUILayout.Label($"State: {selected.State}  |  At: {selected.CurrentNodeId}");
 
             if (selected.State == RunnerState.Traveling && selected.Travel != null)
-            {
-                GUILayout.Label($"Traveling to: {selected.Travel.ToNodeId}");
-                GUILayout.Label($"Progress: {selected.Travel.Progress:P0}");
-            }
+                GUILayout.Label($"Traveling to: {selected.Travel.ToNodeId} ({selected.Travel.Progress:P0})");
 
-            // Gathering state
             if (selected.State == RunnerState.Gathering && selected.Gathering != null)
             {
                 float progress = selected.Gathering.TicksRequired > 0
                     ? selected.Gathering.TickAccumulator / selected.Gathering.TicksRequired
                     : 0f;
-                GUILayout.Label($"Gathering at: {selected.Gathering.NodeId}");
-                GUILayout.Label($"Progress: {progress:P0}");
+                GUILayout.Label($"Gathering at: {selected.Gathering.NodeId} ({progress:P0})");
             }
             else if (selected.Gathering != null && selected.Gathering.SubState != GatheringSubState.Gathering)
             {
@@ -127,11 +148,9 @@ namespace ProjectGuild.View
             }
 
             // Inventory
-            GUILayout.Space(5);
             GUILayout.Label($"Inventory: {selected.Inventory.Slots.Count}/{selected.Inventory.MaxSlots}");
             if (selected.Inventory.Slots.Count > 0)
             {
-                // Summarize items by type
                 var counts = new System.Collections.Generic.Dictionary<string, int>();
                 foreach (var slot in selected.Inventory.Slots)
                 {
@@ -146,21 +165,17 @@ namespace ProjectGuild.View
                 }
             }
 
-            GUILayout.Space(10);
+            GUILayout.Space(5);
 
-            // Stop gathering button — visible when in gather loop (gathering or auto-returning)
+            // Stop gathering button
             if (selected.Gathering != null)
             {
                 if (GUILayout.Button("Stop Gathering"))
-                {
                     sim.CancelGathering(selected.Id);
-                }
             }
 
-            // Commands — context-sensitive based on where the runner is
+            // Gather buttons — context-sensitive
             var currentNode = sim.CurrentGameState.Map.GetNode(selected.CurrentNodeId);
-
-            // Gather buttons — one per gatherable at the current node
             if (selected.State == RunnerState.Idle && currentNode != null && currentNode.Gatherables.Length > 0)
             {
                 for (int g = 0; g < currentNode.Gatherables.Length; g++)
@@ -169,39 +184,54 @@ namespace ProjectGuild.View
                     var itemDef = sim.ItemRegistry?.Get(gatherConfig.ProducedItemId);
                     string itemName = itemDef != null ? itemDef.Name : gatherConfig.ProducedItemId;
                     string levelReq = gatherConfig.MinLevel > 0 ? $" [Lv{gatherConfig.MinLevel}+]" : "";
-                    int gatherIndex = g; // capture for closure
+                    int gatherIndex = g;
                     if (GUILayout.Button($"[{g}] Gather ({itemName}{levelReq})"))
-                    {
                         sim.CommandGather(selected.Id, gatherIndex);
-                    }
                 }
             }
 
-            // Travel commands — show all nodes the runner isn't currently at
-            if (selected.State == RunnerState.Idle)
+            // Zone list — visible when idle OR traveling (traveling = redirect)
+            if (selected.State == RunnerState.Idle || selected.State == RunnerState.Traveling)
             {
-                GUILayout.Label("Send to:");
+                GUILayout.Space(5);
+                string label = selected.State == RunnerState.Traveling ? "<b>Redirect to:</b>" : "<b>Send to:</b>";
+                GUILayout.Label(label, richLabel);
+                _zoneScrollPos = GUILayout.BeginScrollView(_zoneScrollPos);
                 foreach (var node in sim.CurrentGameState.Map.Nodes)
                 {
                     if (node.Id == selected.CurrentNodeId) continue;
+                    // Hide current destination when traveling (already going there)
+                    if (selected.State == RunnerState.Traveling && selected.Travel != null
+                        && node.Id == selected.Travel.ToNodeId) continue;
 
-                    if (GUILayout.Button($"{node.Name} ({node.Id})"))
-                    {
+                    if (GUILayout.Button(node.Name, GUILayout.Height(20f)))
                         sim.CommandTravel(selected.Id, node.Id);
-                    }
                 }
+                GUILayout.EndScrollView();
             }
 
-            // Pawn generation
-            GUILayout.Space(10);
-            GUILayout.Label("<b>Generate Pawn</b>", new GUIStyle(GUI.skin.label) { richText = true });
-            if (GUILayout.Button("Random Pawn"))
+            GUILayout.EndArea();
+
+            // ─── Bottom-center: Pawn generation + Guild Bank ───
+            float bottomH = 130f;
+            float bottomY = screenH - bottomH - 10f;
+            float bottomCenterX = leftW + 20f;
+            float bottomCenterW = screenW - leftW - 280f - 40f;
+            GUILayout.BeginArea(new Rect(bottomCenterX, bottomY, bottomCenterW, bottomH));
+
+            GUILayout.BeginHorizontal();
+
+            // Pawn generation (left half)
+            GUILayout.BeginVertical(GUILayout.Width(bottomCenterW * 0.45f));
+            GUILayout.Label("<b>Generate Pawn</b>", richLabel);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Random"))
             {
                 var rng = new System.Random();
                 var runner = RunnerFactory.Create(rng, sim.Config, "hub");
                 sim.AddRunner(runner);
             }
-            if (GUILayout.Button("Tutorial Reward Pawn"))
+            if (GUILayout.Button("Tutorial"))
             {
                 var rng = new System.Random();
                 var bias = new RunnerFactory.BiasConstraints
@@ -220,10 +250,16 @@ namespace ProjectGuild.View
                 var runner = RunnerFactory.CreateBiased(rng, sim.Config, bias, "hub");
                 sim.AddRunner(runner);
             }
+            GUILayout.EndHorizontal();
+            GUILayout.Space(5);
+            GUILayout.Label($"Tick: {sim.CurrentGameState.TickCount}  |  Time: {sim.CurrentGameState.TotalTimeElapsed:F1}s");
+            GUILayout.EndVertical();
 
-            // Bank summary
             GUILayout.Space(10);
-            GUILayout.Label("<b>Guild Bank</b>", new GUIStyle(GUI.skin.label) { richText = true });
+
+            // Guild Bank (right half)
+            GUILayout.BeginVertical(GUILayout.Width(bottomCenterW * 0.45f));
+            GUILayout.Label("<b>Guild Bank</b>", richLabel);
             if (sim.CurrentGameState.Bank.Stacks.Count == 0)
             {
                 GUILayout.Label("  (empty)");
@@ -237,21 +273,17 @@ namespace ProjectGuild.View
                     GUILayout.Label($"  {name}: {stack.Quantity}");
                 }
             }
+            GUILayout.EndVertical();
 
-            GUILayout.Space(10);
-            GUILayout.Label($"Tick: {sim.CurrentGameState.TickCount}");
-            GUILayout.Label($"Time: {sim.CurrentGameState.TotalTimeElapsed:F1}s");
-
+            GUILayout.EndHorizontal();
             GUILayout.EndArea();
 
             // ─── Right panel: selected runner's skills (always visible) ───
             float skillsPanelWidth = 260f;
-            float skillsPanelX = Screen.width / scale - skillsPanelWidth - 10f;
-            GUILayout.BeginArea(new Rect(skillsPanelX, 10, skillsPanelWidth, scaledHeight));
+            float skillsPanelX = screenW - skillsPanelWidth - 10f;
+            GUILayout.BeginArea(new Rect(skillsPanelX, 10, skillsPanelWidth, screenH - 20f));
 
-            var boldLabel = new GUIStyle(GUI.skin.label) { richText = true };
-
-            GUILayout.Label($"<b>{selected.Name} — Skills</b>", boldLabel);
+            GUILayout.Label($"<b>{selected.Name} — Skills</b>", richLabel);
             for (int s = 0; s < SkillTypeExtensions.SkillCount; s++)
             {
                 var skill = selected.Skills[s];
@@ -261,12 +293,12 @@ namespace ProjectGuild.View
                 float skillProgress = skill.GetLevelProgress(sim.Config);
                 string bar = ProgressBar(skillProgress, 8);
                 float xpToNext = skill.GetXpToNextLevel(sim.Config);
-                GUILayout.Label($"{(SkillType)s}: {skill.Level}{passionMarker}{effectiveStr} {bar} {skill.Xp:F0}/{xpToNext:F0}", boldLabel);
+                GUILayout.Label($"{(SkillType)s}: {skill.Level}{passionMarker}{effectiveStr} {bar} {skill.Xp:F0}/{xpToNext:F0}", richLabel);
             }
 
             // ─── Live Stats ───
             GUILayout.Space(10);
-            GUILayout.Label("<b>Live Stats</b>", boldLabel);
+            GUILayout.Label("<b>Live Stats</b>", richLabel);
 
             // Travel speed
             float athleticsLevel = selected.GetEffectiveLevel(SkillType.Athletics, sim.Config);

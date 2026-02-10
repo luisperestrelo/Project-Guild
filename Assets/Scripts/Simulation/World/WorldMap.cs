@@ -72,6 +72,13 @@ namespace ProjectGuild.Simulation.World
         /// </summary>
         public string HubNodeId;
 
+        /// <summary>
+        /// Multiplier applied to Euclidean distances when no edge path exists.
+        /// Converts map-UI position units into gameplay travel distance.
+        /// Authored edges are NOT affected by this — they already have tuned values.
+        /// </summary>
+        public float TravelDistanceScale = 0.5f;
+
         // Runtime lookups (not serialized)
         [NonSerialized] private Dictionary<string, WorldNode> _nodeLookup;
         [NonSerialized] private Dictionary<string, List<WorldEdge>> _adjacency;
@@ -217,7 +224,7 @@ namespace ProjectGuild.Simulation.World
                 if (euclidean > 0)
                 {
                     path = new List<string> { fromNodeId, toNodeId };
-                    return euclidean;
+                    return euclidean * TravelDistanceScale;
                 }
                 return -1f;
             }

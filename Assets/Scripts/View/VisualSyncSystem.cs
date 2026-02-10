@@ -196,7 +196,10 @@ namespace ProjectGuild.View
 
                 if (fromNode != null && toNode != null)
                 {
-                    Vector3 from = NodeWorldPosition(fromNode);
+                    // Use override start position if set (redirect — avoids visual snap)
+                    Vector3 from = runner.Travel.StartWorldX.HasValue
+                        ? new Vector3(runner.Travel.StartWorldX.Value, 0f, runner.Travel.StartWorldZ.Value)
+                        : NodeWorldPosition(fromNode);
                     Vector3 to = NodeWorldPosition(toNode);
                     return Vector3.Lerp(from, to, runner.Travel.Progress) + RunnerYOffset;
                 }
