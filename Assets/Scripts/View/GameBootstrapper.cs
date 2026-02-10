@@ -1,6 +1,8 @@
 using UnityEngine;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
+using ProjectGuild.Simulation.Items;
+using ProjectGuild.Simulation.World;
 using ProjectGuild.View.Runners;
 
 namespace ProjectGuild.View
@@ -10,7 +12,7 @@ namespace ProjectGuild.View
     /// debug UI for commanding runners. Attach to a GameObject in the scene along
     /// with SimulationRunner and VisualSyncSystem.
     ///
-    /// For Phase 1, this handles: starting a new game, building the visual world,
+    /// Handles: starting a new game, building the visual world,
     /// and providing buttons to send runners to different nodes.
     /// </summary>
     public class GameBootstrapper : MonoBehaviour
@@ -107,18 +109,89 @@ namespace ProjectGuild.View
                 GUILayout.Label($"Progress: {selected.Travel.Progress:P0}");
             }
 
+            // Gathering state
+            if (selected.State == RunnerState.Gathering && selected.Gathering != null)
+            {
+                float progress = selected.Gathering.TicksRequired > 0
+                    ? selected.Gathering.TickAccumulator / selected.Gathering.TicksRequired
+                    : 0f;
+                GUILayout.Label($"Gathering at: {selected.Gathering.NodeId}");
+                GUILayout.Label($"Progress: {progress:P0}");
+            }
+            else if (selected.Gathering != null && selected.Gathering.SubState != GatheringSubState.Gathering)
+            {
+                GUILayout.Label($"Auto-return: {selected.Gathering.SubState}");
+            }
+
+            // Inventory
+            GUILayout.Space(5);
+            GUILayout.Label($"Inventory: {selected.Inventory.Slots.Count}/{selected.Inventory.MaxSlots}");
+            if (selected.Inventory.Slots.Count > 0)
+            {
+                // Summarize items by type
+                var counts = new System.Collections.Generic.Dictionary<string, int>();
+                foreach (var slot in selected.Inventory.Slots)
+                {
+                    if (!counts.ContainsKey(slot.ItemId)) counts[slot.ItemId] = 0;
+                    counts[slot.ItemId] += slot.Quantity;
+                }
+                foreach (var kvp in counts)
+                {
+                    var def = sim.ItemRegistry?.Get(kvp.Key);
+                    string name = def != null ? def.Name : kvp.Key;
+                    GUILayout.Label($"  {name}: {kvp.Value}");
+                }
+            }
+
             GUILayout.Space(10);
 
-            // Travel commands — show all nodes the runner isn't currently at
-            GUILayout.Label("Send to:");
-            foreach (var node in sim.State.Map.Nodes)
-            {
-                if (node.Id == selected.CurrentNodeId) continue;
-                if (selected.State == RunnerState.Traveling) continue;
+            // Commands — context-sensitive based on where the runner is
+            var currentNode = sim.State.Map.GetNode(selected.CurrentNodeId);
 
-                if (GUILayout.Button($"{node.Name} ({node.Id})"))
+            // Gather button — only at gathering nodes, only when idle
+            if (selected.State == RunnerState.Idle && currentNode != null)
+            {
+                var gatherConfig = sim.Config.GetGatherableConfig(currentNode.Type);
+                if (gatherConfig != null)
                 {
-                    sim.CommandTravel(selected.Id, node.Id);
+                    var itemDef = sim.ItemRegistry?.Get(gatherConfig.ProducedItemId);
+                    string itemName = itemDef != null ? itemDef.Name : gatherConfig.ProducedItemId;
+                    if (GUILayout.Button($"Gather ({itemName})"))
+                    {
+                        sim.CommandGather(selected.Id);
+                    }
+                }
+            }
+
+            // Travel commands — show all nodes the runner isn't currently at
+            if (selected.State == RunnerState.Idle)
+            {
+                GUILayout.Label("Send to:");
+                foreach (var node in sim.State.Map.Nodes)
+                {
+                    if (node.Id == selected.CurrentNodeId) continue;
+
+                    if (GUILayout.Button($"{node.Name} ({node.Id})"))
+                    {
+                        sim.CommandTravel(selected.Id, node.Id);
+                    }
+                }
+            }
+
+            // Bank summary
+            GUILayout.Space(10);
+            GUILayout.Label("<b>Guild Bank</b>", new GUIStyle(GUI.skin.label) { richText = true });
+            if (sim.State.Bank.Stacks.Count == 0)
+            {
+                GUILayout.Label("  (empty)");
+            }
+            else
+            {
+                foreach (var stack in sim.State.Bank.Stacks)
+                {
+                    var def = sim.ItemRegistry?.Get(stack.ItemId);
+                    string name = def != null ? def.Name : stack.ItemId;
+                    GUILayout.Label($"  {name}: {stack.Quantity}");
                 }
             }
 

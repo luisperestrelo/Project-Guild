@@ -1,5 +1,8 @@
 using UnityEngine;
 using ProjectGuild.Simulation.Core;
+using ProjectGuild.Simulation.Gathering;
+using ProjectGuild.Simulation.Items;
+using ProjectGuild.Simulation.World;
 
 namespace ProjectGuild.Data
 {
@@ -47,6 +50,17 @@ namespace ProjectGuild.Data
         [Range(0f, 1f)]
         public float EasterEggNameChance = 0.02f;
 
+        [Header("Gathering")]
+        [Tooltip("Global multiplier on gathering speed. 1.0 = normal, 0.5 = twice as fast")]
+        public float GlobalGatheringSpeedMultiplier = 1.0f;
+
+        [Tooltip("Per-level speed scaling for gathering. Each level beyond 1 reduces gather time")]
+        public float GatheringSkillSpeedPerLevel = 0.03f;
+
+        [Header("Inventory")]
+        [Tooltip("Number of inventory slots per runner (OSRS-style: 28)")]
+        public int InventorySize = 28;
+
         [Header("Death (Overworld Only)")]
         [Tooltip("Minimum respawn time in seconds, even if the runner dies right next to hub")]
         public float DeathRespawnBaseTime = 10f;
@@ -72,6 +86,9 @@ namespace ProjectGuild.Data
                 MaxStartingLevel = MaxStartingLevel,
                 PassionChance = PassionChance,
                 EasterEggNameChance = EasterEggNameChance,
+                GlobalGatheringSpeedMultiplier = GlobalGatheringSpeedMultiplier,
+                GatheringSkillSpeedPerLevel = GatheringSkillSpeedPerLevel,
+                InventorySize = InventorySize,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
                 DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,
             };

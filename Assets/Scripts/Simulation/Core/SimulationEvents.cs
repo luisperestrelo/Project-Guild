@@ -31,6 +31,34 @@ namespace ProjectGuild.Simulation.Core
         public string NodeId;
     }
 
+    // ─── Gathering Events ────────────────────────────────────────
+
+    public struct GatheringStarted
+    {
+        public string RunnerId;
+        public string NodeId;
+        public string ItemId;
+        public SkillType Skill;
+    }
+
+    public struct ItemGathered
+    {
+        public string RunnerId;
+        public string ItemId;
+        public int InventoryFreeSlots;
+    }
+
+    public struct InventoryFull
+    {
+        public string RunnerId;
+    }
+
+    public struct RunnerDeposited
+    {
+        public string RunnerId;
+        public int ItemsDeposited;
+    }
+
     // ─── Simulation Lifecycle ────────────────────────────────────
 
     public struct SimulationTickCompleted

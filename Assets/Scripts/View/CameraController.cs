@@ -13,6 +13,10 @@ namespace ProjectGuild.View
     ///
     /// Call SetTarget() to snap to a different runner.
     /// Uses the New Input System (InputAction inline definitions).
+    /// TODO: RTS/Moba-like camera within a node, shouldn't have to always be locked to a pawn
+    /// But maybe we do want that (since that's how a raid leader in WoW observes the raid, might be a cool 'marketing hook'
+    /// Nonetheless, let's try having the rts/moba camera and see what's up, can always just disable it
+    /// I'll implement this when we have proper instanced nodes - delete this comment then
     /// </summary>
     public class CameraController : MonoBehaviour
     {
@@ -55,6 +59,8 @@ namespace ProjectGuild.View
         /// <summary>
         /// Instantly teleport camera to the correct orbit position around the current target.
         /// Preserves current yaw, pitch, and distance — just changes what we're looking at.
+        /// The player can rotate the camera themselves if the angle they land at is weird
+        /// Otherwise, we can potentially (small-TODO) adjust it slightly so angles aren't weird, but likely not for v1
         /// </summary>
         private void SnapToTarget()
         {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectGuild.Simulation.Items;
 
 namespace ProjectGuild.Simulation.Core
 {
@@ -35,6 +36,7 @@ namespace ProjectGuild.Simulation.Core
 
         private static readonly string[] EasterEggNames =
         {
+            "IMJUNGROAN", "Krillson"
             // Full names go here. These are rolled as-is (no first+last combination).
             // Example: "Luis Perestrelo"
         };
@@ -53,6 +55,7 @@ namespace ProjectGuild.Simulation.Core
                 Name = GenerateName(rng, config),
                 State = RunnerState.Idle,
                 CurrentNodeId = startingNodeId,
+                Inventory = new Inventory(config.InventorySize),
             };
 
             for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
@@ -100,7 +103,8 @@ namespace ProjectGuild.Simulation.Core
         /// <summary>
         /// Create a runner from an exact definition. No RNG involved.
         /// </summary>
-        public static Runner CreateFromDefinition(RunnerDefinition def, string startingNodeId = "hub")
+        public static Runner CreateFromDefinition(RunnerDefinition def, string startingNodeId = "hub",
+            int inventorySize = 28)
         {
             var runner = new Runner
             {
@@ -108,6 +112,7 @@ namespace ProjectGuild.Simulation.Core
                 Name = def.Name,
                 State = RunnerState.Idle,
                 CurrentNodeId = startingNodeId,
+                Inventory = new Inventory(inventorySize),
             };
 
             for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
@@ -127,8 +132,9 @@ namespace ProjectGuild.Simulation.Core
         public class BiasConstraints
         {
             /// <summary>
-            /// If set, one random gathering skill from this list will be guaranteed to have
+            /// If set, one random skill from this list will be guaranteed to have
             /// passion and a level in the upper half of the range.
+            /// Currently this is intended to be used for theh tutorial-reward pawn, who's going to be skewed towards 1 gathering skill
             /// </summary>
             public SkillType[] GuaranteedPassionPool;
 

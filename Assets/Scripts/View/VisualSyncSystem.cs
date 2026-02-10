@@ -183,6 +183,7 @@ namespace ProjectGuild.View
         /// <summary>
         /// Calculate the world position of a runner based on their simulation state.
         /// If traveling, interpolates between the from/to node positions.
+        /// TODO: Remove this off-set once we have proper visuals, just make the visuals of the runner prefab be offset.
         /// </summary>
         private static readonly Vector3 RunnerYOffset = new(0f, 1f, 0f);
 

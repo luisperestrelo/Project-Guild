@@ -49,3 +49,7 @@ crashlytics-build.properties
 /.gradle/
 **/build/
 local.properties
+
+# Architecture doc (kept local, not tracked)
+Assets/Scripts/ARCHITECTURE.md
+Assets/Scripts/ARCHITECTURE.md.meta

@@ -1,4 +1,5 @@
 using System;
+using ProjectGuild.Simulation.Items;
 
 namespace ProjectGuild.Simulation.Core
 {
@@ -22,7 +23,7 @@ namespace ProjectGuild.Simulation.Core
     /// - Identity: unique ID, name
     /// - 15 skills (each with level, XP, optional passion)
     /// - Current state and location in the world
-    /// - Inventory (TODO)
+    /// - Inventory (OSRS-style 28-slot)
     /// - Equipment (TODO)
     /// - Macro Automation rules (TODO)
     /// - Micro Automation rules (TODO)
@@ -38,8 +39,14 @@ namespace ProjectGuild.Simulation.Core
         // Skills stored as an array indexed by SkillType enum value
         public Skill[] Skills;
 
+        // Inventory — initialized by RunnerFactory with MaxSlots from config
+        public Inventory Inventory;
+
         // Travel state (populated when State == Traveling)
         public TravelState Travel;
+
+        // Gathering state (populated when State == Gathering)
+        public GatheringState Gathering;
 
         public Runner()
         {
@@ -64,6 +71,29 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float GetEffectiveLevel(SkillType type, SimulationConfig config) =>
             Skills[(int)type].GetEffectiveLevel(config);
+    }
+
+    /// <summary>
+    /// Sub-state for the auto-return loop during gathering.
+    /// </summary>
+    public enum GatheringSubState
+    {
+        Gathering,        // Actively gathering at the node
+        TravelingToBank,  // Inventory full, heading to hub to deposit
+        TravelingToNode,  // Deposited, heading back to resume gathering
+    }
+
+    /// <summary>
+    /// State tracked while a runner is gathering resources.
+    /// Persists across the auto-return loop (gather -> deposit -> return -> resume).
+    /// </summary>
+    [Serializable]
+    public class GatheringState
+    {
+        public string NodeId;
+        public float TickAccumulator;
+        public float TicksRequired;
+        public GatheringSubState SubState;
     }
 
     /// <summary>
