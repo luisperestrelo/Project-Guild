@@ -50,6 +50,8 @@ crashlytics-build.properties
 **/build/
 local.properties
 
-# Architecture doc (kept local, not tracked)
+# Local docs (kept local, not tracked)
 Assets/Scripts/ARCHITECTURE.md
 Assets/Scripts/ARCHITECTURE.md.meta
+DESIGN.md
+
