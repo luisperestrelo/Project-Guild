@@ -199,8 +199,8 @@ namespace ProjectGuild.View
                 _zoneScrollPos = GUILayout.BeginScrollView(_zoneScrollPos);
                 foreach (var node in sim.CurrentGameState.Map.Nodes)
                 {
-                    if (node.Id == selected.CurrentNodeId) continue;
-                    // Hide current destination when traveling (already going there)
+                    // Idle: hide the node we're standing at. Traveling: hide current destination.
+                    if (selected.State == RunnerState.Idle && node.Id == selected.CurrentNodeId) continue;
                     if (selected.State == RunnerState.Traveling && selected.Travel != null
                         && node.Id == selected.Travel.ToNodeId) continue;
 
