@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.World;
@@ -164,6 +165,19 @@ namespace ProjectGuild.Tests
             Assert.AreEqual("mine", received.Value.NodeId);
             Assert.AreEqual("copper_ore", received.Value.ItemId);
             Assert.AreEqual(SkillType.Mining, received.Value.Skill);
+        }
+
+        [Test]
+        public void CommandGather_CreatesDefaultAssignment()
+        {
+            SetupRunnerAtMine();
+
+            _sim.CommandGather(_runner.Id);
+
+            Assert.IsNotNull(_runner.Assignment,
+                "CommandGather should create a default assignment when none exists");
+            Assert.AreEqual(AssignmentType.Gather, _runner.Assignment.Type);
+            Assert.AreEqual("mine", _runner.Assignment.TargetNodeId);
         }
 
         // ─── Item production ───────────────────────────────────────
@@ -363,7 +377,7 @@ namespace ProjectGuild.Tests
                 "Passion should increase effective level, resulting in fewer ticks");
         }
 
-        // ─── Inventory full -> auto-return ─────────────────────────
+        // ─── Inventory full -> auto-return (assignment-driven) ──────
 
         [Test]
         public void Gathering_InventoryFull_PublishesEvent()
@@ -389,11 +403,11 @@ namespace ProjectGuild.Tests
 
             TickUntilInventoryFull();
 
+            // With assignment-driven logic: inventory full → stop gathering → Idle
+            // → AdvanceMacroStep → TravelTo(hub) → Traveling
             Assert.AreEqual(RunnerState.Traveling, _runner.State,
                 "Runner should start traveling to hub after inventory fills");
             Assert.AreEqual("hub", _runner.Travel.ToNodeId);
-            Assert.IsNotNull(_runner.Gathering);
-            Assert.AreEqual(GatheringSubState.TravelingToBank, _runner.Gathering.SubState);
         }
 
         [Test]
@@ -417,10 +431,10 @@ namespace ProjectGuild.Tests
             // Inventory should be empty after deposit
             Assert.AreEqual(0, _runner.Inventory.CountItem("copper_ore"));
 
-            // Runner should be heading back to the mine (or already there gathering)
+            // Runner should be heading back to the mine (or already gathering again)
             Assert.IsTrue(
-                _runner.Gathering.SubState == GatheringSubState.TravelingToNode ||
-                _runner.Gathering.SubState == GatheringSubState.Gathering,
+                _runner.State == RunnerState.Traveling ||
+                _runner.State == RunnerState.Gathering,
                 "Runner should be heading back or already gathering again");
         }
 
@@ -434,12 +448,10 @@ namespace ProjectGuild.Tests
             TickUntil(() =>
                 _runner.CurrentNodeId == "mine"
                 && _runner.State == RunnerState.Gathering
-                && _runner.Gathering?.SubState == GatheringSubState.Gathering
                 && _sim.CurrentGameState.Bank.CountItem("copper_ore") > 0);
 
             Assert.AreEqual("mine", _runner.CurrentNodeId);
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
-            Assert.AreEqual(GatheringSubState.Gathering, _runner.Gathering.SubState);
 
             // Bank should have the first batch
             Assert.AreEqual(_config.InventorySize, _sim.CurrentGameState.Bank.CountItem("copper_ore"));

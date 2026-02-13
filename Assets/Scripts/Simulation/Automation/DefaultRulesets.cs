@@ -1,29 +1,35 @@
 namespace ProjectGuild.Simulation.Automation
 {
     /// <summary>
-    /// Factory methods for default rulesets. New runners get a default ruleset
-    /// that replicates the current hardcoded behavior.
+    /// Factory methods for default rulesets assigned to new runners.
     /// </summary>
     public static class DefaultRulesets
     {
         /// <summary>
-        /// Default gathering ruleset:
-        ///   1. IF InventoryFull THEN DepositAndResume
-        ///
-        /// Auto-gathering is NOT a rule — it's implicit default behavior in the sim.
-        /// Idle runners at nodes with gatherables automatically start gathering.
-        /// This keeps the player's rule list clean and focused on real decisions.
+        /// Default macro ruleset: empty.
+        /// The assignment's task sequence handles the gather→deposit→repeat loop.
+        /// Macro rules are for assignment *changes* — the player adds them when they want
+        /// condition-based switching (e.g. "IF BankContains(copper) >= 200 THEN switch to oak").
         /// </summary>
-        public static Ruleset CreateGathererDefault()
+        public static Ruleset CreateDefaultMacro()
+        {
+            return new Ruleset();
+        }
+
+        /// <summary>
+        /// Default micro ruleset: Always → GatherHere(0).
+        /// This is the "mine copper" / "spam fireball" equivalent.
+        /// Visible, editable, communicates what the pawn does within a task.
+        /// </summary>
+        public static Ruleset CreateDefaultMicro()
         {
             var ruleset = new Ruleset();
 
             ruleset.Rules.Add(new Rule
             {
-                Label = "Deposit when full",
-                Conditions = { Condition.InventoryFull() },
-                Action = AutomationAction.DepositAndResume(),
-                FinishCurrentTrip = false, // Already full, nothing to finish
+                Label = "Gather resource",
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherHere(0),
                 Enabled = true,
             });
 

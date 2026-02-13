@@ -69,8 +69,24 @@ namespace ProjectGuild.Simulation.Core
         public int ItemsDeposited;
     }
 
+    // ─── Assignment Events ────────────────────────────────────────
+
+    public struct AssignmentChanged
+    {
+        public string RunnerId;
+        public Automation.AssignmentType NewType;
+        public string TargetNodeId;
+        public string Reason;
+    }
+
+    public struct AssignmentStepAdvanced
+    {
+        public string RunnerId;
+        public Automation.TaskStepType StepType;
+        public int StepIndex;
+    }
+
     // ─── Automation Events ───────────────────────────────────────
-    // Not published yet — Phase 4 (macro layer) will wire these up.
 
     public struct AutomationRuleFired
     {

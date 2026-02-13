@@ -161,6 +161,14 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public int InventorySize = 28;
 
+        // ─── Deposit ────────────────────────────────────────────────
+
+        /// <summary>
+        /// How many ticks the deposit step takes. At 10 ticks/sec, 10 = 1 second.
+        /// Gives time for a "walk into bank" animation in the view layer.
+        /// </summary>
+        public int DepositDurationTicks = 10;
+
         // ─── Automation ──────────────────────────────────────────────
 
         /// <summary>

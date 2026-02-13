@@ -65,7 +65,8 @@ namespace ProjectGuild.Simulation.Core
                 runner.Skills[i].HasPassion = rng.NextDouble() < config.PassionChance;
             }
 
-            runner.Ruleset = DefaultRulesets.CreateGathererDefault();
+            runner.MacroRuleset = DefaultRulesets.CreateDefaultMacro();
+            runner.MicroRuleset = DefaultRulesets.CreateDefaultMicro();
             return runner;
         }
 
@@ -132,7 +133,8 @@ namespace ProjectGuild.Simulation.Core
                 runner.Skills[i].HasPassion = def.SkillPassions[i];
             }
 
-            runner.Ruleset = DefaultRulesets.CreateGathererDefault();
+            runner.MacroRuleset = DefaultRulesets.CreateDefaultMacro();
+            runner.MicroRuleset = DefaultRulesets.CreateDefaultMicro();
             return runner;
         }
 

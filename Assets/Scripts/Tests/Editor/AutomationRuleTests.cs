@@ -281,32 +281,32 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(-1, result);
         }
 
-        // ─── Default ruleset ────────────────────────────────
+        // ─── Default rulesets ────────────────────────────────
 
         [Test]
-        public void DefaultGatherer_InventoryFull_FiresDepositRule()
+        public void DefaultMacro_IsEmpty()
         {
-            var itemDef = new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore);
-            for (int i = 0; i < 28; i++)
-                _runner.Inventory.TryAdd(itemDef);
-
-            var ruleset = DefaultRulesets.CreateGathererDefault();
-            _ctx = new EvaluationContext(_runner, _gameState, _config);
-            int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
-
-            Assert.AreEqual(0, result);
-            Assert.AreEqual(ActionType.DepositAndResume, ruleset.Rules[result].Action.Type);
+            var ruleset = DefaultRulesets.CreateDefaultMacro();
+            Assert.AreEqual(0, ruleset.Rules.Count,
+                "Default macro ruleset should be empty — assignment handles the loop");
         }
 
         [Test]
-        public void DefaultGatherer_InventoryNotFull_NoRuleFires()
+        public void DefaultMicro_HasGatherHereRule()
         {
-            // Auto-gathering is implicit sim behavior, not a rule.
-            // With inventory not full, no rules should match.
-            var ruleset = DefaultRulesets.CreateGathererDefault();
-            int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
+            var ruleset = DefaultRulesets.CreateDefaultMicro();
+            Assert.AreEqual(1, ruleset.Rules.Count);
+            Assert.AreEqual(ActionType.GatherAt, ruleset.Rules[0].Action.Type);
+            Assert.AreEqual(0, ruleset.Rules[0].Action.IntParam,
+                "Default micro rule should gather index 0");
+        }
 
-            Assert.AreEqual(-1, result);
+        [Test]
+        public void DefaultMicro_AlwaysMatches()
+        {
+            var ruleset = DefaultRulesets.CreateDefaultMicro();
+            int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
+            Assert.AreEqual(0, result, "Default micro's Always rule should always match");
         }
 
         // ─── DeepCopy ───────────────────────────────────────
@@ -314,7 +314,7 @@ namespace ProjectGuild.Tests
         [Test]
         public void DeepCopy_ProducesIndependentCopy()
         {
-            var original = DefaultRulesets.CreateGathererDefault();
+            var original = DefaultRulesets.CreateDefaultMicro();
             var copy = original.DeepCopy();
 
             // Modify original
@@ -327,8 +327,8 @@ namespace ProjectGuild.Tests
             });
 
             // Copy should be unchanged
-            Assert.AreEqual("Deposit when full", copy.Rules[0].Label);
-            Assert.IsNull(copy.Rules[0].Action.StringParam);
+            Assert.AreEqual("Gather resource", copy.Rules[0].Label);
+            Assert.AreEqual("", copy.Rules[0].Action.StringParam);
             Assert.AreEqual(1, copy.Rules.Count);
         }
 

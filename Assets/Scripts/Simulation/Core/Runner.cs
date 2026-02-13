@@ -12,6 +12,7 @@ namespace ProjectGuild.Simulation.Core
         Idle,
         Traveling,
         Gathering,
+        Depositing,
         Crafting,
         Fighting,
         Dead,
@@ -26,7 +27,9 @@ namespace ProjectGuild.Simulation.Core
     /// - Current state and location in the world
     /// - Inventory (OSRS-style 28-slot)
     /// - Equipment (TODO)
-    /// - Automation ruleset (priority rules for behavior)
+    /// - Assignment (macro layer): what task sequence to execute
+    /// - MacroRuleset: rules that change assignments based on conditions
+    /// - MicroRuleset: rules for within-task behavior (e.g. which resource to gather)
     /// </summary>
     [Serializable]
     public class Runner
@@ -48,8 +51,34 @@ namespace ProjectGuild.Simulation.Core
         // Gathering state (populated when State == Gathering)
         public GatheringState Gathering;
 
-        // Automation ruleset — data only for Phase 3. Phase 4 (macro layer) activates evaluation.
-        public Ruleset Ruleset;
+        // Depositing state (populated when State == Depositing)
+        public DepositingState Depositing;
+
+        // ─── Automation ────────────────────────────────────────────
+
+        /// <summary>
+        /// Current macro assignment — the task sequence this runner is executing.
+        /// Null means no assignment (runner is idle with no standing orders).
+        /// </summary>
+        public Assignment Assignment;
+
+        /// <summary>
+        /// Deferred assignment from a FinishCurrentTrip rule.
+        /// Applied when the current loop cycle completes.
+        /// </summary>
+        public Assignment PendingAssignment;
+
+        /// <summary>
+        /// Rules that change the assignment based on conditions
+        /// (e.g. BankContains threshold → switch gathering target).
+        /// </summary>
+        public Ruleset MacroRuleset;
+
+        /// <summary>
+        /// Rules for within-task behavior — which resource to gather,
+        /// combat rotations, etc. Evaluated during the relevant task step.
+        /// </summary>
+        public Ruleset MicroRuleset;
 
         public Runner()
         {
@@ -77,18 +106,9 @@ namespace ProjectGuild.Simulation.Core
     }
 
     /// <summary>
-    /// Sub-state for the auto-return loop during gathering.
-    /// </summary>
-    public enum GatheringSubState
-    {
-        Gathering,        // Actively gathering at the node
-        TravelingToBank,  // Inventory full, heading to hub to deposit
-        TravelingToNode,  // Deposited, heading back to resume gathering
-    }
-
-    /// <summary>
     /// State tracked while a runner is gathering resources.
-    /// Persists across the auto-return loop (gather -> deposit -> return -> resume).
+    /// Simplified from Phase 2 — no longer tracks sub-state for the auto-return loop.
+    /// The macro layer (Assignment) handles the gather→deposit→return cycle.
     /// </summary>
     [Serializable]
     public class GatheringState
@@ -96,12 +116,21 @@ namespace ProjectGuild.Simulation.Core
         public string NodeId;
         /// <summary>
         /// Which gatherable in the node's Gatherables[] array the runner is working on.
-        /// Set by CommandGather; preserved across auto-return trips.
+        /// Set by CommandGather; the micro layer can override this.
         /// </summary>
         public int GatherableIndex;
         public float TickAccumulator;
         public float TicksRequired;
-        public GatheringSubState SubState;
+    }
+
+    /// <summary>
+    /// State tracked while a runner is depositing at the hub.
+    /// Simple countdown — when TicksRemaining hits 0, items are deposited.
+    /// </summary>
+    [Serializable]
+    public class DepositingState
+    {
+        public int TicksRemaining;
     }
 
     /// <summary>

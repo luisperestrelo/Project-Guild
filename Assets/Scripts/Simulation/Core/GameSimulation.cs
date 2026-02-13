@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.World;
@@ -13,9 +14,9 @@ namespace ProjectGuild.Simulation.Core
     /// This class is pure C# — no Unity dependency. The Bridge layer's
     /// SimulationRunner MonoBehaviour calls Tick() at a fixed rate.
     ///
-    /// Automation note: The rule engine (Simulation/Automation/) exists as a foundation
-    /// but is NOT integrated into the tick loop yet. Phase 4 (macro layer) will wire
-    /// task assignment and rule evaluation into the simulation.
+    /// The macro layer (Assignment + task steps) drives the gather→deposit→return loop.
+    /// Micro rules evaluate within task steps (e.g. which resource to gather).
+    /// Macro rules (Batch C) will change assignments based on conditions.
     /// </summary>
     public class GameSimulation
     {
@@ -23,6 +24,8 @@ namespace ProjectGuild.Simulation.Core
         public EventBus Events { get; private set; }
         public SimulationConfig Config { get; private set; }
         public ItemRegistry ItemRegistry { get; private set; }
+
+
 
         /// <summary>
         /// Seconds per simulation tick. At 10 ticks/sec this is 0.1.
@@ -152,6 +155,8 @@ namespace ProjectGuild.Simulation.Core
             switch (runner.State)
             {
                 case RunnerState.Idle:
+                    // Idle runner with an assignment → advance macro step
+                    AdvanceMacroStep(runner);
                     break;
 
                 case RunnerState.Traveling:
@@ -160,6 +165,10 @@ namespace ProjectGuild.Simulation.Core
 
                 case RunnerState.Gathering:
                     TickGathering(runner);
+                    break;
+
+                case RunnerState.Depositing:
+                    TickDepositing(runner);
                     break;
             }
         }
@@ -193,7 +202,7 @@ namespace ProjectGuild.Simulation.Core
 
             if (runner.Travel.DistanceCovered >= runner.Travel.TotalDistance)
             {
-                // Arrived
+                // Arrived — set idle, macro step will handle what's next
                 runner.CurrentNodeId = runner.Travel.ToNodeId;
                 runner.State = RunnerState.Idle;
 
@@ -206,8 +215,8 @@ namespace ProjectGuild.Simulation.Core
                     NodeId = arrivedNodeId,
                 });
 
-                // Check if this runner is mid-gathering auto-return loop
-                HandleGatheringArrival(runner, arrivedNodeId);
+                // Immediately try to advance macro step now that we're idle
+                AdvanceMacroStep(runner);
             }
         }
 
@@ -358,6 +367,27 @@ namespace ProjectGuild.Simulation.Core
                 }
             }
 
+            // If no assignment exists, create a default gather assignment for backward compat
+            // (debug UI "Gather" button or direct commands). This ensures the auto-return
+            // loop works even without an explicit AssignRunner call.
+            if (runner.Assignment == null)
+            {
+                string hubNodeId = CurrentGameState.Map?.HubNodeId;
+                if (hubNodeId != null)
+                {
+                    runner.Assignment = Assignment.CreateGatherLoop(runner.CurrentNodeId, hubNodeId, gatherableIndex);
+                    // Set to step 1 (Gather) — we're about to start gathering.
+                    // When inventory fills, TickGathering will advance past it.
+                    runner.Assignment.CurrentStepIndex = 1;
+                }
+            }
+
+            StartGathering(runner, gatherableIndex, gatherableConfig);
+            return true;
+        }
+
+        private void StartGathering(Runner runner, int gatherableIndex, GatherableConfig gatherableConfig)
+        {
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
 
             runner.State = RunnerState.Gathering;
@@ -367,7 +397,6 @@ namespace ProjectGuild.Simulation.Core
                 GatherableIndex = gatherableIndex,
                 TickAccumulator = 0f,
                 TicksRequired = ticksRequired,
-                SubState = GatheringSubState.Gathering,
             };
 
             Events.Publish(new GatheringStarted
@@ -377,8 +406,6 @@ namespace ProjectGuild.Simulation.Core
                 ItemId = gatherableConfig.ProducedItemId,
                 Skill = gatherableConfig.RequiredSkill,
             });
-
-            return true;
         }
 
         private float CalculateTicksRequired(Runner runner, GatherableConfig gatherable)
@@ -402,8 +429,7 @@ namespace ProjectGuild.Simulation.Core
 
         private void TickGathering(Runner runner)
         {
-            if (runner.Gathering == null || runner.Gathering.SubState != GatheringSubState.Gathering)
-                return;
+            if (runner.Gathering == null) return;
 
             var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
             if (node == null || runner.Gathering.GatherableIndex >= node.Gatherables.Length) return;
@@ -446,19 +472,207 @@ namespace ProjectGuild.Simulation.Core
                     });
                 }
 
-                // Inventory full — hardcoded auto-return (Phase 4 will replace with macro automation)
+                // Inventory full — stop gathering, go idle. Advance past Gather step.
                 if (runner.Inventory.IsFull(itemDef))
                 {
                     Events.Publish(new InventoryFull { RunnerId = runner.Id });
-                    BeginAutoReturn(runner);
+
+                    runner.State = RunnerState.Idle;
+                    runner.Gathering = null;
+
+                    // Advance past the Gather step so AdvanceMacroStep picks up the next one
+                    if (runner.Assignment != null)
+                    {
+                        runner.Assignment.AdvanceStep();
+                        PublishStepAdvanced(runner, runner.Assignment);
+                    }
+
+                    AdvanceMacroStep(runner);
                 }
             }
         }
 
-        // ─── Auto-Return Loop ────────────────────────────────────────
-        // Hardcoded deposit-and-return behavior. Phase 4 (macro layer) will replace
-        // this with task-driven automation where the deposit loop is an explicit
-        // task sequence rather than a baked-in gathering sub-state machine.
+        // ─── Macro Layer: Assignment + Step Logic ───────────────────
+
+        /// <summary>
+        /// Assign a runner to a new task sequence. Cancels current activity,
+        /// publishes AssignmentChanged, and starts executing the first step.
+        /// </summary>
+        public void AssignRunner(string runnerId, Assignment assignment, string reason = "")
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+
+            // Cancel current activity
+            runner.Gathering = null;
+            runner.Travel = null;
+            runner.Depositing = null;
+            runner.State = RunnerState.Idle;
+
+            runner.Assignment = assignment;
+
+            Events.Publish(new AssignmentChanged
+            {
+                RunnerId = runner.Id,
+                NewType = assignment?.Type ?? AssignmentType.Idle,
+                TargetNodeId = assignment?.TargetNodeId,
+                Reason = reason,
+            });
+
+            // Start executing the first step
+            AdvanceMacroStep(runner);
+        }
+
+        /// <summary>
+        /// Execute the current step of the runner's assignment.
+        /// Called when the runner becomes Idle (after arriving, after depositing, etc.).
+        /// </summary>
+        private void AdvanceMacroStep(Runner runner)
+        {
+            if (runner.State != RunnerState.Idle) return;
+
+            var assignment = runner.Assignment;
+            if (assignment == null) return;
+
+            var step = assignment.CurrentStep;
+            if (step == null) return;
+
+            switch (step.Type)
+            {
+                case TaskStepType.TravelTo:
+                    ExecuteTravelStep(runner, step, assignment);
+                    break;
+
+                case TaskStepType.Gather:
+                    ExecuteGatherStep(runner, assignment);
+                    break;
+
+                case TaskStepType.Deposit:
+                    ExecuteDepositStep(runner, assignment);
+                    break;
+            }
+        }
+
+        private void ExecuteTravelStep(Runner runner, TaskStep step, Assignment assignment)
+        {
+            // Already at target? Step is done — advance past it and handle next.
+            if (runner.CurrentNodeId == step.TargetNodeId)
+            {
+                if (assignment.AdvanceStep())
+                {
+                    PublishStepAdvanced(runner, assignment);
+                    AdvanceMacroStep(runner); // recurse for next step
+                }
+                return;
+            }
+
+            // Start traveling. Step index stays on TravelTo so the display
+            // correctly shows what the runner is doing. When travel completes
+            // (Idle → AdvanceMacroStep), it will see "already at target" and advance.
+            StartTravelInternal(runner, step.TargetNodeId);
+        }
+
+        private void ExecuteGatherStep(Runner runner, Assignment assignment)
+        {
+            var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
+            if (node == null || node.Gatherables.Length == 0)
+            {
+                // Can't gather here — skip step
+                if (assignment.AdvanceStep())
+                {
+                    PublishStepAdvanced(runner, assignment);
+                    AdvanceMacroStep(runner);
+                }
+                return;
+            }
+
+            // Use the assignment's default gatherable index
+            // (Batch B will add micro rule evaluation here)
+            int gatherableIndex = assignment.GatherableIndex;
+            if (gatherableIndex < 0 || gatherableIndex >= node.Gatherables.Length)
+                gatherableIndex = 0;
+
+            var gatherableConfig = node.Gatherables[gatherableIndex];
+
+            // Check skill level requirement
+            if (gatherableConfig.MinLevel > 0)
+            {
+                var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
+                if (skill.Level < gatherableConfig.MinLevel)
+                {
+                    // Can't gather — skip
+                    if (assignment.AdvanceStep())
+                    {
+                        PublishStepAdvanced(runner, assignment);
+                        AdvanceMacroStep(runner);
+                    }
+                    return;
+                }
+            }
+
+            StartGathering(runner, gatherableIndex, gatherableConfig);
+
+            // Step index stays on Gather so the display correctly shows what the
+            // runner is doing. When gathering completes (inventory full), TickGathering
+            // advances past this step, then calls AdvanceMacroStep for the next one.
+        }
+
+        private void ExecuteDepositStep(Runner runner, Assignment assignment)
+        {
+            // Start the deposit timer — actual deposit happens when it completes
+            runner.State = RunnerState.Depositing;
+            runner.Depositing = new DepositingState
+            {
+                TicksRemaining = Config.DepositDurationTicks,
+            };
+        }
+
+        private void TickDepositing(Runner runner)
+        {
+            if (runner.Depositing == null) return;
+
+            runner.Depositing.TicksRemaining--;
+            if (runner.Depositing.TicksRemaining > 0) return;
+
+            // Timer done — execute the actual deposit
+            int itemCount = runner.Inventory.Slots.Count;
+            CurrentGameState.Bank.DepositAll(runner.Inventory);
+
+            if (itemCount > 0)
+            {
+                Events.Publish(new RunnerDeposited
+                {
+                    RunnerId = runner.Id,
+                    ItemsDeposited = itemCount,
+                });
+            }
+
+            runner.State = RunnerState.Idle;
+            runner.Depositing = null;
+
+            // Advance past the Deposit step
+            if (runner.Assignment != null && runner.Assignment.AdvanceStep())
+            {
+                PublishStepAdvanced(runner, runner.Assignment);
+            }
+
+            AdvanceMacroStep(runner);
+        }
+
+        private void PublishStepAdvanced(Runner runner, Assignment assignment)
+        {
+            var step = assignment.CurrentStep;
+            if (step == null) return;
+
+            Events.Publish(new AssignmentStepAdvanced
+            {
+                RunnerId = runner.Id,
+                StepType = step.Type,
+                StepIndex = assignment.CurrentStepIndex,
+            });
+        }
+
+        // ─── Internal Helpers ──────────────────────────────────────
 
         private void StartTravelInternal(Runner runner, string targetNodeId)
         {
@@ -482,76 +696,6 @@ namespace ProjectGuild.Simulation.Core
                 FromNodeId = fromNode,
                 ToNodeId = targetNodeId,
                 EstimatedDurationSeconds = distance / speed,
-            });
-        }
-
-        private void BeginAutoReturn(Runner runner)
-        {
-            runner.Gathering.SubState = GatheringSubState.TravelingToBank;
-
-            string hubNodeId = CurrentGameState.Map.HubNodeId;
-
-            if (hubNodeId == null || runner.CurrentNodeId == hubNodeId)
-            {
-                DepositAndReturn(runner);
-                return;
-            }
-
-            StartTravelInternal(runner, hubNodeId);
-        }
-
-        private void HandleGatheringArrival(Runner runner, string arrivedNodeId)
-        {
-            if (runner.Gathering == null) return;
-
-            if (runner.Gathering.SubState == GatheringSubState.TravelingToBank)
-            {
-                DepositAndReturn(runner);
-            }
-            else if (runner.Gathering.SubState == GatheringSubState.TravelingToNode)
-            {
-                ResumeGathering(runner);
-            }
-        }
-
-        private void DepositAndReturn(Runner runner)
-        {
-            int itemCount = runner.Inventory.Slots.Count;
-            CurrentGameState.Bank.DepositAll(runner.Inventory);
-
-            Events.Publish(new RunnerDeposited
-            {
-                RunnerId = runner.Id,
-                ItemsDeposited = itemCount,
-            });
-
-            runner.Gathering.SubState = GatheringSubState.TravelingToNode;
-
-            if (runner.CurrentNodeId == runner.Gathering.NodeId)
-            {
-                ResumeGathering(runner);
-                return;
-            }
-
-            StartTravelInternal(runner, runner.Gathering.NodeId);
-        }
-
-        private void ResumeGathering(Runner runner)
-        {
-            var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
-            var gatherableConfig = node.Gatherables[runner.Gathering.GatherableIndex];
-
-            runner.State = RunnerState.Gathering;
-            runner.Gathering.SubState = GatheringSubState.Gathering;
-            runner.Gathering.TickAccumulator = 0f;
-            runner.Gathering.TicksRequired = CalculateTicksRequired(runner, gatherableConfig);
-
-            Events.Publish(new GatheringStarted
-            {
-                RunnerId = runner.Id,
-                NodeId = runner.Gathering.NodeId,
-                ItemId = gatherableConfig.ProducedItemId,
-                Skill = gatherableConfig.RequiredSkill,
             });
         }
 

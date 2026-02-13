@@ -222,9 +222,16 @@ namespace ProjectGuild.View
                     : 0f;
                 GUILayout.Label($"Gathering at: {selected.Gathering.NodeId} ({progress:P0})");
             }
-            else if (selected.Gathering != null && selected.Gathering.SubState != GatheringSubState.Gathering)
+            else if (selected.State == RunnerState.Depositing && selected.Depositing != null)
             {
-                GUILayout.Label($"Auto-return: {selected.Gathering.SubState}");
+                GUILayout.Label($"Depositing... ({selected.Depositing.TicksRemaining} ticks left)");
+            }
+
+            if (selected.Assignment != null)
+            {
+                var step = selected.Assignment.CurrentStep;
+                string stepDesc = step != null ? $"{step.Type}" : "done";
+                GUILayout.Label($"Assignment: {selected.Assignment.Type} (step: {stepDesc})");
             }
 
             // Inventory
@@ -470,12 +477,12 @@ namespace ProjectGuild.View
             // Copy/Paste buttons (always visible)
             if (GUILayout.Button("Copy", GUILayout.Width(50f), GUILayout.Height(22f)))
             {
-                _clipboardRuleset = selected.Ruleset?.DeepCopy();
+                _clipboardRuleset = selected.MacroRuleset?.DeepCopy();
             }
             GUI.enabled = _clipboardRuleset != null;
             if (GUILayout.Button("Paste", GUILayout.Width(50f), GUILayout.Height(22f)))
             {
-                selected.Ruleset = _clipboardRuleset.DeepCopy();
+                selected.MacroRuleset = _clipboardRuleset.DeepCopy();
             }
             GUI.enabled = true;
             GUILayout.EndHorizontal();
@@ -492,7 +499,7 @@ namespace ProjectGuild.View
 
         private void DrawRulesTab(GameSimulation sim, Runner selected, GUIStyle richLabel, float panelW)
         {
-            var ruleset = selected.Ruleset;
+            var ruleset = selected.MacroRuleset;
             int ruleCount = ruleset?.Rules?.Count ?? 0;
 
             GUILayout.Label($"<b>Rules for {selected.Name}</b> ({ruleCount} rules)", richLabel);
@@ -693,8 +700,8 @@ namespace ProjectGuild.View
 
         private void CreateRuleFromForm(GameSimulation sim, Runner selected)
         {
-            if (selected.Ruleset == null)
-                selected.Ruleset = new Ruleset();
+            if (selected.MacroRuleset == null)
+                selected.MacroRuleset = new Ruleset();
 
             // Build condition
             var condType = (ConditionType)_newCondType;
@@ -730,7 +737,7 @@ namespace ProjectGuild.View
             if (condType != ConditionType.Always)
                 rule.Conditions.Add(condition);
 
-            selected.Ruleset.Rules.Add(rule);
+            selected.MacroRuleset.Rules.Add(rule);
 
             // Reset form
             _newRuleLabel = "";
@@ -746,16 +753,16 @@ namespace ProjectGuild.View
             _templateName = GUILayout.TextField(_templateName, GUILayout.Width(100f));
             if (GUILayout.Button("Save", GUILayout.Width(45f)))
             {
-                if (_templateName.Length > 0 && selected.Ruleset != null)
+                if (_templateName.Length > 0 && selected.MacroRuleset != null)
                 {
                     sim.CurrentGameState.RulesetTemplates.Add(
-                        new RulesetTemplate(_templateName, selected.Ruleset.DeepCopy()));
+                        new RulesetTemplate(_templateName, selected.MacroRuleset.DeepCopy()));
                     _templateName = "";
                 }
             }
             if (GUILayout.Button("Reset Default", GUILayout.Width(90f)))
             {
-                selected.Ruleset = DefaultRulesets.CreateGathererDefault();
+                selected.MacroRuleset = DefaultRulesets.CreateDefaultMacro();
             }
             GUILayout.EndHorizontal();
 
@@ -768,7 +775,7 @@ namespace ProjectGuild.View
                 {
                     if (GUILayout.Button($"Apply: {templates[t].Name}", GUILayout.Height(18f)))
                     {
-                        selected.Ruleset = templates[t].Ruleset.DeepCopy();
+                        selected.MacroRuleset = templates[t].Ruleset.DeepCopy();
                     }
                 }
                 GUILayout.EndHorizontal();
