@@ -69,6 +69,25 @@ namespace ProjectGuild.Simulation.Core
         public int ItemsDeposited;
     }
 
+    // ─── Automation Events ───────────────────────────────────────
+
+    public struct AutomationRuleFired
+    {
+        public string RunnerId;
+        public int RuleIndex;
+        public string RuleLabel;
+        public string TriggerReason;
+        public Automation.ActionType ActionType;
+        public bool WasDeferred;
+    }
+
+    public struct AutomationPendingActionExecuted
+    {
+        public string RunnerId;
+        public Automation.ActionType ActionType;
+        public string ActionDetail;
+    }
+
     // ─── Simulation Lifecycle ────────────────────────────────────
 
     public struct SimulationTickCompleted

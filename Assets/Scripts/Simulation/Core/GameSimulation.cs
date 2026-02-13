@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.World;
@@ -60,6 +61,9 @@ namespace ProjectGuild.Simulation.Core
             ItemRegistry = new ItemRegistry();
             foreach (var itemDef in Config.ItemDefinitions)
                 ItemRegistry.Register(itemDef);
+
+            // Initialize decision log max entries from config
+            CurrentGameState.DecisionLog.SetMaxEntries(Config.DecisionLogMaxEntries);
 
             var rng = new Random();
             foreach (var def in starterDefinitions)
@@ -128,7 +132,7 @@ namespace ProjectGuild.Simulation.Core
                     .WithSkill(SkillType.Athletics, 2),
                 // To create a definition with a forced name, set Name = "Whatever"
 
-            }; 
+            };
         }
 
         /// <summary>
@@ -168,6 +172,22 @@ namespace ProjectGuild.Simulation.Core
                 // Other states that are TODO
                 // case RunnerState.Crafting: TickCrafting(runner); break;
                 // case RunnerState.Fighting: TickCombat(runner); break;
+            }
+
+            // Periodic automation safety net — catches external state changes
+            // (e.g. BankContains conditions that change when other runners deposit)
+            if (Config.AutomationPeriodicCheckInterval > 0
+                && CurrentGameState.TickCount % Config.AutomationPeriodicCheckInterval == 0)
+            {
+                if (runner.State == RunnerState.Idle && runner.Gathering == null)
+                {
+                    TryEvaluateAutomation(runner, "periodic");
+                }
+                else if (runner.State == RunnerState.Gathering
+                         && runner.Gathering?.SubState == GatheringSubState.Gathering)
+                {
+                    TryEvaluateAutomation(runner, "periodic");
+                }
             }
         }
 
@@ -215,6 +235,21 @@ namespace ProjectGuild.Simulation.Core
 
                 // Check if this runner is mid-gathering auto-return loop
                 HandleGatheringArrival(runner, arrivedNodeId);
+
+                // Automation: handle non-gathering arrivals (travel-to, GatherAt compound, etc.)
+                if (runner.State == RunnerState.Idle && runner.Gathering == null)
+                {
+                    if (runner.PendingAction != null)
+                    {
+                        var pending = runner.PendingAction;
+                        runner.PendingAction = null;
+                        ActionExecutor.Execute(pending, runner, this);
+                    }
+                    else
+                    {
+                        TryEvaluateAutomation(runner, "arrival");
+                    }
+                }
             }
         }
 
@@ -450,6 +485,11 @@ namespace ProjectGuild.Simulation.Core
                     Skill = gatherableConfig.RequiredSkill,
                     NewLevel = skill.Level,
                 });
+
+                // Automation: skill level-up may trigger a task switch
+                TryEvaluateAutomation(runner, "skill_level_up");
+                if (runner.State != RunnerState.Gathering || runner.Gathering == null)
+                    return;
             }
 
             // Always compute from current stats — buffs, level-ups, gear changes
@@ -477,13 +517,160 @@ namespace ProjectGuild.Simulation.Core
                     });
                 }
 
-                // Check if inventory is now full — begin auto-return to hub
+                // Check if inventory is now full — evaluate automation rules
                 if (runner.Inventory.IsFull(itemDef))
                 {
                     Events.Publish(new InventoryFull { RunnerId = runner.Id });
-                    BeginAutoReturn(runner);
+                    TryEvaluateAutomation(runner, "inventory_full");
                 }
             }
+        }
+
+        // ─── Automation ──────────────────────────────────────────────
+
+        /// <summary>
+        /// Evaluate a runner's automation ruleset and execute or defer the resulting action.
+        /// Called from multiple trigger points: inventory_full, skill_level_up, arrival, periodic.
+        /// </summary>
+        private void TryEvaluateAutomation(Runner runner, string triggerReason)
+        {
+            // Already have a pending action queued — don't re-evaluate
+            if (runner.PendingAction != null)
+            {
+                // But if inventory is full, we still need to deposit
+                if (triggerReason == "inventory_full")
+                    BeginAutoReturn(runner);
+                return;
+            }
+
+            var ctx = new EvaluationContext(runner, CurrentGameState, Config);
+            int matchIndex = RuleEvaluator.EvaluateRuleset(runner.Ruleset, ctx);
+
+            if (matchIndex < 0)
+            {
+                // No rule matched — safety fallback for inventory_full
+                if (triggerReason == "inventory_full")
+                    BeginAutoReturn(runner);
+                return;
+            }
+
+            var rule = runner.Ruleset.Rules[matchIndex];
+            var action = rule.Action;
+
+            // Determine if we should defer (FinishCurrentTrip)
+            bool isInGatheringLoop = runner.Gathering != null;
+            bool shouldDefer = rule.FinishCurrentTrip
+                               && isInGatheringLoop
+                               && action.Type != ActionType.FleeToHub;
+
+            // Publish rule fired event
+            Events.Publish(new AutomationRuleFired
+            {
+                RunnerId = runner.Id,
+                RuleIndex = matchIndex,
+                RuleLabel = rule.Label ?? "",
+                TriggerReason = triggerReason,
+                ActionType = action.Type,
+                WasDeferred = shouldDefer,
+            });
+
+            // Log decision
+            LogDecision(runner, matchIndex, rule, action, triggerReason, ctx, shouldDefer);
+
+            if (shouldDefer)
+            {
+                runner.PendingAction = action;
+                // If inventory is full, start the deposit cycle so the pending action
+                // fires after deposit (rather than waiting for the next natural deposit)
+                if (triggerReason == "inventory_full")
+                    BeginAutoReturn(runner);
+                return;
+            }
+
+            // Execute immediately
+            ActionExecutor.Execute(action, runner, this);
+        }
+
+        /// <summary>
+        /// Internal wrapper for automation system. Starts travel without the public API's guard clauses.
+        /// </summary>
+        internal void StartTravelForAutomation(Runner runner, string targetNodeId)
+        {
+            if (runner.CurrentNodeId == targetNodeId) return;
+            StartTravelInternal(runner, targetNodeId);
+        }
+
+        /// <summary>
+        /// Internal wrapper for automation system. Begins the deposit-and-return cycle.
+        /// </summary>
+        internal void BeginAutoReturnForAutomation(Runner runner)
+        {
+            if (runner.Gathering == null) return;
+            BeginAutoReturn(runner);
+        }
+
+        // ─── Decision Log ────────────────────────────────────────────
+
+        private void LogDecision(Runner runner, int ruleIndex, Rule rule,
+            AutomationAction action, string triggerReason, EvaluationContext ctx, bool wasDeferred)
+        {
+            var log = CurrentGameState.DecisionLog;
+            if (log == null) return;
+
+            log.Add(new DecisionLogEntry
+            {
+                TickNumber = CurrentGameState.TickCount,
+                GameTime = CurrentGameState.TotalTimeElapsed,
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+                RuleIndex = ruleIndex,
+                RuleLabel = rule.Label ?? "",
+                TriggerReason = triggerReason,
+                ActionType = action.Type,
+                ActionDetail = FormatActionDetail(action),
+                ConditionSnapshot = FormatConditionSnapshot(rule, ctx),
+                WasDeferred = wasDeferred,
+            });
+        }
+
+        private static string FormatActionDetail(AutomationAction action)
+        {
+            return action.Type switch
+            {
+                ActionType.TravelTo => $"→ {action.StringParam}",
+                ActionType.GatherAt => $"gather at {action.StringParam}[{action.IntParam}]",
+                ActionType.ReturnToHub => "→ hub",
+                ActionType.FleeToHub => "flee → hub",
+                ActionType.DepositAndResume => "deposit & resume",
+                ActionType.Idle => "idle",
+                _ => action.Type.ToString(),
+            };
+        }
+
+        private static string FormatConditionSnapshot(Rule rule, EvaluationContext ctx)
+        {
+            if (rule.Conditions == null || rule.Conditions.Count == 0)
+                return "(no conditions)";
+
+            var parts = new List<string>();
+            foreach (var cond in rule.Conditions)
+            {
+                string part = cond.Type switch
+                {
+                    ConditionType.Always => "always",
+                    ConditionType.InventoryFull => $"inv full ({ctx.Runner.Inventory.FreeSlots} free)",
+                    ConditionType.InventorySlots => $"inv slots: {ctx.Runner.Inventory.FreeSlots} {cond.Operator} {cond.NumericValue}",
+                    ConditionType.InventoryContains => $"inv[{cond.StringParam}]: {ctx.Runner.Inventory.CountItem(cond.StringParam)} {cond.Operator} {cond.NumericValue}",
+                    ConditionType.BankContains => $"bank[{cond.StringParam}]: {ctx.GameState.Bank.CountItem(cond.StringParam)} {cond.Operator} {cond.NumericValue}",
+                    ConditionType.SkillLevel => $"{(SkillType)cond.IntParam} lv{ctx.Runner.GetSkill((SkillType)cond.IntParam).Level} {cond.Operator} {cond.NumericValue}",
+                    ConditionType.RunnerStateIs => $"state={ctx.Runner.State} {cond.Operator} {(RunnerState)cond.IntParam}",
+                    ConditionType.AtNode => $"at {ctx.Runner.CurrentNodeId} == {cond.StringParam}",
+                    ConditionType.SelfHP => "HP (not implemented)",
+                    _ => cond.Type.ToString(),
+                };
+                parts.Add(part);
+            }
+            return string.Join(" AND ", parts);
         }
 
         // ─── Auto-Return Loop ────────────────────────────────────────
@@ -556,7 +743,8 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Deposit all items at the hub bank, then start traveling back to the gathering node.
+        /// Deposit all items at the hub bank, then either execute a pending automation action
+        /// or start traveling back to the gathering node.
         /// </summary>
         private void DepositAndReturn(Runner runner)
         {
@@ -568,6 +756,25 @@ namespace ProjectGuild.Simulation.Core
                 RunnerId = runner.Id,
                 ItemsDeposited = itemCount,
             });
+
+            // Check for pending automation action (overrides normal return-to-node)
+            if (runner.PendingAction != null)
+            {
+                var pending = runner.PendingAction;
+                runner.PendingAction = null;
+                runner.Gathering = null;
+                runner.State = RunnerState.Idle;
+
+                Events.Publish(new AutomationPendingActionExecuted
+                {
+                    RunnerId = runner.Id,
+                    ActionType = pending.Type,
+                    ActionDetail = pending.StringParam ?? "",
+                });
+
+                ActionExecutor.Execute(pending, runner, this);
+                return;
+            }
 
             runner.Gathering.SubState = GatheringSubState.TravelingToNode;
 

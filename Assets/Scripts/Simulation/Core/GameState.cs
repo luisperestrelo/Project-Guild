@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.World;
 
@@ -18,6 +19,7 @@ namespace ProjectGuild.Simulation.Core
 
         public WorldMap Map;
         public Bank Bank = new();
+        public DecisionLog DecisionLog = new();
 
         // Economy state (TODO)
     }

@@ -161,6 +161,20 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public int InventorySize = 28;
 
+        // ─── Automation ──────────────────────────────────────────────
+
+        /// <summary>
+        /// How often (in ticks) to evaluate automation rules as a safety net.
+        /// Catches external state changes (e.g. BankContains) that don't have explicit triggers.
+        /// 10 = once per second at 10 ticks/sec.
+        /// </summary>
+        public int AutomationPeriodicCheckInterval = 10;
+
+        /// <summary>
+        /// Maximum entries kept in the decision log (ring buffer eviction).
+        /// </summary>
+        public int DecisionLogMaxEntries = 100;
+
         // ─── Death (Overworld Only — Raid deaths use separate logic) ──
 
         /// <summary>
