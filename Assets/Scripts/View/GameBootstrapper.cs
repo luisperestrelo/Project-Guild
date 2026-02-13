@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Items;
@@ -21,6 +22,18 @@ namespace ProjectGuild.View
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private VisualSyncSystem _visualSyncSystem;
         [SerializeField] private CameraController _cameraController;
+
+        private InputAction _clickAction;
+        private bool _clickedThisFrame;
+
+        private void Awake()
+        {
+            _clickAction = new InputAction("Click", InputActionType.Button,
+                binding: "<Mouse>/leftButton");
+        }
+
+        private void OnEnable() => _clickAction.Enable();
+        private void OnDisable() => _clickAction.Disable();
 
         private void Start()
         {
@@ -57,6 +70,49 @@ namespace ProjectGuild.View
             if (_cameraController != null && visual != null)
             {
                 _cameraController.SetTarget(visual);
+            }
+        }
+
+        private void Update()
+        {
+            // Track click for this frame — consumed in OnGUI if it hit UI,
+            // otherwise processed here for world-space runner picking.
+            if (_clickAction.WasPressedThisFrame())
+                _clickedThisFrame = true;
+        }
+
+        private void LateUpdate()
+        {
+            // Process click after OnGUI has had a chance to consume it.
+            // GUIUtility.hotControl > 0 means the click hit a GUI element.
+            if (_clickedThisFrame)
+            {
+                _clickedThisFrame = false;
+                if (GUIUtility.hotControl > 0) return;
+
+                TryPickRunner();
+            }
+        }
+
+        private void TryPickRunner()
+        {
+            var sim = _simulationRunner.Simulation;
+            if (sim == null || Camera.main == null) return;
+
+            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
+            if (!Physics.Raycast(ray, out RaycastHit hit, 200f)) return;
+
+            var visual = hit.collider.GetComponentInParent<RunnerVisual>();
+            if (visual == null) return;
+
+            // Find the runner index by ID
+            for (int i = 0; i < sim.CurrentGameState.Runners.Count; i++)
+            {
+                if (sim.CurrentGameState.Runners[i].Id == visual.RunnerId)
+                {
+                    SelectRunner(i);
+                    return;
+                }
             }
         }
 
