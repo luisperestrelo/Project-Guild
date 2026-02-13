@@ -301,6 +301,8 @@ namespace ProjectGuild.Tests
         [Test]
         public void DefaultGatherer_InventoryNotFull_NoRuleFires()
         {
+            // Auto-gathering is implicit sim behavior, not a rule.
+            // With inventory not full, no rules should match.
             var ruleset = DefaultRulesets.CreateGathererDefault();
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
 

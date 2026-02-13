@@ -26,6 +26,12 @@ namespace ProjectGuild.Simulation.Automation
         public static AutomationAction GatherAt(string nodeId, int gatherableIndex = 0)
             => new AutomationAction { Type = ActionType.GatherAt, StringParam = nodeId, IntParam = gatherableIndex };
 
+        /// <summary>
+        /// GatherAt with no specific node — means "gather at whatever node I'm currently at."
+        /// </summary>
+        public static AutomationAction GatherHere(int gatherableIndex = 0)
+            => new AutomationAction { Type = ActionType.GatherAt, StringParam = "", IntParam = gatherableIndex };
+
         public static AutomationAction ReturnToHub()
             => new AutomationAction { Type = ActionType.ReturnToHub };
 

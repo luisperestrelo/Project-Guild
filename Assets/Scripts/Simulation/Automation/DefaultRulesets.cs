@@ -10,9 +10,9 @@ namespace ProjectGuild.Simulation.Automation
         /// Default gathering ruleset:
         ///   1. IF InventoryFull THEN DepositAndResume
         ///
-        /// Replaces the hardcoded BeginAutoReturn call in TickGathering.
-        /// No "Always" fallback needed — evaluator returning -1 means
-        /// "keep doing what you're doing."
+        /// Auto-gathering is NOT a rule — it's implicit default behavior in the sim.
+        /// Idle runners at nodes with gatherables automatically start gathering.
+        /// This keeps the player's rule list clean and focused on real decisions.
         /// </summary>
         public static Ruleset CreateGathererDefault()
         {

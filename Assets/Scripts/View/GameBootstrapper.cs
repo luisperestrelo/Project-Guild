@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using ProjectGuild.Bridge;
+using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.World;
@@ -122,6 +124,28 @@ namespace ProjectGuild.View
         private Vector2 _runnerScrollPos;
         private Vector2 _zoneScrollPos;
 
+        // Automation panel state
+        private int _autoTab; // 0=Rules, 1=Decision Log
+        private Vector2 _rulesScrollPos;
+        private Vector2 _logScrollPos;
+        private bool _showAddRule;
+        private Ruleset _clipboardRuleset;
+
+        // Add rule form
+        private string _newRuleLabel = "";
+        private int _newCondType;
+        private int _newCondOp;
+        private string _newCondValue = "0";
+        private string _newCondStringParam = "";
+        private int _newCondIntParam;
+        private int _newActionType;
+        private int _newActionNodeIndex;
+        private string _newActionGatherIndex = "0";
+        private bool _newRuleFinishTrip = true;
+
+        // Templates
+        private string _templateName = "";
+
         private void OnGUI()
         {
             var sim = _simulationRunner.Simulation;
@@ -207,7 +231,7 @@ namespace ProjectGuild.View
             GUILayout.Label($"Inventory: {selected.Inventory.Slots.Count}/{selected.Inventory.MaxSlots}");
             if (selected.Inventory.Slots.Count > 0)
             {
-                var counts = new System.Collections.Generic.Dictionary<string, int>();
+                var counts = new Dictionary<string, int>();
                 foreach (var slot in selected.Inventory.Slots)
                 {
                     if (!counts.ContainsKey(slot.ItemId)) counts[slot.ItemId] = 0;
@@ -250,8 +274,8 @@ namespace ProjectGuild.View
             if (selected.State == RunnerState.Idle || selected.State == RunnerState.Traveling)
             {
                 GUILayout.Space(5);
-                string label = selected.State == RunnerState.Traveling ? "<b>Redirect to:</b>" : "<b>Send to:</b>";
-                GUILayout.Label(label, richLabel);
+                string zoneLabel = selected.State == RunnerState.Traveling ? "<b>Redirect to:</b>" : "<b>Send to:</b>";
+                GUILayout.Label(zoneLabel, richLabel);
                 _zoneScrollPos = GUILayout.BeginScrollView(_zoneScrollPos);
                 foreach (var node in sim.CurrentGameState.Map.Nodes)
                 {
@@ -268,8 +292,21 @@ namespace ProjectGuild.View
 
             GUILayout.EndArea();
 
-            // ─── Bottom-center: Pawn generation + Guild Bank ───
+            // ─── Center panel: Automation (Rules / Decision Log) ───
+            float centerX = leftW + 20f;
+            float centerW = screenW - leftW - 280f - 40f;
+            float centerTop = topH + 15f;
             float bottomH = 130f;
+            float centerH = screenH - centerTop - bottomH - 25f;
+
+            if (centerW > 200f) // only draw if there's reasonable space
+            {
+                GUILayout.BeginArea(new Rect(centerX, centerTop, centerW, centerH));
+                DrawAutomationPanel(sim, selected, richLabel, centerW, centerH);
+                GUILayout.EndArea();
+            }
+
+            // ─── Bottom-center: Pawn generation + Guild Bank ───
             float bottomY = screenH - bottomH - 10f;
             float bottomCenterX = leftW + 20f;
             float bottomCenterW = screenW - leftW - 280f - 40f;
@@ -414,6 +451,421 @@ namespace ProjectGuild.View
             GUILayout.EndArea();
 
             GUI.matrix = matrix;
+        }
+
+        // ─── Automation Panel ────────────────────────────────────────
+
+        private void DrawAutomationPanel(GameSimulation sim, Runner selected, GUIStyle richLabel, float panelW, float panelH)
+        {
+            GUILayout.Label("<color=#888888>Automation (data only — Phase 4 activates)</color>", richLabel);
+
+            // Tab bar
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Toggle(_autoTab == 0, "Rules", GUI.skin.button, GUILayout.Height(22f)))
+                _autoTab = 0;
+            if (GUILayout.Toggle(_autoTab == 1, "Decision Log", GUI.skin.button, GUILayout.Height(22f)))
+                _autoTab = 1;
+            GUILayout.FlexibleSpace();
+
+            // Copy/Paste buttons (always visible)
+            if (GUILayout.Button("Copy", GUILayout.Width(50f), GUILayout.Height(22f)))
+            {
+                _clipboardRuleset = selected.Ruleset?.DeepCopy();
+            }
+            GUI.enabled = _clipboardRuleset != null;
+            if (GUILayout.Button("Paste", GUILayout.Width(50f), GUILayout.Height(22f)))
+            {
+                selected.Ruleset = _clipboardRuleset.DeepCopy();
+            }
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(3);
+
+            if (_autoTab == 0)
+                DrawRulesTab(sim, selected, richLabel, panelW);
+            else
+                DrawDecisionLogTab(sim, selected, richLabel);
+        }
+
+        // ─── Rules Tab ──────────────────────────────────────────────
+
+        private void DrawRulesTab(GameSimulation sim, Runner selected, GUIStyle richLabel, float panelW)
+        {
+            var ruleset = selected.Ruleset;
+            int ruleCount = ruleset?.Rules?.Count ?? 0;
+
+            GUILayout.Label($"<b>Rules for {selected.Name}</b> ({ruleCount} rules)", richLabel);
+
+            _rulesScrollPos = GUILayout.BeginScrollView(_rulesScrollPos);
+
+            if (ruleset != null && ruleset.Rules != null)
+            {
+                int deleteIndex = -1;
+                int moveUpIndex = -1;
+                int moveDownIndex = -1;
+
+                for (int i = 0; i < ruleset.Rules.Count; i++)
+                {
+                    var rule = ruleset.Rules[i];
+                    GUILayout.BeginHorizontal();
+
+                    // Enable toggle
+                    rule.Enabled = GUILayout.Toggle(rule.Enabled, "", GUILayout.Width(18f));
+
+                    // Rule summary
+                    string condSummary = FormatConditions(rule.Conditions);
+                    string actionSummary = FormatAction(rule.Action);
+                    string tripLabel = rule.FinishCurrentTrip ? "<color=#88ff88>Trip</color>" : "<color=#888888>Imm</color>";
+                    string enabledColor = rule.Enabled ? "white" : "#666666";
+                    string label = rule.Label.Length > 0 ? $"\"{rule.Label}\"" : $"#{i}";
+                    GUILayout.Label(
+                        $"<color={enabledColor}>{label}: IF {condSummary} THEN {actionSummary}</color> [{tripLabel}]",
+                        richLabel);
+
+                    GUILayout.FlexibleSpace();
+
+                    // Reorder / delete buttons
+                    GUI.enabled = i > 0;
+                    if (GUILayout.Button("^", GUILayout.Width(22f), GUILayout.Height(18f)))
+                        moveUpIndex = i;
+                    GUI.enabled = i < ruleset.Rules.Count - 1;
+                    if (GUILayout.Button("v", GUILayout.Width(22f), GUILayout.Height(18f)))
+                        moveDownIndex = i;
+                    GUI.enabled = true;
+                    if (GUILayout.Button("x", GUILayout.Width(22f), GUILayout.Height(18f)))
+                        deleteIndex = i;
+
+                    GUILayout.EndHorizontal();
+                }
+
+                // Apply deferred operations
+                if (deleteIndex >= 0)
+                    ruleset.Rules.RemoveAt(deleteIndex);
+                if (moveUpIndex > 0)
+                    (ruleset.Rules[moveUpIndex], ruleset.Rules[moveUpIndex - 1]) =
+                        (ruleset.Rules[moveUpIndex - 1], ruleset.Rules[moveUpIndex]);
+                if (moveDownIndex >= 0 && moveDownIndex < ruleset.Rules.Count - 1)
+                    (ruleset.Rules[moveDownIndex], ruleset.Rules[moveDownIndex + 1]) =
+                        (ruleset.Rules[moveDownIndex + 1], ruleset.Rules[moveDownIndex]);
+            }
+            else
+            {
+                GUILayout.Label("  (no ruleset)");
+            }
+
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(3);
+
+            // ─── Add Rule / Templates ───
+            _showAddRule = GUILayout.Toggle(_showAddRule, _showAddRule ? "Hide Add Rule" : "Add Rule...", GUI.skin.button);
+            if (_showAddRule)
+                DrawAddRuleForm(sim, selected);
+
+            GUILayout.Space(3);
+            DrawTemplateControls(sim, selected, richLabel);
+        }
+
+        // ─── Add Rule Form ──────────────────────────────────────────
+
+        private static readonly string[] ConditionTypeNames = Enum.GetNames(typeof(ConditionType));
+        private static readonly string[] ActionTypeNames = Enum.GetNames(typeof(ActionType));
+        private static readonly string[] OperatorNames = { ">", ">=", "<", "<=", "==", "!=" };
+        private static readonly string[] SkillNames = Enum.GetNames(typeof(SkillType));
+
+        private void DrawAddRuleForm(GameSimulation sim, Runner selected)
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+
+            // Label
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Label:", GUILayout.Width(45f));
+            _newRuleLabel = GUILayout.TextField(_newRuleLabel, GUILayout.Width(150f));
+            GUILayout.EndHorizontal();
+
+            // Condition type (click to cycle)
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("IF:", GUILayout.Width(25f));
+            if (GUILayout.Button(ConditionTypeNames[_newCondType], GUILayout.Width(120f)))
+                _newCondType = (_newCondType + 1) % ConditionTypeNames.Length;
+
+            var condType = (ConditionType)_newCondType;
+
+            // Show relevant fields based on condition type
+            bool needsOperator = condType == ConditionType.InventorySlots
+                || condType == ConditionType.InventoryContains
+                || condType == ConditionType.BankContains
+                || condType == ConditionType.SkillLevel
+                || condType == ConditionType.SelfHP;
+            bool needsStringParam = condType == ConditionType.InventoryContains
+                || condType == ConditionType.BankContains
+                || condType == ConditionType.AtNode;
+            bool needsIntParam = condType == ConditionType.SkillLevel
+                || condType == ConditionType.RunnerStateIs;
+
+            if (needsStringParam)
+            {
+                // Show node/item selector based on context
+                if (condType == ConditionType.AtNode)
+                {
+                    var nodes = sim.CurrentGameState.Map.Nodes;
+                    if (nodes.Count > 0)
+                    {
+                        if (_newActionNodeIndex >= nodes.Count) _newActionNodeIndex = 0;
+                        if (GUILayout.Button(nodes[_newActionNodeIndex].Name, GUILayout.Width(130f)))
+                            _newActionNodeIndex = (_newActionNodeIndex + 1) % nodes.Count;
+                        _newCondStringParam = nodes[_newActionNodeIndex].Id;
+                    }
+                }
+                else
+                {
+                    _newCondStringParam = GUILayout.TextField(_newCondStringParam, GUILayout.Width(80f));
+                }
+            }
+
+            if (needsIntParam)
+            {
+                if (condType == ConditionType.SkillLevel)
+                {
+                    if (GUILayout.Button(SkillNames[_newCondIntParam], GUILayout.Width(90f)))
+                        _newCondIntParam = (_newCondIntParam + 1) % SkillNames.Length;
+                }
+                else if (condType == ConditionType.RunnerStateIs)
+                {
+                    string[] stateNames = Enum.GetNames(typeof(RunnerState));
+                    int stateIdx = Mathf.Clamp(_newCondIntParam, 0, stateNames.Length - 1);
+                    if (GUILayout.Button(stateNames[stateIdx], GUILayout.Width(80f)))
+                        _newCondIntParam = (_newCondIntParam + 1) % stateNames.Length;
+                }
+            }
+
+            if (needsOperator)
+            {
+                if (GUILayout.Button(OperatorNames[_newCondOp], GUILayout.Width(30f)))
+                    _newCondOp = (_newCondOp + 1) % OperatorNames.Length;
+                _newCondValue = GUILayout.TextField(_newCondValue, GUILayout.Width(40f));
+            }
+
+            GUILayout.EndHorizontal();
+
+            // Action type
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("THEN:", GUILayout.Width(40f));
+            if (GUILayout.Button(ActionTypeNames[_newActionType], GUILayout.Width(130f)))
+                _newActionType = (_newActionType + 1) % ActionTypeNames.Length;
+
+            var actionType = (ActionType)_newActionType;
+            bool actionNeedsNode = actionType == ActionType.TravelTo || actionType == ActionType.GatherAt;
+
+            if (actionNeedsNode)
+            {
+                var nodes = sim.CurrentGameState.Map.Nodes;
+                if (nodes.Count > 0)
+                {
+                    if (_newActionNodeIndex >= nodes.Count) _newActionNodeIndex = 0;
+                    if (GUILayout.Button(nodes[_newActionNodeIndex].Name, GUILayout.Width(130f)))
+                        _newActionNodeIndex = (_newActionNodeIndex + 1) % nodes.Count;
+                }
+            }
+
+            if (actionType == ActionType.GatherAt)
+            {
+                GUILayout.Label("idx:", GUILayout.Width(25f));
+                _newActionGatherIndex = GUILayout.TextField(_newActionGatherIndex, GUILayout.Width(25f));
+            }
+
+            GUILayout.EndHorizontal();
+
+            // FinishCurrentTrip + Create button
+            GUILayout.BeginHorizontal();
+            _newRuleFinishTrip = GUILayout.Toggle(_newRuleFinishTrip, "Finish Current Trip", GUILayout.Width(150f));
+
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Create Rule", GUILayout.Width(90f)))
+            {
+                CreateRuleFromForm(sim, selected);
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+        }
+
+        private void CreateRuleFromForm(GameSimulation sim, Runner selected)
+        {
+            if (selected.Ruleset == null)
+                selected.Ruleset = new Ruleset();
+
+            // Build condition
+            var condType = (ConditionType)_newCondType;
+            var condition = new Condition { Type = condType };
+
+            float.TryParse(_newCondValue, out float numVal);
+            condition.NumericValue = numVal;
+            condition.Operator = (ComparisonOperator)_newCondOp;
+            condition.StringParam = _newCondStringParam;
+            condition.IntParam = _newCondIntParam;
+
+            // Build action
+            var actionType = (ActionType)_newActionType;
+            var action = new AutomationAction { Type = actionType };
+
+            var nodes = sim.CurrentGameState.Map.Nodes;
+            if (nodes.Count > 0 && _newActionNodeIndex < nodes.Count)
+                action.StringParam = nodes[_newActionNodeIndex].Id;
+
+            int.TryParse(_newActionGatherIndex, out int gatherIdx);
+            action.IntParam = gatherIdx;
+
+            // Build rule
+            var rule = new Rule
+            {
+                Label = _newRuleLabel.Length > 0 ? _newRuleLabel : "",
+                Action = action,
+                FinishCurrentTrip = _newRuleFinishTrip,
+                Enabled = true,
+            };
+
+            // Only add condition if it's not Always with no conditions (empty = always true)
+            if (condType != ConditionType.Always)
+                rule.Conditions.Add(condition);
+
+            selected.Ruleset.Rules.Add(rule);
+
+            // Reset form
+            _newRuleLabel = "";
+            _showAddRule = false;
+        }
+
+        // ─── Template Controls ──────────────────────────────────────
+
+        private void DrawTemplateControls(GameSimulation sim, Runner selected, GUIStyle richLabel)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Templates:", GUILayout.Width(70f));
+            _templateName = GUILayout.TextField(_templateName, GUILayout.Width(100f));
+            if (GUILayout.Button("Save", GUILayout.Width(45f)))
+            {
+                if (_templateName.Length > 0 && selected.Ruleset != null)
+                {
+                    sim.CurrentGameState.RulesetTemplates.Add(
+                        new RulesetTemplate(_templateName, selected.Ruleset.DeepCopy()));
+                    _templateName = "";
+                }
+            }
+            if (GUILayout.Button("Reset Default", GUILayout.Width(90f)))
+            {
+                selected.Ruleset = DefaultRulesets.CreateGathererDefault();
+            }
+            GUILayout.EndHorizontal();
+
+            // Show saved templates
+            var templates = sim.CurrentGameState.RulesetTemplates;
+            if (templates.Count > 0)
+            {
+                GUILayout.BeginHorizontal();
+                for (int t = 0; t < templates.Count; t++)
+                {
+                    if (GUILayout.Button($"Apply: {templates[t].Name}", GUILayout.Height(18f)))
+                    {
+                        selected.Ruleset = templates[t].Ruleset.DeepCopy();
+                    }
+                }
+                GUILayout.EndHorizontal();
+            }
+        }
+
+        // ─── Decision Log Tab ───────────────────────────────────────
+
+        private void DrawDecisionLogTab(GameSimulation sim, Runner selected, GUIStyle richLabel)
+        {
+            GUILayout.Label($"<b>Decision Log for {selected.Name}</b>", richLabel);
+
+            var entries = sim.CurrentGameState.DecisionLog.GetForRunner(selected.Id);
+
+            if (entries.Count == 0)
+            {
+                GUILayout.Label("  (no decisions logged yet)");
+                return;
+            }
+
+            _logScrollPos = GUILayout.BeginScrollView(_logScrollPos);
+
+            foreach (var entry in entries)
+            {
+                string deferred = entry.WasDeferred ? " <color=yellow>[deferred]</color>" : "";
+                GUILayout.Label(
+                    $"<color=#aaaaaa>T{entry.TickNumber}</color> [{entry.TriggerReason}] " +
+                    $"<b>{entry.RuleLabel}</b> -> {entry.ActionDetail}{deferred}",
+                    richLabel);
+                GUILayout.Label(
+                    $"  <color=#888888>{entry.ConditionSnapshot}</color>",
+                    richLabel);
+            }
+
+            GUILayout.EndScrollView();
+
+            if (GUILayout.Button("Clear Log", GUILayout.Height(18f)))
+            {
+                sim.CurrentGameState.DecisionLog.Clear();
+            }
+        }
+
+        // ─── Formatting Helpers ─────────────────────────────────────
+
+        private static string FormatConditions(List<Condition> conditions)
+        {
+            if (conditions == null || conditions.Count == 0)
+                return "Always";
+
+            var parts = new List<string>();
+            foreach (var c in conditions)
+                parts.Add(FormatCondition(c));
+            return string.Join(" AND ", parts);
+        }
+
+        private static string FormatCondition(Condition c)
+        {
+            return c.Type switch
+            {
+                ConditionType.Always => "Always",
+                ConditionType.InventoryFull => "Inv Full",
+                ConditionType.InventorySlots => $"FreeSlots {FormatOp(c.Operator)} {c.NumericValue}",
+                ConditionType.InventoryContains => $"Inv({c.StringParam}) {FormatOp(c.Operator)} {c.NumericValue}",
+                ConditionType.BankContains => $"Bank({c.StringParam}) {FormatOp(c.Operator)} {c.NumericValue}",
+                ConditionType.SkillLevel => $"{(SkillType)c.IntParam} {FormatOp(c.Operator)} {c.NumericValue}",
+                ConditionType.RunnerStateIs => $"State == {(RunnerState)c.IntParam}",
+                ConditionType.AtNode => $"At {c.StringParam}",
+                ConditionType.SelfHP => $"HP {FormatOp(c.Operator)} {c.NumericValue}%",
+                _ => c.Type.ToString(),
+            };
+        }
+
+        private static string FormatOp(ComparisonOperator op) => op switch
+        {
+            ComparisonOperator.GreaterThan => ">",
+            ComparisonOperator.GreaterOrEqual => ">=",
+            ComparisonOperator.LessThan => "<",
+            ComparisonOperator.LessOrEqual => "<=",
+            ComparisonOperator.Equal => "==",
+            ComparisonOperator.NotEqual => "!=",
+            _ => "?",
+        };
+
+        private static string FormatAction(AutomationAction a)
+        {
+            return a.Type switch
+            {
+                ActionType.Idle => "Idle",
+                ActionType.TravelTo => $"Travel -> {a.StringParam}",
+                ActionType.GatherAt => string.IsNullOrEmpty(a.StringParam)
+                    ? $"Gather Here[{a.IntParam}]"
+                    : $"Gather @ {a.StringParam}[{a.IntParam}]",
+                ActionType.ReturnToHub => "Return to Hub",
+                ActionType.DepositAndResume => "Deposit & Resume",
+                ActionType.FleeToHub => "Flee to Hub",
+                _ => a.Type.ToString(),
+            };
         }
 
         private static string ProgressBar(float progress, int width)

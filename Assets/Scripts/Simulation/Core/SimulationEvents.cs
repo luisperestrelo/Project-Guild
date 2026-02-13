@@ -70,6 +70,7 @@ namespace ProjectGuild.Simulation.Core
     }
 
     // ─── Automation Events ───────────────────────────────────────
+    // Not published yet — Phase 4 (macro layer) will wire these up.
 
     public struct AutomationRuleFired
     {

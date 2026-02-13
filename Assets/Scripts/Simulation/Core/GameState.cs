@@ -20,6 +20,7 @@ namespace ProjectGuild.Simulation.Core
         public WorldMap Map;
         public Bank Bank = new();
         public DecisionLog DecisionLog = new();
+        public List<RulesetTemplate> RulesetTemplates = new();
 
         // Economy state (TODO)
     }

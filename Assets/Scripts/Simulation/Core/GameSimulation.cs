@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.World;
@@ -13,6 +12,10 @@ namespace ProjectGuild.Simulation.Core
     ///
     /// This class is pure C# — no Unity dependency. The Bridge layer's
     /// SimulationRunner MonoBehaviour calls Tick() at a fixed rate.
+    ///
+    /// Automation note: The rule engine (Simulation/Automation/) exists as a foundation
+    /// but is NOT integrated into the tick loop yet. Phase 4 (macro layer) will wire
+    /// task assignment and rule evaluation into the simulation.
     /// </summary>
     public class GameSimulation
     {
@@ -54,9 +57,6 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState = new GameState();
             CurrentGameState.Map = map ?? WorldMap.CreateStarterMap();
 
-            // HubNodeId is set by the map itself (CreateStarterMap or WorldMapAsset.ToWorldMap).
-            // The hubNodeId parameter below is for runner spawning, not hub identification.
-
             // Populate item registry from config
             ItemRegistry = new ItemRegistry();
             foreach (var itemDef in Config.ItemDefinitions)
@@ -76,7 +76,6 @@ namespace ProjectGuild.Simulation.Core
                     RunnerName = runner.Name,
                 });
             }
-
         }
 
         /// <summary>
@@ -91,8 +90,6 @@ namespace ProjectGuild.Simulation.Core
                 RunnerName = runner.Name,
             });
         }
-
-
 
         /// <summary>
         /// Initialize a new game with default placeholder starters (for quick testing).
@@ -130,8 +127,6 @@ namespace ProjectGuild.Simulation.Core
                     .WithSkill(SkillType.Execution, 3, true)
                     .WithSkill(SkillType.Hitpoints, 3)
                     .WithSkill(SkillType.Athletics, 2),
-                // To create a definition with a forced name, set Name = "Whatever"
-
             };
         }
 
@@ -144,7 +139,6 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState.TickCount++;
             CurrentGameState.TotalTimeElapsed += TickDeltaTime;
 
-            // Process all runners
             for (int i = 0; i < CurrentGameState.Runners.Count; i++)
             {
                 TickRunner(CurrentGameState.Runners[i]);
@@ -158,7 +152,6 @@ namespace ProjectGuild.Simulation.Core
             switch (runner.State)
             {
                 case RunnerState.Idle:
-                    // Nothing to do — waiting for task assignment or automation
                     break;
 
                 case RunnerState.Traveling:
@@ -168,26 +161,6 @@ namespace ProjectGuild.Simulation.Core
                 case RunnerState.Gathering:
                     TickGathering(runner);
                     break;
-
-                // Other states that are TODO
-                // case RunnerState.Crafting: TickCrafting(runner); break;
-                // case RunnerState.Fighting: TickCombat(runner); break;
-            }
-
-            // Periodic automation safety net — catches external state changes
-            // (e.g. BankContains conditions that change when other runners deposit)
-            if (Config.AutomationPeriodicCheckInterval > 0
-                && CurrentGameState.TickCount % Config.AutomationPeriodicCheckInterval == 0)
-            {
-                if (runner.State == RunnerState.Idle && runner.Gathering == null)
-                {
-                    TryEvaluateAutomation(runner, "periodic");
-                }
-                else if (runner.State == RunnerState.Gathering
-                         && runner.Gathering?.SubState == GatheringSubState.Gathering)
-                {
-                    TryEvaluateAutomation(runner, "periodic");
-                }
             }
         }
 
@@ -201,7 +174,7 @@ namespace ProjectGuild.Simulation.Core
         {
             if (runner.Travel == null) return;
 
-            // Award athletics XP every tick while traveling (same decoupling as gathering).
+            // Award athletics XP every tick while traveling
             var athletics = runner.GetSkill(SkillType.Athletics);
             bool leveledUp = athletics.AddXp(Config.AthleticsXpPerTick, Config);
 
@@ -235,21 +208,6 @@ namespace ProjectGuild.Simulation.Core
 
                 // Check if this runner is mid-gathering auto-return loop
                 HandleGatheringArrival(runner, arrivedNodeId);
-
-                // Automation: handle non-gathering arrivals (travel-to, GatherAt compound, etc.)
-                if (runner.State == RunnerState.Idle && runner.Gathering == null)
-                {
-                    if (runner.PendingAction != null)
-                    {
-                        var pending = runner.PendingAction;
-                        runner.PendingAction = null;
-                        ActionExecutor.Execute(pending, runner, this);
-                    }
-                    else
-                    {
-                        TryEvaluateAutomation(runner, "arrival");
-                    }
-                }
             }
         }
 
@@ -258,7 +216,6 @@ namespace ProjectGuild.Simulation.Core
         /// the shortest path and calculate total distance. If the runner is already
         /// at the target node, does nothing.
         /// </summary>
-        /// <returns>True if travel was started, false if impossible or unnecessary.</returns>
         public bool CommandTravel(string runnerId, string targetNodeId)
         {
             var runner = FindRunner(runnerId);
@@ -267,7 +224,7 @@ namespace ProjectGuild.Simulation.Core
             // ─── Redirect: runner is already traveling, change destination mid-travel ───
             if (runner.State == RunnerState.Traveling && runner.Travel != null)
             {
-                if (targetNodeId == runner.Travel.ToNodeId) return false; // already going there
+                if (targetNodeId == runner.Travel.ToNodeId) return false;
 
                 var map = CurrentGameState.Map;
                 var fromNode = map.GetNode(runner.Travel.FromNodeId);
@@ -275,24 +232,16 @@ namespace ProjectGuild.Simulation.Core
                 var newTarget = map.GetNode(targetNodeId);
                 if (fromNode == null || toNode == null || newTarget == null) return false;
 
-                // Calculate the runner's virtual position by lerping between origin and destination
-                // using their current travel progress (0.0 = at origin, 1.0 = at destination).
-                //
-                // If the runner already has an overridden start position (from a previous redirect),
-                // lerp from that override instead of the FromNode position.
                 float progress = runner.Travel.Progress;
                 float startX = runner.Travel.StartWorldX ?? fromNode.WorldX;
                 float startZ = runner.Travel.StartWorldZ ?? fromNode.WorldZ;
                 float virtualX = startX + (toNode.WorldX - startX) * progress;
                 float virtualZ = startZ + (toNode.WorldZ - startZ) * progress;
 
-                // Distance from virtual position to new target (Euclidean), scaled for gameplay.
                 float dx = newTarget.WorldX - virtualX;
                 float dz = newTarget.WorldZ - virtualZ;
                 float distToNewTarget = (float)Math.Sqrt(dx * dx + dz * dz) * map.TravelDistanceScale;
 
-                // Store virtual position as the start point so the view can lerp from here
-                // to the new destination without any visual snap/teleport.
                 runner.Travel = new TravelState
                 {
                     FromNodeId = runner.Travel.FromNodeId,
@@ -315,7 +264,7 @@ namespace ProjectGuild.Simulation.Core
                 return true;
             }
 
-            // ─── Normal travel: runner is idle (or gathering — handled by existing guards) ───
+            // ─── Normal travel ───
             if (runner.CurrentNodeId == targetNodeId) return false;
 
             float distance = CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out var path);
@@ -347,7 +296,6 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Command a runner to travel with an explicit distance (for testing).
-        /// The two-argument overload that uses the world map is generally preferred.
         /// </summary>
         public void CommandTravel(string runnerId, string targetNodeId, float distance)
         {
@@ -365,14 +313,12 @@ namespace ProjectGuild.Simulation.Core
             };
 
             float speed = GetTravelSpeed(runner);
-            float estimatedDuration = distance / speed;
-
             Events.Publish(new RunnerStartedTravel
             {
                 RunnerId = runner.Id,
                 FromNodeId = fromNode,
                 ToNodeId = targetNodeId,
-                EstimatedDurationSeconds = estimatedDuration,
+                EstimatedDurationSeconds = distance / speed,
             });
         }
 
@@ -382,9 +328,7 @@ namespace ProjectGuild.Simulation.Core
         /// Command a runner to start gathering at their current node.
         /// Runner must be Idle and standing at a node with gatherables.
         /// gatherableIndex selects which gatherable to work on (default 0 = first).
-        /// The automation layer decides which index to pass.
         /// </summary>
-        /// <returns>True if gathering started, false if invalid.</returns>
         public bool CommandGather(string runnerId, int gatherableIndex = 0)
         {
             var runner = FindRunner(runnerId);
@@ -396,7 +340,6 @@ namespace ProjectGuild.Simulation.Core
 
             var gatherableConfig = node.Gatherables[gatherableIndex];
 
-            // Check minimum skill level requirement
             if (gatherableConfig.MinLevel > 0)
             {
                 var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
@@ -438,11 +381,6 @@ namespace ProjectGuild.Simulation.Core
             return true;
         }
 
-        /// <summary>
-        /// Calculate how many ticks it takes for a runner to gather one item.
-        /// The selected GatheringFormula determines how skill level translates to speed.
-        /// Result: baseTicks / speedMultiplier (higher multiplier = faster gathering).
-        /// </summary>
         private float CalculateTicksRequired(Runner runner, GatherableConfig gatherable)
         {
             float effectiveLevel = runner.GetEffectiveLevel(gatherable.RequiredSkill, Config);
@@ -472,8 +410,7 @@ namespace ProjectGuild.Simulation.Core
 
             var gatherableConfig = node.Gatherables[runner.Gathering.GatherableIndex];
 
-            // Award XP every tick while gathering (decoupled from item production speed).
-            // The runner learns by practicing, not by completing items.
+            // Award XP every tick while gathering
             var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
             bool leveledUp = skill.AddXp(gatherableConfig.XpPerTick, Config);
 
@@ -485,16 +422,9 @@ namespace ProjectGuild.Simulation.Core
                     Skill = gatherableConfig.RequiredSkill,
                     NewLevel = skill.Level,
                 });
-
-                // Automation: skill level-up may trigger a task switch
-                TryEvaluateAutomation(runner, "skill_level_up");
-                if (runner.State != RunnerState.Gathering || runner.Gathering == null)
-                    return;
             }
 
-            // Always compute from current stats — buffs, level-ups, gear changes
-            // are reflected immediately without explicit recalculation calls.
-            // TicksRequired is also stored on GatheringState for UI progress display.
+            // Always compute from current stats
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
             runner.Gathering.TicksRequired = ticksRequired;
             runner.Gathering.TickAccumulator += 1f;
@@ -503,7 +433,6 @@ namespace ProjectGuild.Simulation.Core
             {
                 runner.Gathering.TickAccumulator -= ticksRequired;
 
-                // Produce item
                 var itemDef = ItemRegistry.Get(gatherableConfig.ProducedItemId);
                 bool added = runner.Inventory.TryAdd(itemDef, 1);
 
@@ -517,172 +446,24 @@ namespace ProjectGuild.Simulation.Core
                     });
                 }
 
-                // Check if inventory is now full — evaluate automation rules
+                // Inventory full — hardcoded auto-return (Phase 4 will replace with macro automation)
                 if (runner.Inventory.IsFull(itemDef))
                 {
                     Events.Publish(new InventoryFull { RunnerId = runner.Id });
-                    TryEvaluateAutomation(runner, "inventory_full");
+                    BeginAutoReturn(runner);
                 }
             }
         }
 
-        // ─── Automation ──────────────────────────────────────────────
-
-        /// <summary>
-        /// Evaluate a runner's automation ruleset and execute or defer the resulting action.
-        /// Called from multiple trigger points: inventory_full, skill_level_up, arrival, periodic.
-        /// </summary>
-        private void TryEvaluateAutomation(Runner runner, string triggerReason)
-        {
-            // Already have a pending action queued — don't re-evaluate
-            if (runner.PendingAction != null)
-            {
-                // But if inventory is full, we still need to deposit
-                if (triggerReason == "inventory_full")
-                    BeginAutoReturn(runner);
-                return;
-            }
-
-            var ctx = new EvaluationContext(runner, CurrentGameState, Config);
-            int matchIndex = RuleEvaluator.EvaluateRuleset(runner.Ruleset, ctx);
-
-            if (matchIndex < 0)
-            {
-                // No rule matched — safety fallback for inventory_full
-                if (triggerReason == "inventory_full")
-                    BeginAutoReturn(runner);
-                return;
-            }
-
-            var rule = runner.Ruleset.Rules[matchIndex];
-            var action = rule.Action;
-
-            // Determine if we should defer (FinishCurrentTrip)
-            bool isInGatheringLoop = runner.Gathering != null;
-            bool shouldDefer = rule.FinishCurrentTrip
-                               && isInGatheringLoop
-                               && action.Type != ActionType.FleeToHub;
-
-            // Publish rule fired event
-            Events.Publish(new AutomationRuleFired
-            {
-                RunnerId = runner.Id,
-                RuleIndex = matchIndex,
-                RuleLabel = rule.Label ?? "",
-                TriggerReason = triggerReason,
-                ActionType = action.Type,
-                WasDeferred = shouldDefer,
-            });
-
-            // Log decision
-            LogDecision(runner, matchIndex, rule, action, triggerReason, ctx, shouldDefer);
-
-            if (shouldDefer)
-            {
-                runner.PendingAction = action;
-                // If inventory is full, start the deposit cycle so the pending action
-                // fires after deposit (rather than waiting for the next natural deposit)
-                if (triggerReason == "inventory_full")
-                    BeginAutoReturn(runner);
-                return;
-            }
-
-            // Execute immediately
-            ActionExecutor.Execute(action, runner, this);
-        }
-
-        /// <summary>
-        /// Internal wrapper for automation system. Starts travel without the public API's guard clauses.
-        /// </summary>
-        internal void StartTravelForAutomation(Runner runner, string targetNodeId)
-        {
-            if (runner.CurrentNodeId == targetNodeId) return;
-            StartTravelInternal(runner, targetNodeId);
-        }
-
-        /// <summary>
-        /// Internal wrapper for automation system. Begins the deposit-and-return cycle.
-        /// </summary>
-        internal void BeginAutoReturnForAutomation(Runner runner)
-        {
-            if (runner.Gathering == null) return;
-            BeginAutoReturn(runner);
-        }
-
-        // ─── Decision Log ────────────────────────────────────────────
-
-        private void LogDecision(Runner runner, int ruleIndex, Rule rule,
-            AutomationAction action, string triggerReason, EvaluationContext ctx, bool wasDeferred)
-        {
-            var log = CurrentGameState.DecisionLog;
-            if (log == null) return;
-
-            log.Add(new DecisionLogEntry
-            {
-                TickNumber = CurrentGameState.TickCount,
-                GameTime = CurrentGameState.TotalTimeElapsed,
-                RunnerId = runner.Id,
-                RunnerName = runner.Name,
-                RuleIndex = ruleIndex,
-                RuleLabel = rule.Label ?? "",
-                TriggerReason = triggerReason,
-                ActionType = action.Type,
-                ActionDetail = FormatActionDetail(action),
-                ConditionSnapshot = FormatConditionSnapshot(rule, ctx),
-                WasDeferred = wasDeferred,
-            });
-        }
-
-        private static string FormatActionDetail(AutomationAction action)
-        {
-            return action.Type switch
-            {
-                ActionType.TravelTo => $"→ {action.StringParam}",
-                ActionType.GatherAt => $"gather at {action.StringParam}[{action.IntParam}]",
-                ActionType.ReturnToHub => "→ hub",
-                ActionType.FleeToHub => "flee → hub",
-                ActionType.DepositAndResume => "deposit & resume",
-                ActionType.Idle => "idle",
-                _ => action.Type.ToString(),
-            };
-        }
-
-        private static string FormatConditionSnapshot(Rule rule, EvaluationContext ctx)
-        {
-            if (rule.Conditions == null || rule.Conditions.Count == 0)
-                return "(no conditions)";
-
-            var parts = new List<string>();
-            foreach (var cond in rule.Conditions)
-            {
-                string part = cond.Type switch
-                {
-                    ConditionType.Always => "always",
-                    ConditionType.InventoryFull => $"inv full ({ctx.Runner.Inventory.FreeSlots} free)",
-                    ConditionType.InventorySlots => $"inv slots: {ctx.Runner.Inventory.FreeSlots} {cond.Operator} {cond.NumericValue}",
-                    ConditionType.InventoryContains => $"inv[{cond.StringParam}]: {ctx.Runner.Inventory.CountItem(cond.StringParam)} {cond.Operator} {cond.NumericValue}",
-                    ConditionType.BankContains => $"bank[{cond.StringParam}]: {ctx.GameState.Bank.CountItem(cond.StringParam)} {cond.Operator} {cond.NumericValue}",
-                    ConditionType.SkillLevel => $"{(SkillType)cond.IntParam} lv{ctx.Runner.GetSkill((SkillType)cond.IntParam).Level} {cond.Operator} {cond.NumericValue}",
-                    ConditionType.RunnerStateIs => $"state={ctx.Runner.State} {cond.Operator} {(RunnerState)cond.IntParam}",
-                    ConditionType.AtNode => $"at {ctx.Runner.CurrentNodeId} == {cond.StringParam}",
-                    ConditionType.SelfHP => "HP (not implemented)",
-                    _ => cond.Type.ToString(),
-                };
-                parts.Add(part);
-            }
-            return string.Join(" AND ", parts);
-        }
-
         // ─── Auto-Return Loop ────────────────────────────────────────
+        // Hardcoded deposit-and-return behavior. Phase 4 (macro layer) will replace
+        // this with task-driven automation where the deposit loop is an explicit
+        // task sequence rather than a baked-in gathering sub-state machine.
 
-        /// <summary>
-        /// Start a runner traveling without the guard clauses of CommandTravel.
-        /// Used internally for auto-return travel during gathering loops.
-        /// </summary>
         private void StartTravelInternal(Runner runner, string targetNodeId)
         {
             float distance = CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out _);
-            if (distance < 0) return; // shouldn't happen, but safety
+            if (distance < 0) return;
 
             string fromNode = runner.CurrentNodeId;
             runner.State = RunnerState.Traveling;
@@ -704,10 +485,6 @@ namespace ProjectGuild.Simulation.Core
             });
         }
 
-        /// <summary>
-        /// Inventory is full — send the runner to hub to deposit.
-        /// GatheringState is preserved so the runner knows where to return.
-        /// </summary>
         private void BeginAutoReturn(Runner runner)
         {
             runner.Gathering.SubState = GatheringSubState.TravelingToBank;
@@ -716,7 +493,6 @@ namespace ProjectGuild.Simulation.Core
 
             if (hubNodeId == null || runner.CurrentNodeId == hubNodeId)
             {
-                // Already at hub (edge case) — deposit immediately and resume
                 DepositAndReturn(runner);
                 return;
             }
@@ -724,10 +500,6 @@ namespace ProjectGuild.Simulation.Core
             StartTravelInternal(runner, hubNodeId);
         }
 
-        /// <summary>
-        /// Called when a runner arrives at a node and has an active gathering loop.
-        /// Handles deposit at hub and return-to-node transitions.
-        /// </summary>
         private void HandleGatheringArrival(Runner runner, string arrivedNodeId)
         {
             if (runner.Gathering == null) return;
@@ -742,10 +514,6 @@ namespace ProjectGuild.Simulation.Core
             }
         }
 
-        /// <summary>
-        /// Deposit all items at the hub bank, then either execute a pending automation action
-        /// or start traveling back to the gathering node.
-        /// </summary>
         private void DepositAndReturn(Runner runner)
         {
             int itemCount = runner.Inventory.Slots.Count;
@@ -757,30 +525,10 @@ namespace ProjectGuild.Simulation.Core
                 ItemsDeposited = itemCount,
             });
 
-            // Check for pending automation action (overrides normal return-to-node)
-            if (runner.PendingAction != null)
-            {
-                var pending = runner.PendingAction;
-                runner.PendingAction = null;
-                runner.Gathering = null;
-                runner.State = RunnerState.Idle;
-
-                Events.Publish(new AutomationPendingActionExecuted
-                {
-                    RunnerId = runner.Id,
-                    ActionType = pending.Type,
-                    ActionDetail = pending.StringParam ?? "",
-                });
-
-                ActionExecutor.Execute(pending, runner, this);
-                return;
-            }
-
             runner.Gathering.SubState = GatheringSubState.TravelingToNode;
 
             if (runner.CurrentNodeId == runner.Gathering.NodeId)
             {
-                // Already at the gathering node (shouldn't normally happen, but handle it)
                 ResumeGathering(runner);
                 return;
             }
@@ -788,10 +536,6 @@ namespace ProjectGuild.Simulation.Core
             StartTravelInternal(runner, runner.Gathering.NodeId);
         }
 
-        /// <summary>
-        /// Runner has returned to the gathering node — resume gathering.
-        /// Recalculates ticks required in case the skill leveled up during the trip.
-        /// </summary>
         private void ResumeGathering(Runner runner)
         {
             var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
@@ -811,10 +555,6 @@ namespace ProjectGuild.Simulation.Core
             });
         }
 
-        /// <summary>
-        /// Cancel a runner's gathering session (including auto-return loop).
-        /// Runner returns to Idle at their current location.
-        /// </summary>
         public bool CancelGathering(string runnerId)
         {
             var runner = FindRunner(runnerId);
@@ -823,7 +563,7 @@ namespace ProjectGuild.Simulation.Core
 
             runner.Gathering = null;
             runner.State = RunnerState.Idle;
-            runner.Travel = null; // cancel any in-progress auto-return travel too
+            runner.Travel = null;
             return true;
         }
 

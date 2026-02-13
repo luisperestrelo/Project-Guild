@@ -48,17 +48,8 @@ namespace ProjectGuild.Simulation.Core
         // Gathering state (populated when State == Gathering)
         public GatheringState Gathering;
 
-        // Automation ruleset — evaluated on state changes and periodically
+        // Automation ruleset — data only for Phase 3. Phase 4 (macro layer) activates evaluation.
         public Ruleset Ruleset;
-
-        /// <summary>
-        /// When a rule fires during a gathering loop and FinishCurrentTrip is true,
-        /// the intended action is stored here. After the deposit step completes,
-        /// this action executes instead of auto-returning to the gathering node.
-        /// Also used by GatherAt when the runner needs to travel first.
-        /// Null means "no pending action, continue normal behavior."
-        /// </summary>
-        public AutomationAction PendingAction;
 
         public Runner()
         {
