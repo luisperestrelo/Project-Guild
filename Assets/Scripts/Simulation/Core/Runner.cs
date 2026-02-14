@@ -116,7 +116,7 @@ namespace ProjectGuild.Simulation.Core
         public string NodeId;
         /// <summary>
         /// Which gatherable in the node's Gatherables[] array the runner is working on.
-        /// Set by CommandGather; the micro layer can override this.
+        /// Set by ExecuteGatherStep via micro rules or assignment default.
         /// </summary>
         public int GatherableIndex;
         public float TickAccumulator;

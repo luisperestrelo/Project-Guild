@@ -14,9 +14,9 @@ namespace ProjectGuild.Simulation.Core
     /// This class is pure C# — no Unity dependency. The Bridge layer's
     /// SimulationRunner MonoBehaviour calls Tick() at a fixed rate.
     ///
-    /// The macro layer (Assignment + task steps) drives the gather→deposit→return loop.
-    /// Micro rules evaluate within task steps (e.g. which resource to gather).
-    /// Macro rules (Batch C) will change assignments based on conditions.
+    /// The macro layer (Assignment + task steps) drives the work→deposit→return loop.
+    /// Micro rules evaluate within the Work step (e.g. which resource to gather, what to fight).
+    /// Macro rules change assignments based on conditions (e.g. switch nodes when bank threshold hit).
     /// </summary>
     public class GameSimulation
     {
@@ -48,6 +48,20 @@ namespace ProjectGuild.Simulation.Core
         {
             CurrentGameState = state;
             CurrentGameState.Map?.Initialize();
+            MigrateRunnerRulesets();
+        }
+
+        /// <summary>
+        /// Ensure all runners have non-null rulesets. Old saves may have null
+        /// if the field didn't exist when the save was created.
+        /// </summary>
+        private void MigrateRunnerRulesets()
+        {
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                runner.MacroRuleset ??= DefaultRulesets.CreateDefaultMacro();
+                runner.MicroRuleset ??= DefaultRulesets.CreateDefaultMicro();
+            }
         }
 
         /// <summary>
@@ -215,6 +229,9 @@ namespace ProjectGuild.Simulation.Core
                     NodeId = arrivedNodeId,
                 });
 
+                // Evaluate macro rules on arrival
+                if (EvaluateMacroRules(runner, "ArrivedAtNode")) return;
+
                 // Immediately try to advance macro step now that we're idle
                 AdvanceMacroStep(runner);
             }
@@ -333,59 +350,6 @@ namespace ProjectGuild.Simulation.Core
 
         // ─── Gathering ─────────────────────────────────────────────
 
-        /// <summary>
-        /// Command a runner to start gathering at their current node.
-        /// Runner must be Idle and standing at a node with gatherables.
-        /// gatherableIndex selects which gatherable to work on (default 0 = first).
-        /// </summary>
-        public bool CommandGather(string runnerId, int gatherableIndex = 0)
-        {
-            var runner = FindRunner(runnerId);
-            if (runner == null || runner.State != RunnerState.Idle) return false;
-
-            var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
-            if (node == null || node.Gatherables.Length == 0) return false;
-            if (gatherableIndex < 0 || gatherableIndex >= node.Gatherables.Length) return false;
-
-            var gatherableConfig = node.Gatherables[gatherableIndex];
-
-            if (gatherableConfig.MinLevel > 0)
-            {
-                var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
-                if (skill.Level < gatherableConfig.MinLevel)
-                {
-                    Events.Publish(new GatheringFailed
-                    {
-                        RunnerId = runner.Id,
-                        NodeId = runner.CurrentNodeId,
-                        ItemId = gatherableConfig.ProducedItemId,
-                        Skill = gatherableConfig.RequiredSkill,
-                        RequiredLevel = gatherableConfig.MinLevel,
-                        CurrentLevel = skill.Level,
-                    });
-                    return false;
-                }
-            }
-
-            // If no assignment exists, create a default gather assignment for backward compat
-            // (debug UI "Gather" button or direct commands). This ensures the auto-return
-            // loop works even without an explicit AssignRunner call.
-            if (runner.Assignment == null)
-            {
-                string hubNodeId = CurrentGameState.Map?.HubNodeId;
-                if (hubNodeId != null)
-                {
-                    runner.Assignment = Assignment.CreateGatherLoop(runner.CurrentNodeId, hubNodeId, gatherableIndex);
-                    // Set to step 1 (Gather) — we're about to start gathering.
-                    // When inventory fills, TickGathering will advance past it.
-                    runner.Assignment.CurrentStepIndex = 1;
-                }
-            }
-
-            StartGathering(runner, gatherableIndex, gatherableConfig);
-            return true;
-        }
-
         private void StartGathering(Runner runner, int gatherableIndex, GatherableConfig gatherableConfig)
         {
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
@@ -487,7 +451,14 @@ namespace ProjectGuild.Simulation.Core
                         PublishStepAdvanced(runner, runner.Assignment);
                     }
 
-                    AdvanceMacroStep(runner);
+                    // Evaluate macro rules on inventory full
+                    if (!EvaluateMacroRules(runner, "InventoryFull"))
+                        AdvanceMacroStep(runner);
+                }
+                else
+                {
+                    // Re-evaluate micro rules after each item — may switch resources or FinishTask
+                    ReevaluateMicroDuringGathering(runner, node);
                 }
             }
         }
@@ -514,7 +485,6 @@ namespace ProjectGuild.Simulation.Core
             Events.Publish(new AssignmentChanged
             {
                 RunnerId = runner.Id,
-                NewType = assignment?.Type ?? AssignmentType.Idle,
                 TargetNodeId = assignment?.TargetNodeId,
                 Reason = reason,
             });
@@ -531,6 +501,11 @@ namespace ProjectGuild.Simulation.Core
         {
             if (runner.State != RunnerState.Idle) return;
 
+            // Evaluate macro rules before executing the next step.
+            // If a rule fires and changes the assignment, AssignRunner will call
+            // AdvanceMacroStep again. Same-assignment suppression prevents infinite loops.
+            if (EvaluateMacroRules(runner, "StepAdvance")) return;
+
             var assignment = runner.Assignment;
             if (assignment == null) return;
 
@@ -543,8 +518,8 @@ namespace ProjectGuild.Simulation.Core
                     ExecuteTravelStep(runner, step, assignment);
                     break;
 
-                case TaskStepType.Gather:
-                    ExecuteGatherStep(runner, assignment);
+                case TaskStepType.Work:
+                    ExecuteWorkStep(runner, assignment);
                     break;
 
                 case TaskStepType.Deposit:
@@ -572,7 +547,7 @@ namespace ProjectGuild.Simulation.Core
             StartTravelInternal(runner, step.TargetNodeId);
         }
 
-        private void ExecuteGatherStep(Runner runner, Assignment assignment)
+        private void ExecuteWorkStep(Runner runner, Assignment assignment)
         {
             var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
             if (node == null || node.Gatherables.Length == 0)
@@ -586,11 +561,25 @@ namespace ProjectGuild.Simulation.Core
                 return;
             }
 
-            // Use the assignment's default gatherable index
-            // (Batch B will add micro rule evaluation here)
-            int gatherableIndex = assignment.GatherableIndex;
-            if (gatherableIndex < 0 || gatherableIndex >= node.Gatherables.Length)
-                gatherableIndex = 0;
+            // Evaluate micro rules to decide which resource to gather
+            int gatherableIndex = EvaluateMicroRules(runner, node);
+
+            // FinishTask signal — micro says "done gathering, advance macro"
+            if (gatherableIndex == MicroResultFinishTask)
+            {
+                if (assignment.AdvanceStep())
+                {
+                    PublishStepAdvanced(runner, assignment);
+                }
+                AdvanceMacroStep(runner);
+                return;
+            }
+
+            // No valid rule matched — runner is stuck. Stay idle at the Work step.
+            if (gatherableIndex == MicroResultNoMatch)
+            {
+                return;
+            }
 
             var gatherableConfig = node.Gatherables[gatherableIndex];
 
@@ -612,7 +601,7 @@ namespace ProjectGuild.Simulation.Core
 
             StartGathering(runner, gatherableIndex, gatherableConfig);
 
-            // Step index stays on Gather so the display correctly shows what the
+            // Step index stays on Work so the display correctly shows what the
             // runner is doing. When gathering completes (inventory full), TickGathering
             // advances past this step, then calls AdvanceMacroStep for the next one.
         }
@@ -625,6 +614,94 @@ namespace ProjectGuild.Simulation.Core
             {
                 TicksRemaining = Config.DepositDurationTicks,
             };
+        }
+
+        // ─── Micro Layer: Within-Task Behavior ────────────────────
+
+        private const int MicroResultFinishTask = -1;
+        private const int MicroResultNoMatch = -2;
+
+        /// <summary>
+        /// Evaluate the runner's micro ruleset to decide which resource to gather.
+        /// Returns:
+        ///   >= 0: gatherable index to gather
+        ///   -1 (MicroResultFinishTask): FinishTask — advance macro step
+        ///   -2 (MicroResultNoMatch): no valid rule matched — runner is stuck, stay idle
+        ///
+        /// Null or empty MicroRuleset = no valid rule matched = runner is stuck (let it break).
+        /// Null rulesets from old saves are migrated to defaults in LoadState.
+        /// </summary>
+        private int EvaluateMicroRules(Runner runner, World.WorldNode node)
+        {
+            var ctx = new EvaluationContext(runner, CurrentGameState, Config);
+            int ruleIndex = RuleEvaluator.EvaluateRuleset(runner.MicroRuleset, ctx);
+
+            if (ruleIndex >= 0)
+            {
+                var action = runner.MicroRuleset.Rules[ruleIndex].Action;
+
+                if (action.Type == ActionType.FinishTask)
+                    return MicroResultFinishTask;
+
+                if (action.Type == ActionType.GatherHere)
+                {
+                    int index = action.IntParam;
+                    if (index >= 0 && index < node.Gatherables.Length)
+                        return index;
+                }
+
+                // Rule matched but action is invalid (wrong type, out-of-bounds index).
+                // This is a broken rule — let it break.
+                return MicroResultNoMatch;
+            }
+
+            // No rule matched at all (empty ruleset or all conditions false).
+            // Player's rules don't cover this case — let it break.
+            return MicroResultNoMatch;
+        }
+
+        /// <summary>
+        /// Re-evaluate micro rules mid-gathering (after each item gathered).
+        /// If the result changes resource index, restart gathering with the new resource.
+        /// If FinishTask, stop gathering and advance the macro step.
+        /// </summary>
+        private void ReevaluateMicroDuringGathering(Runner runner, World.WorldNode node)
+        {
+            if (runner.Assignment == null) return;
+
+            int newIndex = EvaluateMicroRules(runner, node);
+
+            // FinishTask — micro says "done gathering"
+            if (newIndex == MicroResultFinishTask)
+            {
+                runner.State = RunnerState.Idle;
+                runner.Gathering = null;
+
+                if (runner.Assignment.AdvanceStep())
+                {
+                    PublishStepAdvanced(runner, runner.Assignment);
+                }
+                AdvanceMacroStep(runner);
+                return;
+            }
+
+            // No valid rule matched — stop gathering, runner is stuck at the Gather step
+            if (newIndex == MicroResultNoMatch)
+            {
+                runner.State = RunnerState.Idle;
+                runner.Gathering = null;
+                return;
+            }
+
+            // Different resource — switch (reset accumulator for the new resource)
+            if (newIndex != runner.Gathering.GatherableIndex)
+            {
+                var gatherableConfig = node.Gatherables[newIndex];
+                runner.Gathering.GatherableIndex = newIndex;
+                runner.Gathering.TickAccumulator = 0f;
+                runner.Gathering.TicksRequired = CalculateTicksRequired(runner, gatherableConfig);
+            }
+            // Same resource — keep going, accumulator rolls over naturally
         }
 
         private void TickDepositing(Runner runner)
@@ -656,6 +733,15 @@ namespace ProjectGuild.Simulation.Core
                 PublishStepAdvanced(runner, runner.Assignment);
             }
 
+            // Loop boundary — apply pending assignment from earlier in the loop
+            if (ApplyPendingAssignment(runner)) return;
+
+            // Evaluate macro rules at deposit completion
+            if (EvaluateMacroRules(runner, "DepositCompleted")) return;
+
+            // Apply pending set by the macro eval above (deferred rule that fired at deposit boundary)
+            if (ApplyPendingAssignment(runner)) return;
+
             AdvanceMacroStep(runner);
         }
 
@@ -672,7 +758,147 @@ namespace ProjectGuild.Simulation.Core
             });
         }
 
+        // ─── Macro Layer: Rule Evaluation ────────────────────────────
+
+        /// <summary>
+        /// Evaluate the runner's macro ruleset. If a rule matches, its action maps
+        /// to a new assignment. FinishCurrentTrip defers via PendingAssignment.
+        /// Returns true if the runner's assignment was changed (immediate), meaning
+        /// the caller should NOT proceed with normal step advancement.
+        /// </summary>
+        private bool EvaluateMacroRules(Runner runner, string triggerReason)
+        {
+            if (runner.MacroRuleset == null || runner.MacroRuleset.Rules.Count == 0)
+                return false;
+
+            var ctx = new EvaluationContext(runner, CurrentGameState, Config);
+            int ruleIndex = RuleEvaluator.EvaluateRuleset(runner.MacroRuleset, ctx);
+
+            if (ruleIndex < 0) return false;
+
+            var rule = runner.MacroRuleset.Rules[ruleIndex];
+            var newAssignment = ActionToAssignment(rule.Action);
+
+            // If the new assignment is the same as current, skip (avoid infinite reassignment).
+            // Both null = already idle, rule wants idle → suppress.
+            if (newAssignment == null && runner.Assignment == null)
+                return false;
+
+            if (runner.Assignment != null && newAssignment != null
+                && runner.Assignment.TargetNodeId == newAssignment.TargetNodeId)
+                return false;
+
+            // Log the decision
+            LogDecision(runner, ruleIndex, rule, triggerReason,
+                newAssignment != null ? $"Work @ {newAssignment.TargetNodeId}" : "Idle",
+                rule.FinishCurrentTrip && rule.Action.Type != ActionType.FleeToHub);
+
+            // FleeToHub always immediate, ignores FinishCurrentTrip
+            if (rule.Action.Type == ActionType.FleeToHub)
+            {
+                string hubId = CurrentGameState.Map?.HubNodeId ?? "hub";
+                AssignRunner(runner.Id, null, "flee to hub");
+                // Start travel to hub directly
+                if (runner.CurrentNodeId != hubId)
+                    StartTravelInternal(runner, hubId);
+                return true;
+            }
+
+            // Deferred: store as pending, apply at loop boundary
+            if (rule.FinishCurrentTrip)
+            {
+                runner.PendingAssignment = newAssignment;
+                return false;
+            }
+
+            // Immediate: change assignment now
+            AssignRunner(runner.Id, newAssignment, $"macro rule: {rule.Label}");
+            return true;
+        }
+
+        /// <summary>
+        /// Map a macro rule's action to an Assignment.
+        /// Returns null for Idle (clear assignment).
+        /// </summary>
+        private Assignment ActionToAssignment(AutomationAction action)
+        {
+            string hubId = CurrentGameState.Map?.HubNodeId ?? "hub";
+
+            switch (action.Type)
+            {
+                case ActionType.WorkAt:
+                    string nodeId = string.IsNullOrEmpty(action.StringParam) ? null : action.StringParam;
+                    if (nodeId == null) return null;
+                    return Assignment.CreateLoop(nodeId, hubId);
+
+                case ActionType.Idle:
+                    return null;
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// Check and apply PendingAssignment at loop boundaries.
+        /// Called after a step advances and wraps to step 0 (start of a new loop cycle).
+        /// </summary>
+        private bool ApplyPendingAssignment(Runner runner)
+        {
+            if (runner.PendingAssignment == null) return false;
+
+            var pending = runner.PendingAssignment;
+            runner.PendingAssignment = null;
+
+            AssignRunner(runner.Id, pending, "deferred macro rule");
+            return true;
+        }
+
         // ─── Internal Helpers ──────────────────────────────────────
+
+        private void LogDecision(Runner runner, int ruleIndex, Rule rule,
+            string triggerReason, string actionDetail, bool wasDeferred)
+        {
+            CurrentGameState.DecisionLog.Add(new DecisionLogEntry
+            {
+                TickNumber = CurrentGameState.TickCount,
+                GameTime = CurrentGameState.TotalTimeElapsed,
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+                RuleIndex = ruleIndex,
+                RuleLabel = !string.IsNullOrEmpty(rule.Label) ? rule.Label : $"Rule #{ruleIndex}",
+                TriggerReason = triggerReason,
+                ActionType = rule.Action.Type,
+                ActionDetail = actionDetail,
+                WasDeferred = wasDeferred,
+                ConditionSnapshot = FormatConditionSnapshot(rule, runner),
+            });
+        }
+
+        private string FormatConditionSnapshot(Rule rule, Runner runner)
+        {
+            if (rule.Conditions == null || rule.Conditions.Count == 0)
+                return "Always";
+
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (var c in rule.Conditions)
+            {
+                string val = c.Type switch
+                {
+                    ConditionType.InventoryContains =>
+                        $"Inv({c.StringParam})={runner.Inventory.CountItem(c.StringParam)}",
+                    ConditionType.BankContains =>
+                        $"Bank({c.StringParam})={CurrentGameState.Bank.CountItem(c.StringParam)}",
+                    ConditionType.SkillLevel =>
+                        $"{(SkillType)c.IntParam}={runner.GetSkill((SkillType)c.IntParam).Level}",
+                    ConditionType.InventorySlots =>
+                        $"FreeSlots={runner.Inventory.FreeSlots}",
+                    _ => c.Type.ToString(),
+                };
+                parts.Add(val);
+            }
+            return string.Join(", ", parts);
+        }
 
         private void StartTravelInternal(Runner runner, string targetNodeId)
         {
@@ -697,18 +923,6 @@ namespace ProjectGuild.Simulation.Core
                 ToNodeId = targetNodeId,
                 EstimatedDurationSeconds = distance / speed,
             });
-        }
-
-        public bool CancelGathering(string runnerId)
-        {
-            var runner = FindRunner(runnerId);
-            if (runner == null) return false;
-            if (runner.Gathering == null) return false;
-
-            runner.Gathering = null;
-            runner.State = RunnerState.Idle;
-            runner.Travel = null;
-            return true;
         }
 
         public Runner FindRunner(string runnerId)

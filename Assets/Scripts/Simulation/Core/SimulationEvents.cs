@@ -74,7 +74,6 @@ namespace ProjectGuild.Simulation.Core
     public struct AssignmentChanged
     {
         public string RunnerId;
-        public Automation.AssignmentType NewType;
         public string TargetNodeId;
         public string Reason;
     }

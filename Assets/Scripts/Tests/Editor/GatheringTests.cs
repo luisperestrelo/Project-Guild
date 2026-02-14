@@ -49,6 +49,16 @@ namespace ProjectGuild.Tests
         }
 
         /// <summary>
+        /// Start gathering via the assignment system (the only way now).
+        /// Runner must be at the mine already.
+        /// </summary>
+        private void AssignGathering()
+        {
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment, "test");
+        }
+
+        /// <summary>
         /// Calculate how many ticks it takes to gather one item, matching the sim's formula.
         /// </summary>
         private int TicksPerItem(float effectiveLevel)
@@ -100,65 +110,29 @@ namespace ProjectGuild.Tests
             return ticks;
         }
 
-        // ─── CommandGather validation ──────────────────────────────
+        // ─── AssignRunner starts gathering ───────────────────────────
 
         [Test]
-        public void CommandGather_AtGatheringNode_ReturnsTrue()
+        public void AssignGather_AtMine_StartsGathering()
         {
             SetupRunnerAtMine();
 
-            bool result = _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
-            Assert.IsTrue(result);
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
             Assert.IsNotNull(_runner.Gathering);
             Assert.AreEqual("mine", _runner.Gathering.NodeId);
         }
 
         [Test]
-        public void CommandGather_NotIdle_ReturnsFalse()
-        {
-            SetupRunnerAtMine();
-            _runner.State = RunnerState.Traveling;
-
-            bool result = _sim.CommandGather(_runner.Id);
-
-            Assert.IsFalse(result);
-        }
-
-        [Test]
-        public void CommandGather_AtHub_ReturnsFalse()
-        {
-            _config = new SimulationConfig();
-            _sim = new GameSimulation(_config, tickRate: 10f);
-
-            var defs = new[]
-            {
-                new RunnerFactory.RunnerDefinition { Name = "Miner" },
-            };
-
-            var map = new WorldMap();
-            map.HubNodeId = "hub";
-            map.AddNode("hub", "Hub");
-            map.Initialize();
-
-            _sim.StartNewGame(defs, map, "hub");
-            _runner = _sim.CurrentGameState.Runners[0];
-
-            bool result = _sim.CommandGather(_runner.Id);
-
-            Assert.IsFalse(result);
-        }
-
-        [Test]
-        public void CommandGather_PublishesGatheringStarted()
+        public void AssignGather_PublishesGatheringStarted()
         {
             SetupRunnerAtMine();
 
             GatheringStarted? received = null;
             _sim.Events.Subscribe<GatheringStarted>(e => received = e);
 
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             Assert.IsNotNull(received);
             Assert.AreEqual(_runner.Id, received.Value.RunnerId);
@@ -167,26 +141,13 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(SkillType.Mining, received.Value.Skill);
         }
 
-        [Test]
-        public void CommandGather_CreatesDefaultAssignment()
-        {
-            SetupRunnerAtMine();
-
-            _sim.CommandGather(_runner.Id);
-
-            Assert.IsNotNull(_runner.Assignment,
-                "CommandGather should create a default assignment when none exists");
-            Assert.AreEqual(AssignmentType.Gather, _runner.Assignment.Type);
-            Assert.AreEqual("mine", _runner.Assignment.TargetNodeId);
-        }
-
         // ─── Item production ───────────────────────────────────────
 
         [Test]
         public void Gathering_ProducesItem_AfterEnoughTicks()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             int ticksNeeded = TicksPerItem(1f);
 
@@ -206,7 +167,7 @@ namespace ProjectGuild.Tests
         public void Gathering_ProducesItem_PublishesEvent()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             ItemGathered? received = null;
             _sim.Events.Subscribe<ItemGathered>(e => received = e);
@@ -223,7 +184,7 @@ namespace ProjectGuild.Tests
         public void Gathering_ContinuesProducing_MultipleItems()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             int ticksFor3Items = TicksPerItem(1f) * 3;
             for (int i = 0; i < ticksFor3Items; i++)
@@ -238,7 +199,7 @@ namespace ProjectGuild.Tests
         public void Gathering_AwardsXpPerTick()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             float xpBefore = _runner.GetSkill(SkillType.Mining).Xp;
 
@@ -253,7 +214,7 @@ namespace ProjectGuild.Tests
         public void Gathering_XpPerTick_MatchesConfig()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             // Run 5 ticks
             for (int i = 0; i < 5; i++)
@@ -270,12 +231,12 @@ namespace ProjectGuild.Tests
             // Two runners at different levels gathering the same resource
             // should get the same XP per tick, even though one gathers items faster
             SetupRunnerAtMine(miningLevel: 1);
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
             _sim.Tick();
             float xpLevel1 = _runner.GetSkill(SkillType.Mining).Xp;
 
             SetupRunnerAtMine(miningLevel: 50);
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
             _sim.Tick();
             float xpLevel50 = _runner.GetSkill(SkillType.Mining).Xp;
 
@@ -294,7 +255,7 @@ namespace ProjectGuild.Tests
             float xpToNext = skill.GetXpToNextLevel(_sim.Config);
             skill.Xp = xpToNext - 1f;
 
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             RunnerSkillLeveledUp? received = null;
             _sim.Events.Subscribe<RunnerSkillLeveledUp>(e => received = e);
@@ -314,7 +275,7 @@ namespace ProjectGuild.Tests
         {
             // Level 1 runner
             SetupRunnerAtMine(miningLevel: 1);
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             int ticksForLevel1 = 0;
             while (_runner.Inventory.CountItem("copper_ore") < 1)
@@ -326,7 +287,7 @@ namespace ProjectGuild.Tests
 
             // Level 50 runner
             SetupRunnerAtMine(miningLevel: 50);
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             int ticksForLevel50 = 0;
             while (_runner.Inventory.CountItem("copper_ore") < 1)
@@ -344,14 +305,11 @@ namespace ProjectGuild.Tests
         public void Gathering_TicksRequired_MatchesFormula()
         {
             SetupRunnerAtMine(miningLevel: 10);
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             // TicksPerItem uses the same formula logic as the sim
             float expected = _runner.Gathering.TicksRequired;
-            float fromHelper = TicksPerItem(10f);
 
-            // The sim stores the exact float; our helper ceiling-rounds for tick counting.
-            // Verify the sim's value is close to our expectation.
             var gatherable = CopperGatherable;
             float baseTicks = _config.GlobalGatheringSpeedMultiplier * gatherable.BaseTicksToGather;
             float speedMultiplier = (float)System.Math.Pow(10f, _config.GatheringSpeedExponent);
@@ -365,12 +323,12 @@ namespace ProjectGuild.Tests
         {
             // Without passion
             SetupRunnerAtMine(miningLevel: 10, passion: false);
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
             float ticksNormal = _runner.Gathering.TicksRequired;
 
             // With passion
             SetupRunnerAtMine(miningLevel: 10, passion: true);
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
             float ticksPassion = _runner.Gathering.TicksRequired;
 
             Assert.Less(ticksPassion, ticksNormal,
@@ -383,7 +341,7 @@ namespace ProjectGuild.Tests
         public void Gathering_InventoryFull_PublishesEvent()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             InventoryFull? received = null;
             _sim.Events.Subscribe<InventoryFull>(e => received = e);
@@ -399,7 +357,7 @@ namespace ProjectGuild.Tests
         public void Gathering_InventoryFull_StartsTravelingToHub()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             TickUntilInventoryFull();
 
@@ -414,7 +372,7 @@ namespace ProjectGuild.Tests
         public void AutoReturn_DepositsAtHub_ThenReturnsToNode()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             RunnerDeposited? deposited = null;
             _sim.Events.Subscribe<RunnerDeposited>(e => deposited = e);
@@ -442,7 +400,7 @@ namespace ProjectGuild.Tests
         public void AutoReturn_FullLoop_ResumesGathering()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             // Tick until the runner completes a full loop and is back gathering at the mine
             TickUntil(() =>
@@ -469,7 +427,7 @@ namespace ProjectGuild.Tests
         public void AutoReturn_MultipleLoops_AccumulatesInBank()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             // Tick until the bank has at least 2 full batches
             int expectedMinimum = _config.InventorySize * 2;
@@ -483,7 +441,7 @@ namespace ProjectGuild.Tests
         public void AutoReturn_GatheringStartedEvent_FiredOnResume()
         {
             SetupRunnerAtMine();
-            _sim.CommandGather(_runner.Id);
+            AssignGathering();
 
             int gatheringStartedCount = 0;
             _sim.Events.Subscribe<GatheringStarted>(e => gatheringStartedCount++);

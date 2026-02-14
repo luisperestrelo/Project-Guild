@@ -3,17 +3,10 @@ using System.Collections.Generic;
 
 namespace ProjectGuild.Simulation.Automation
 {
-    public enum AssignmentType
-    {
-        Idle,
-        Gather,
-        // Future: Raid, Craft
-    }
-
     public enum TaskStepType
     {
         TravelTo,
-        Gather,
+        Work,
         Deposit,
     }
 
@@ -33,21 +26,20 @@ namespace ProjectGuild.Simulation.Automation
     }
 
     /// <summary>
-    /// A runner's standing order — what to do and in what sequence.
-    /// Contains an explicit task step list (macro layer).
-    /// Micro rules decide behavior within individual steps (e.g. which resource to gather).
+    /// A runner's standing order — a loop of logistics steps.
+    /// The assignment handles WHERE to go and WHEN to deposit.
+    /// Micro rules decide WHAT to do at each node (gather, fight, craft).
+    /// Null assignment = idle (no standing orders).
     /// </summary>
     [Serializable]
     public class Assignment
     {
-        public AssignmentType Type;
         public List<TaskStep> Steps;
         public int CurrentStepIndex;
         public bool Loop;
 
         // Metadata for display
         public string TargetNodeId;  // primary node (for UI label)
-        public int GatherableIndex;  // default resource index (for UI label + micro fallback)
 
         public TaskStep CurrentStep =>
             Steps != null && CurrentStepIndex >= 0 && CurrentStepIndex < Steps.Count
@@ -80,38 +72,23 @@ namespace ProjectGuild.Simulation.Automation
         // ─── Factory Methods ──────────────────────────────────────
 
         /// <summary>
-        /// Standard gather loop: Travel to node → Gather → Travel to hub → Deposit → repeat.
+        /// Standard work loop: Travel to node → Work → Travel to hub → Deposit → repeat.
+        /// What happens during the Work step is determined by the runner's micro rules.
         /// </summary>
-        public static Assignment CreateGatherLoop(string nodeId, string hubNodeId, int gatherableIndex = 0)
+        public static Assignment CreateLoop(string nodeId, string hubNodeId)
         {
             return new Assignment
             {
-                Type = AssignmentType.Gather,
                 TargetNodeId = nodeId,
-                GatherableIndex = gatherableIndex,
                 Loop = true,
                 CurrentStepIndex = 0,
                 Steps = new List<TaskStep>
                 {
                     new TaskStep(TaskStepType.TravelTo, nodeId),
-                    new TaskStep(TaskStepType.Gather),
+                    new TaskStep(TaskStepType.Work),
                     new TaskStep(TaskStepType.TravelTo, hubNodeId),
                     new TaskStep(TaskStepType.Deposit),
                 },
-            };
-        }
-
-        /// <summary>
-        /// Idle assignment — no steps. Runner does nothing.
-        /// </summary>
-        public static Assignment CreateIdle()
-        {
-            return new Assignment
-            {
-                Type = AssignmentType.Idle,
-                Steps = new List<TaskStep>(),
-                CurrentStepIndex = 0,
-                Loop = false,
             };
         }
     }

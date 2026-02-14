@@ -60,8 +60,8 @@ namespace ProjectGuild.Tests
         [Test]
         public void AdvanceStep_LoopingAssignment_WrapsToZero()
         {
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
-            // 4 steps: TravelTo(mine), Gather, TravelTo(hub), Deposit
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            // 4 steps: TravelTo(mine), Work, TravelTo(hub), Deposit
             Assert.AreEqual(0, assignment.CurrentStepIndex);
 
             Assert.IsTrue(assignment.AdvanceStep()); // → 1
@@ -79,11 +79,10 @@ namespace ProjectGuild.Tests
         {
             var assignment = new Assignment
             {
-                Type = AssignmentType.Gather,
                 Steps = new System.Collections.Generic.List<TaskStep>
                 {
                     new TaskStep(TaskStepType.TravelTo, "mine"),
-                    new TaskStep(TaskStepType.Gather),
+                    new TaskStep(TaskStepType.Work),
                 },
                 CurrentStepIndex = 0,
                 Loop = false,
@@ -97,25 +96,27 @@ namespace ProjectGuild.Tests
         [Test]
         public void AdvanceStep_EmptySteps_ReturnsFalse()
         {
-            var assignment = Assignment.CreateIdle();
+            var assignment = new Assignment
+            {
+                Steps = new System.Collections.Generic.List<TaskStep>(),
+                CurrentStepIndex = 0,
+            };
             Assert.IsFalse(assignment.AdvanceStep());
         }
 
         [Test]
-        public void CreateGatherLoop_HasCorrectSteps()
+        public void CreateLoop_HasCorrectSteps()
         {
-            var assignment = Assignment.CreateGatherLoop("mine", "hub", 1);
+            var assignment = Assignment.CreateLoop("mine", "hub");
 
-            Assert.AreEqual(AssignmentType.Gather, assignment.Type);
             Assert.AreEqual(4, assignment.Steps.Count);
             Assert.IsTrue(assignment.Loop);
             Assert.AreEqual("mine", assignment.TargetNodeId);
-            Assert.AreEqual(1, assignment.GatherableIndex);
 
             Assert.AreEqual(TaskStepType.TravelTo, assignment.Steps[0].Type);
             Assert.AreEqual("mine", assignment.Steps[0].TargetNodeId);
 
-            Assert.AreEqual(TaskStepType.Gather, assignment.Steps[1].Type);
+            Assert.AreEqual(TaskStepType.Work, assignment.Steps[1].Type);
 
             Assert.AreEqual(TaskStepType.TravelTo, assignment.Steps[2].Type);
             Assert.AreEqual("hub", assignment.Steps[2].TargetNodeId);
@@ -133,12 +134,11 @@ namespace ProjectGuild.Tests
             AssignmentChanged? received = null;
             _sim.Events.Subscribe<AssignmentChanged>(e => received = e);
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment, "test");
 
             Assert.IsNotNull(received);
             Assert.AreEqual(_runner.Id, received.Value.RunnerId);
-            Assert.AreEqual(AssignmentType.Gather, received.Value.NewType);
             Assert.AreEqual("mine", received.Value.TargetNodeId);
             Assert.AreEqual("test", received.Value.Reason);
         }
@@ -148,7 +148,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // First step is TravelTo(mine), runner is at hub → should start traveling
@@ -161,10 +161,10 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
-            // First step is TravelTo(mine) — already there → skip → Gather step → starts gathering
+            // First step is TravelTo(mine) — already there → skip → Work step → starts gathering
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
             Assert.IsNotNull(_runner.Gathering);
             Assert.AreEqual("mine", _runner.Gathering.NodeId);
@@ -174,7 +174,8 @@ namespace ProjectGuild.Tests
         public void AssignRunner_NullAssignment_SetsIdle()
         {
             Setup("mine");
-            _sim.CommandGather(_runner.Id);
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
 
             _sim.AssignRunner(_runner.Id, null);
 
@@ -183,12 +184,11 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void AssignRunner_IdleAssignment_DoesNothing()
+        public void AssignRunner_NullAssignment_DoesNothing()
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateIdle();
-            _sim.AssignRunner(_runner.Id, assignment);
+            _sim.AssignRunner(_runner.Id, null);
 
             Assert.AreEqual(RunnerState.Idle, _runner.State);
             // Tick a few times — nothing should happen
@@ -204,7 +204,7 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Should start gathering
@@ -228,7 +228,7 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Tick until the runner is back at the mine gathering
@@ -249,7 +249,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3; // Deposit step
 
             _sim.AssignRunner(_runner.Id, assignment);
@@ -269,7 +269,7 @@ namespace ProjectGuild.Tests
             for (int i = 0; i < 10; i++)
                 _runner.Inventory.TryAdd(itemDef);
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3;
 
             RunnerDeposited? deposited = null;
@@ -298,7 +298,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3;
 
             RunnerDeposited? deposited = null;
@@ -322,7 +322,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3;
 
             _sim.AssignRunner(_runner.Id, assignment);
@@ -346,11 +346,11 @@ namespace ProjectGuild.Tests
             int advancedCount = 0;
             _sim.Events.Subscribe<AssignmentStepAdvanced>(e => advancedCount++);
 
-            var assignment = Assignment.CreateGatherLoop("mine", "hub");
+            var assignment = Assignment.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Runner is at mine — TravelTo(mine) is skipped (already there),
-            // which advances to Gather step and fires the event.
+            // which advances to Work step and fires the event.
             Assert.Greater(advancedCount, 0);
         }
     }

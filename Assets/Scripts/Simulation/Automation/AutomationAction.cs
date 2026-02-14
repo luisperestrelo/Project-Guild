@@ -10,8 +10,8 @@ namespace ProjectGuild.Simulation.Automation
     public class AutomationAction
     {
         public ActionType Type;
-        public string StringParam;   // nodeId for TravelTo/GatherAt
-        public int IntParam;         // gatherableIndex for GatherAt
+        public string StringParam;   // nodeId for WorkAt/TravelTo
+        public int IntParam;         // gatherableIndex for GatherHere
 
         public AutomationAction() { }
 
@@ -23,14 +23,18 @@ namespace ProjectGuild.Simulation.Automation
         public static AutomationAction TravelTo(string nodeId)
             => new AutomationAction { Type = ActionType.TravelTo, StringParam = nodeId };
 
-        public static AutomationAction GatherAt(string nodeId, int gatherableIndex = 0)
-            => new AutomationAction { Type = ActionType.GatherAt, StringParam = nodeId, IntParam = gatherableIndex };
+        /// <summary>
+        /// Macro action: create a work loop at the target node.
+        /// What the runner does there is determined by micro rules.
+        /// </summary>
+        public static AutomationAction WorkAt(string nodeId)
+            => new AutomationAction { Type = ActionType.WorkAt, StringParam = nodeId };
 
         /// <summary>
-        /// GatherAt with no specific node — means "gather at whatever node I'm currently at."
+        /// Micro action: gather the resource at the given index at the current node.
         /// </summary>
         public static AutomationAction GatherHere(int gatherableIndex = 0)
-            => new AutomationAction { Type = ActionType.GatherAt, StringParam = "", IntParam = gatherableIndex };
+            => new AutomationAction { Type = ActionType.GatherHere, IntParam = gatherableIndex };
 
         public static AutomationAction ReturnToHub()
             => new AutomationAction { Type = ActionType.ReturnToHub };
@@ -40,5 +44,8 @@ namespace ProjectGuild.Simulation.Automation
 
         public static AutomationAction FleeToHub()
             => new AutomationAction { Type = ActionType.FleeToHub };
+
+        public static AutomationAction FinishTask()
+            => new AutomationAction { Type = ActionType.FinishTask };
     }
 }

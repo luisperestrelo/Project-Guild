@@ -219,11 +219,11 @@ namespace ProjectGuild.Tests
                 Action = AutomationAction.TravelTo("forest"),
             });
 
-            // Rule 1: Always -> GatherAt mine (lower priority, suppressed)
+            // Rule 1: Always -> WorkAt mine (lower priority, suppressed)
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.GatherAt("mine"),
+                Action = AutomationAction.WorkAt("mine"),
             });
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -296,7 +296,7 @@ namespace ProjectGuild.Tests
         {
             var ruleset = DefaultRulesets.CreateDefaultMicro();
             Assert.AreEqual(1, ruleset.Rules.Count);
-            Assert.AreEqual(ActionType.GatherAt, ruleset.Rules[0].Action.Type);
+            Assert.AreEqual(ActionType.GatherHere, ruleset.Rules[0].Action.Type);
             Assert.AreEqual(0, ruleset.Rules[0].Action.IntParam,
                 "Default micro rule should gather index 0");
         }
@@ -328,7 +328,7 @@ namespace ProjectGuild.Tests
 
             // Copy should be unchanged
             Assert.AreEqual("Gather resource", copy.Rules[0].Label);
-            Assert.AreEqual("", copy.Rules[0].Action.StringParam);
+            Assert.IsNull(copy.Rules[0].Action.StringParam);
             Assert.AreEqual(1, copy.Rules.Count);
         }
 

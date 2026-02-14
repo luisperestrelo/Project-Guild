@@ -231,7 +231,7 @@ namespace ProjectGuild.View
             {
                 var step = selected.Assignment.CurrentStep;
                 string stepDesc = step != null ? $"{step.Type}" : "done";
-                GUILayout.Label($"Assignment: {selected.Assignment.Type} (step: {stepDesc})");
+                GUILayout.Label($"Assignment: {selected.Assignment.TargetNodeId ?? "?"} (step: {stepDesc})");
             }
 
             // Inventory
@@ -254,48 +254,39 @@ namespace ProjectGuild.View
 
             GUILayout.Space(5);
 
-            // Stop gathering button
-            if (selected.Gathering != null)
+            // Cancel assignment button
+            if (selected.Assignment != null)
             {
-                if (GUILayout.Button("Stop Gathering"))
-                    sim.CancelGathering(selected.Id);
+                if (GUILayout.Button("Cancel Assignment"))
+                    sim.AssignRunner(selected.Id, null, "manual cancel");
             }
 
-            // Gather buttons — context-sensitive
-            var currentNode = sim.CurrentGameState.Map.GetNode(selected.CurrentNodeId);
-            if (selected.State == RunnerState.Idle && currentNode != null && currentNode.Gatherables.Length > 0)
+            // Assign to node buttons — always visible, works from anywhere
+            GUILayout.Space(5);
+            GUILayout.Label("<b>Send to:</b>", richLabel);
+            _zoneScrollPos = GUILayout.BeginScrollView(_zoneScrollPos);
+            string hubId = sim.CurrentGameState.Map?.HubNodeId ?? "hub";
+            foreach (var node in sim.CurrentGameState.Map.Nodes)
             {
-                for (int g = 0; g < currentNode.Gatherables.Length; g++)
+                if (node.Id == hubId) continue; // skip hub
+                string nodeId = node.Id;
+
+                // Show what's available at this node
+                var resources = new List<string>();
+                foreach (var g in node.Gatherables)
                 {
-                    var gatherConfig = currentNode.Gatherables[g];
-                    var itemDef = sim.ItemRegistry?.Get(gatherConfig.ProducedItemId);
-                    string itemName = itemDef != null ? itemDef.Name : gatherConfig.ProducedItemId;
-                    string levelReq = gatherConfig.MinLevel > 0 ? $" [Lv{gatherConfig.MinLevel}+]" : "";
-                    int gatherIndex = g;
-                    if (GUILayout.Button($"[{g}] Gather ({itemName}{levelReq})"))
-                        sim.CommandGather(selected.Id, gatherIndex);
+                    var itemDef = sim.ItemRegistry?.Get(g.ProducedItemId);
+                    resources.Add(itemDef != null ? itemDef.Name : g.ProducedItemId);
+                }
+                string detail = resources.Count > 0 ? $" ({string.Join(", ", resources)})" : "";
+
+                if (GUILayout.Button($"{node.Name}{detail}", GUILayout.Height(20f)))
+                {
+                    var assignment = Assignment.CreateLoop(nodeId, hubId);
+                    sim.AssignRunner(selected.Id, assignment, "manual assign");
                 }
             }
-
-            // Zone list — visible when idle OR traveling (traveling = redirect)
-            if (selected.State == RunnerState.Idle || selected.State == RunnerState.Traveling)
-            {
-                GUILayout.Space(5);
-                string zoneLabel = selected.State == RunnerState.Traveling ? "<b>Redirect to:</b>" : "<b>Send to:</b>";
-                GUILayout.Label(zoneLabel, richLabel);
-                _zoneScrollPos = GUILayout.BeginScrollView(_zoneScrollPos);
-                foreach (var node in sim.CurrentGameState.Map.Nodes)
-                {
-                    // Idle: hide the node we're standing at. Traveling: hide current destination.
-                    if (selected.State == RunnerState.Idle && node.Id == selected.CurrentNodeId) continue;
-                    if (selected.State == RunnerState.Traveling && selected.Travel != null
-                        && node.Id == selected.Travel.ToNodeId) continue;
-
-                    if (GUILayout.Button(node.Name, GUILayout.Height(20f)))
-                        sim.CommandTravel(selected.Id, node.Id);
-                }
-                GUILayout.EndScrollView();
-            }
+            GUILayout.EndScrollView();
 
             GUILayout.EndArea();
 
@@ -663,7 +654,7 @@ namespace ProjectGuild.View
                 _newActionType = (_newActionType + 1) % ActionTypeNames.Length;
 
             var actionType = (ActionType)_newActionType;
-            bool actionNeedsNode = actionType == ActionType.TravelTo || actionType == ActionType.GatherAt;
+            bool actionNeedsNode = actionType == ActionType.TravelTo || actionType == ActionType.WorkAt;
 
             if (actionNeedsNode)
             {
@@ -676,7 +667,7 @@ namespace ProjectGuild.View
                 }
             }
 
-            if (actionType == ActionType.GatherAt)
+            if (actionType == ActionType.GatherHere)
             {
                 GUILayout.Label("idx:", GUILayout.Width(25f));
                 _newActionGatherIndex = GUILayout.TextField(_newActionGatherIndex, GUILayout.Width(25f));
@@ -865,9 +856,8 @@ namespace ProjectGuild.View
             {
                 ActionType.Idle => "Idle",
                 ActionType.TravelTo => $"Travel -> {a.StringParam}",
-                ActionType.GatherAt => string.IsNullOrEmpty(a.StringParam)
-                    ? $"Gather Here[{a.IntParam}]"
-                    : $"Gather @ {a.StringParam}[{a.IntParam}]",
+                ActionType.WorkAt => $"Work @ {a.StringParam}",
+                ActionType.GatherHere => $"Gather Here[{a.IntParam}]",
                 ActionType.ReturnToHub => "Return to Hub",
                 ActionType.DepositAndResume => "Deposit & Resume",
                 ActionType.FleeToHub => "Flee to Hub",
