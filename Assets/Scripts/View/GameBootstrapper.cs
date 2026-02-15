@@ -125,9 +125,15 @@ namespace ProjectGuild.View
         private Vector2 _zoneScrollPos;
 
         // Automation panel state
-        private int _autoTab; // 0=Rules, 1=Decision Log
+        private int _autoTab; // 0=Rules, 1=Decision Log, 2=Warnings, 3=Activity, 4=Event Log
         private Vector2 _rulesScrollPos;
         private Vector2 _logScrollPos;
+        private Vector2 _warningsScrollPos;
+        private Vector2 _activityScrollPos;
+        private Vector2 _eventLogScrollPos;
+        private bool[] _eventCategoryFilters = { true, true, true, true, false }; // Warning, Automation, State, Production, Lifecycle(off)
+        private bool _eventLogAllRunners = true;
+        private string _eventLogSearch = "";
         private bool _showAddRule;
         private Ruleset _clipboardRuleset;
 
@@ -463,6 +469,12 @@ namespace ProjectGuild.View
                 _autoTab = 0;
             if (GUILayout.Toggle(_autoTab == 1, "Decision Log", GUI.skin.button, GUILayout.Height(22f)))
                 _autoTab = 1;
+            if (GUILayout.Toggle(_autoTab == 2, "Warnings", GUI.skin.button, GUILayout.Height(22f)))
+                _autoTab = 2;
+            if (GUILayout.Toggle(_autoTab == 3, "Activity", GUI.skin.button, GUILayout.Height(22f)))
+                _autoTab = 3;
+            if (GUILayout.Toggle(_autoTab == 4, "Event Log", GUI.skin.button, GUILayout.Height(22f)))
+                _autoTab = 4;
             GUILayout.FlexibleSpace();
 
             // Copy/Paste buttons (always visible)
@@ -480,10 +492,14 @@ namespace ProjectGuild.View
 
             GUILayout.Space(3);
 
-            if (_autoTab == 0)
-                DrawRulesTab(sim, selected, richLabel, panelW);
-            else
-                DrawDecisionLogTab(sim, selected, richLabel);
+            switch (_autoTab)
+            {
+                case 0: DrawRulesTab(sim, selected, richLabel, panelW); break;
+                case 1: DrawDecisionLogTab(sim, selected, richLabel); break;
+                case 2: DrawWarningsTab(sim, richLabel); break;
+                case 3: DrawActivityTab(sim, selected, richLabel); break;
+                case 4: DrawEventLogTab(sim, selected, richLabel); break;
+            }
         }
 
         // ─── Rules Tab ──────────────────────────────────────────────
@@ -807,6 +823,149 @@ namespace ProjectGuild.View
             {
                 sim.CurrentGameState.DecisionLog.Clear();
             }
+        }
+
+        // ─── Warnings Tab ─────────────────────────────────────────────
+
+        private void DrawWarningsTab(GameSimulation sim, GUIStyle richLabel)
+        {
+            var warnings = sim.EventLog.GetWarnings();
+            GUILayout.Label($"<b>Warnings</b> ({warnings.Count} total)", richLabel);
+
+            if (warnings.Count == 0)
+            {
+                GUILayout.Label("  (no warnings)");
+                return;
+            }
+
+            _warningsScrollPos = GUILayout.BeginScrollView(_warningsScrollPos);
+            foreach (var entry in warnings)
+            {
+                string repeat = entry.RepeatCount > 1 ? $" <color=#888888>x{entry.RepeatCount}</color>" : "";
+                string runnerId = entry.RunnerId ?? "global";
+                GUILayout.Label(
+                    $"<color=#aaaaaa>T{entry.TickNumber}</color> " +
+                    $"<color=#ffaa44>[{runnerId}]</color> " +
+                    $"<color=#ff8888>{entry.Summary}</color>{repeat}",
+                    richLabel);
+            }
+            GUILayout.EndScrollView();
+
+            if (GUILayout.Button("Clear Warnings", GUILayout.Height(18f)))
+            {
+                // Can't selectively clear, so we just note it's a full clear
+                sim.EventLog.Clear();
+            }
+        }
+
+        // ─── Activity Tab ─────────────────────────────────────────────
+
+        private void DrawActivityTab(GameSimulation sim, Runner selected, GUIStyle richLabel)
+        {
+            var feed = sim.EventLog.GetActivityFeed(selected.Id);
+            GUILayout.Label($"<b>Activity: {selected.Name}</b> ({feed.Count} entries)", richLabel);
+
+            if (feed.Count == 0)
+            {
+                GUILayout.Label("  (no activity)");
+                return;
+            }
+
+            _activityScrollPos = GUILayout.BeginScrollView(_activityScrollPos);
+            foreach (var entry in feed)
+            {
+                string repeat = entry.RepeatCount > 1 ? $" x{entry.RepeatCount}" : "";
+                string color = entry.Category switch
+                {
+                    EventCategory.Warning => "#ff8888",
+                    EventCategory.Automation => "#88ff88",
+                    EventCategory.Production => "#88ddff",
+                    _ => "#cccccc",
+                };
+                GUILayout.Label(
+                    $"<color=#aaaaaa>T{entry.TickNumber}</color> " +
+                    $"<color={color}>{entry.Summary}{repeat}</color>",
+                    richLabel);
+            }
+            GUILayout.EndScrollView();
+        }
+
+        // ─── Event Log Tab ────────────────────────────────────────────
+
+        private static readonly string[] CategoryNames = { "Warning", "Automation", "State", "Production", "Lifecycle" };
+        private static readonly EventCategory[] CategoryValues =
+        {
+            EventCategory.Warning, EventCategory.Automation, EventCategory.StateChange,
+            EventCategory.Production, EventCategory.Lifecycle,
+        };
+
+        private void DrawEventLogTab(GameSimulation sim, Runner selected, GUIStyle richLabel)
+        {
+            // Search bar
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Search:", GUILayout.Width(50f));
+            _eventLogSearch = GUILayout.TextField(_eventLogSearch, GUILayout.Height(18f));
+            GUILayout.EndHorizontal();
+
+            // Category toggles
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < CategoryNames.Length; i++)
+            {
+                _eventCategoryFilters[i] = GUILayout.Toggle(
+                    _eventCategoryFilters[i], CategoryNames[i],
+                    GUI.skin.button, GUILayout.Height(18f));
+            }
+            GUILayout.EndHorizontal();
+
+            // Runner filter + options
+            GUILayout.BeginHorizontal();
+            _eventLogAllRunners = GUILayout.Toggle(_eventLogAllRunners, "All Runners", GUI.skin.button, GUILayout.Height(18f));
+            if (!_eventLogAllRunners)
+                GUILayout.Label($"  Filtered: {selected.Name}", richLabel);
+            GUILayout.FlexibleSpace();
+            sim.EventLog.CollapsingEnabled = GUILayout.Toggle(
+                sim.EventLog.CollapsingEnabled, "Collapse", GUI.skin.button, GUILayout.Height(18f));
+            if (GUILayout.Button("Clear", GUILayout.Width(50f), GUILayout.Height(18f)))
+                sim.EventLog.Clear();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(2);
+
+            // Entries
+            _eventLogScrollPos = GUILayout.BeginScrollView(_eventLogScrollPos);
+            var entries = sim.EventLog.Entries;
+            string searchLower = string.IsNullOrEmpty(_eventLogSearch) ? null : _eventLogSearch.ToLowerInvariant();
+
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                var entry = entries[i];
+
+                // Category filter
+                int catIdx = System.Array.IndexOf(CategoryValues, entry.Category);
+                if (catIdx >= 0 && !_eventCategoryFilters[catIdx]) continue;
+
+                // Runner filter
+                if (!_eventLogAllRunners && entry.RunnerId != selected.Id) continue;
+
+                // Search filter
+                if (searchLower != null && !entry.Summary.ToLowerInvariant().Contains(searchLower)) continue;
+
+                string repeat = entry.RepeatCount > 1 ? $" <color=#888888>x{entry.RepeatCount}</color>" : "";
+                string runnerId = entry.RunnerId != null ? $"[{entry.RunnerId}] " : "";
+                string color = entry.Category switch
+                {
+                    EventCategory.Warning => "#ff8888",
+                    EventCategory.Automation => "#88ff88",
+                    EventCategory.Production => "#88ddff",
+                    EventCategory.Lifecycle => "#666666",
+                    _ => "#cccccc",
+                };
+                GUILayout.Label(
+                    $"<color=#aaaaaa>T{entry.TickNumber}</color> {runnerId}" +
+                    $"<color={color}>{entry.Summary}</color>{repeat}",
+                    richLabel);
+            }
+            GUILayout.EndScrollView();
         }
 
         // ─── Formatting Helpers ─────────────────────────────────────

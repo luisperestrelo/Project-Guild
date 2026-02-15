@@ -282,5 +282,132 @@ namespace ProjectGuild.Tests
                 "Invalid micro rule index should leave runner stuck (let it break)");
             Assert.IsNull(_runner.Gathering);
         }
+
+        // ─── NoMicroRuleMatched event ─────────────────────────────
+
+        [Test]
+        public void EmptyMicroRuleset_FiresNoMicroRuleMatched()
+        {
+            Setup("mine");
+
+            _runner.MicroRuleset = new Ruleset();
+
+            NoMicroRuleMatched? received = null;
+            _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
+
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            Assert.IsNotNull(received, "NoMicroRuleMatched should fire for empty ruleset");
+            Assert.AreEqual(_runner.Id, received.Value.RunnerId);
+            Assert.IsTrue(received.Value.RulesetIsEmpty, "RulesetIsEmpty should be true for empty ruleset");
+            Assert.AreEqual(0, received.Value.RuleCount);
+        }
+
+        [Test]
+        public void InvalidIndex_FiresNoMicroRuleMatched()
+        {
+            Setup("mine");
+
+            _runner.MicroRuleset = new Ruleset();
+            _runner.MicroRuleset.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherHere(99),
+                Enabled = true,
+            });
+
+            NoMicroRuleMatched? received = null;
+            _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
+
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            Assert.IsNotNull(received, "NoMicroRuleMatched should fire for invalid index");
+            Assert.IsFalse(received.Value.RulesetIsEmpty, "RulesetIsEmpty should be false when rules exist");
+            Assert.AreEqual(1, received.Value.RuleCount);
+        }
+
+        [Test]
+        public void NoMatchingConditions_FiresNoMicroRuleMatched()
+        {
+            Setup("mine");
+
+            // Rule that never matches: requires 999 copper in inventory
+            _runner.MicroRuleset = new Ruleset();
+            _runner.MicroRuleset.Rules.Add(new Rule
+            {
+                Conditions = { Condition.InventoryContains("copper_ore", ComparisonOperator.GreaterOrEqual, 999) },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            NoMicroRuleMatched? received = null;
+            _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
+
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            Assert.IsNotNull(received, "NoMicroRuleMatched should fire when no conditions match");
+            Assert.IsFalse(received.Value.RulesetIsEmpty);
+            Assert.AreEqual(1, received.Value.RuleCount);
+            Assert.AreEqual("mine", received.Value.NodeId);
+        }
+
+        [Test]
+        public void MidGathering_NoMatch_FiresNoMicroRuleMatched()
+        {
+            Setup("mine");
+
+            // Start with copper until 2, then no fallback → stuck
+            _runner.MicroRuleset = new Ruleset();
+            _runner.MicroRuleset.Rules.Add(new Rule
+            {
+                Label = "Copper until 2",
+                Conditions = { Condition.InventoryContains("copper_ore", ComparisonOperator.LessThan, 2) },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            NoMicroRuleMatched? received = null;
+
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State, "Should start gathering");
+
+            // Subscribe after assignment so we don't catch the initial eval
+            _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
+
+            // Tick until we have 2 copper — then the rule stops matching
+            TickUntil(() => _runner.Inventory.CountItem("copper_ore") >= 2);
+
+            // Re-eval mid-gathering should fire NoMicroRuleMatched
+            Assert.IsNotNull(received,
+                "NoMicroRuleMatched should fire from ReevaluateMicroDuringGathering when rules stop matching");
+            Assert.AreEqual(RunnerState.Idle, _runner.State, "Runner should be stuck");
+        }
+
+        [Test]
+        public void ValidMicroRule_DoesNotFireNoMicroRuleMatched()
+        {
+            Setup("mine");
+
+            // Default micro rule: Always → GatherHere(0)
+            // Should NOT fire NoMicroRuleMatched
+
+            NoMicroRuleMatched? received = null;
+            _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
+
+            var assignment = Assignment.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            // Tick a few times to make sure it never fires
+            for (int i = 0; i < 50; i++)
+                _sim.Tick();
+
+            Assert.IsNull(received, "NoMicroRuleMatched should NOT fire when a valid rule matches");
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+        }
     }
 }

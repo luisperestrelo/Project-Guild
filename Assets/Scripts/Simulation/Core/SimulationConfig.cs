@@ -183,6 +183,12 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public int DecisionLogMaxEntries = 100;
 
+        /// <summary>
+        /// Maximum entries kept in the event log (ring buffer eviction).
+        /// 500 covers several minutes of rich activity.
+        /// </summary>
+        public int EventLogMaxEntries = 500;
+
         // ─── Death (Overworld Only — Raid deaths use separate logic) ──
 
         /// <summary>

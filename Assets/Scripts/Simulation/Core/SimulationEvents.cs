@@ -104,6 +104,19 @@ namespace ProjectGuild.Simulation.Core
         public string ActionDetail;
     }
 
+    public struct NoMicroRuleMatched
+    {
+        public string RunnerId;
+        public string RunnerName;
+        public string NodeId;
+        /// <summary>
+        /// True if the micro ruleset has zero rules (player deleted all rules).
+        /// False if rules exist but none matched the current conditions.
+        /// </summary>
+        public bool RulesetIsEmpty;
+        public int RuleCount;
+    }
+
     // ─── Simulation Lifecycle ────────────────────────────────────
 
     public struct SimulationTickCompleted

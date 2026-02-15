@@ -24,6 +24,7 @@ namespace ProjectGuild.Simulation.Core
         public EventBus Events { get; private set; }
         public SimulationConfig Config { get; private set; }
         public ItemRegistry ItemRegistry { get; private set; }
+        public EventLogService EventLog { get; private set; }
 
 
 
@@ -39,6 +40,8 @@ namespace ProjectGuild.Simulation.Core
             Events = new EventBus();
             Config = config ?? new SimulationConfig();
             TickDeltaTime = 1f / tickRate;
+            EventLog = new EventLogService(Config.EventLogMaxEntries, () => CurrentGameState);
+            EventLog.SubscribeAll(Events);
         }
 
         /// <summary>
@@ -578,6 +581,7 @@ namespace ProjectGuild.Simulation.Core
             // No valid rule matched — runner is stuck. Stay idle at the Work step.
             if (gatherableIndex == MicroResultNoMatch)
             {
+                PublishNoMicroRuleMatched(runner);
                 return;
             }
 
@@ -690,6 +694,7 @@ namespace ProjectGuild.Simulation.Core
             {
                 runner.State = RunnerState.Idle;
                 runner.Gathering = null;
+                PublishNoMicroRuleMatched(runner);
                 return;
             }
 
@@ -852,6 +857,19 @@ namespace ProjectGuild.Simulation.Core
 
             AssignRunner(runner.Id, pending, "deferred macro rule");
             return true;
+        }
+
+        private void PublishNoMicroRuleMatched(Runner runner)
+        {
+            var ruleset = runner.MicroRuleset;
+            Events.Publish(new NoMicroRuleMatched
+            {
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+                NodeId = runner.CurrentNodeId,
+                RulesetIsEmpty = ruleset == null || ruleset.Rules == null || ruleset.Rules.Count == 0,
+                RuleCount = ruleset?.Rules?.Count ?? 0,
+            });
         }
 
         // ─── Internal Helpers ──────────────────────────────────────
