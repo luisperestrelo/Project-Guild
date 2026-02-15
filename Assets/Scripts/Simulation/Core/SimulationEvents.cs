@@ -41,6 +41,12 @@ namespace ProjectGuild.Simulation.Core
         public SkillType Skill;
     }
 
+    public enum GatheringFailureReason
+    {
+        NotEnoughSkill,
+        NoGatherablesAtNode,
+    }
+
     public struct GatheringFailed
     {
         public string RunnerId;
@@ -49,6 +55,7 @@ namespace ProjectGuild.Simulation.Core
         public SkillType Skill;
         public int RequiredLevel;
         public int CurrentLevel;
+        public GatheringFailureReason Reason;
     }
 
     public struct ItemGathered
@@ -69,20 +76,26 @@ namespace ProjectGuild.Simulation.Core
         public int ItemsDeposited;
     }
 
-    // ─── Assignment Events ────────────────────────────────────────
+    // ─── Task Sequence Events ───────────────────────────────────────
 
-    public struct AssignmentChanged
+    public struct TaskSequenceChanged
     {
         public string RunnerId;
         public string TargetNodeId;
         public string Reason;
     }
 
-    public struct AssignmentStepAdvanced
+    public struct TaskSequenceStepAdvanced
     {
         public string RunnerId;
         public Automation.TaskStepType StepType;
         public int StepIndex;
+    }
+
+    public struct TaskSequenceCompleted
+    {
+        public string RunnerId;
+        public string SequenceName;
     }
 
     // ─── Automation Events ───────────────────────────────────────

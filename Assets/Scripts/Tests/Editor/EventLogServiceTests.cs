@@ -222,7 +222,7 @@ namespace ProjectGuild.Tests
             sim.StartNewGame(defs, map, "mine");
             var runner = sim.CurrentGameState.Runners[0];
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             sim.AssignRunner(runner.Id, assignment);
 
             // Tick until we get a few items
@@ -275,7 +275,7 @@ namespace ProjectGuild.Tests
             // Clear micro rules to trigger NoMicroRuleMatched
             runner.MicroRuleset = new Ruleset();
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             sim.AssignRunner(runner.Id, assignment);
 
             var warnings = sim.EventLog.GetWarnings();

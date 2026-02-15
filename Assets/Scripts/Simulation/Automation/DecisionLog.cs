@@ -29,14 +29,16 @@ namespace ProjectGuild.Simulation.Automation
 
         /// <summary>
         /// Get all entries for a specific runner, most recent first.
+        /// Optionally filter by layer (macro/micro).
         /// </summary>
-        public List<DecisionLogEntry> GetForRunner(string runnerId)
+        public List<DecisionLogEntry> GetForRunner(string runnerId, DecisionLayer? layer = null)
         {
             var result = new List<DecisionLogEntry>();
             for (int i = Entries.Count - 1; i >= 0; i--)
             {
-                if (Entries[i].RunnerId == runnerId)
-                    result.Add(Entries[i]);
+                var entry = Entries[i];
+                if (entry.RunnerId == runnerId && (layer == null || entry.Layer == layer))
+                    result.Add(entry);
             }
             return result;
         }

@@ -26,11 +26,11 @@ namespace ProjectGuild.Simulation.Automation
         public bool Enabled = true;
 
         /// <summary>
-        /// When true (default), if this rule triggers a task switch during a gathering loop,
-        /// the runner finishes the current deposit cycle first, then executes the new action.
-        /// FleeToHub ignores this flag (always immediate).
+        /// When true (default), if this macro rule fires during an active task sequence,
+        /// the runner finishes the current sequence cycle first, then executes the new action.
+        /// When false, the new action is applied immediately (interrupting the current step).
         /// </summary>
-        public bool FinishCurrentTrip = true;
+        public bool FinishCurrentSequence = true;
 
         /// <summary>
         /// Player-editable label for this rule. Optional.

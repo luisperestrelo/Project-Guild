@@ -2,6 +2,12 @@ using System;
 
 namespace ProjectGuild.Simulation.Automation
 {
+    public enum DecisionLayer
+    {
+        Macro,
+        Micro,
+    }
+
     /// <summary>
     /// A single entry in the decision log. Captures what happened when an automation
     /// rule fired: which rule, why it triggered, what the conditions evaluated to,
@@ -18,6 +24,7 @@ namespace ProjectGuild.Simulation.Automation
         public float GameTime;
         public string RunnerId;
         public string RunnerName;
+        public DecisionLayer Layer;
         public int RuleIndex;
         public string RuleLabel;
         public string TriggerReason;

@@ -55,7 +55,7 @@ namespace ProjectGuild.Tests
                     Condition.AtNode("mine"),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 10),
                 },
-                Action = AutomationAction.TravelTo("deep_mine"),
+                Action = AutomationAction.WorkAt("deep_mine"),
             };
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -75,7 +75,7 @@ namespace ProjectGuild.Tests
                     Condition.AtNode("mine"),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 10),
                 },
-                Action = AutomationAction.TravelTo("deep_mine"),
+                Action = AutomationAction.WorkAt("deep_mine"),
             };
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -105,14 +105,14 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.TravelTo("mine"),
+                Action = AutomationAction.WorkAt("mine"),
             });
 
             // Rule 1: Always -> TravelTo forest (should never match)
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.TravelTo("forest"),
+                Action = AutomationAction.WorkAt("forest"),
             });
 
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
@@ -129,7 +129,7 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.TravelTo("mine"),
+                Action = AutomationAction.WorkAt("mine"),
                 Enabled = false,
             });
 
@@ -137,7 +137,7 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.TravelTo("forest"),
+                Action = AutomationAction.WorkAt("forest"),
             });
 
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
@@ -186,7 +186,7 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.AtNode("mine") },
-                Action = AutomationAction.TravelTo("mine"),
+                Action = AutomationAction.WorkAt("mine"),
             });
 
             // Rule 1: Always -> fallback
@@ -216,7 +216,7 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.TravelTo("forest"),
+                Action = AutomationAction.WorkAt("forest"),
             });
 
             // Rule 1: Always -> WorkAt mine (lower priority, suppressed)
@@ -229,7 +229,7 @@ namespace ProjectGuild.Tests
             _ctx = new EvaluationContext(_runner, _gameState, _config);
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
             Assert.AreEqual(0, result);
-            Assert.AreEqual(ActionType.TravelTo, ruleset.Rules[result].Action.Type);
+            Assert.AreEqual(ActionType.WorkAt, ruleset.Rules[result].Action.Type);
         }
 
         [Test]
@@ -250,7 +250,7 @@ namespace ProjectGuild.Tests
                     Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 15),
                 },
-                Action = AutomationAction.TravelTo("deep_mine"),
+                Action = AutomationAction.WorkAt("deep_mine"),
             });
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -273,7 +273,7 @@ namespace ProjectGuild.Tests
                     Condition.AtNode("mine"),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 15),
                 },
-                Action = AutomationAction.TravelTo("deep_mine"),
+                Action = AutomationAction.WorkAt("deep_mine"),
             });
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -292,21 +292,40 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void DefaultMicro_HasGatherHereRule()
+        public void DefaultMicro_HasInventoryFullAndGatherHereRules()
         {
             var ruleset = DefaultRulesets.CreateDefaultMicro();
-            Assert.AreEqual(1, ruleset.Rules.Count);
-            Assert.AreEqual(ActionType.GatherHere, ruleset.Rules[0].Action.Type);
-            Assert.AreEqual(0, ruleset.Rules[0].Action.IntParam,
-                "Default micro rule should gather index 0");
+            Assert.AreEqual(2, ruleset.Rules.Count,
+                "Default micro should have InventoryFull→FinishTask and Always→GatherHere");
+            Assert.AreEqual(ActionType.FinishTask, ruleset.Rules[0].Action.Type,
+                "First rule should be InventoryFull → FinishTask");
+            Assert.AreEqual(ActionType.GatherHere, ruleset.Rules[1].Action.Type,
+                "Second rule should be Always → GatherHere");
+            Assert.AreEqual(0, ruleset.Rules[1].Action.IntParam,
+                "Default gather rule should target index 0");
         }
 
         [Test]
-        public void DefaultMicro_AlwaysMatches()
+        public void DefaultMicro_InventoryFullMatchesFirst_WhenFull()
+        {
+            // Fill inventory so InventoryFull condition matches
+            var itemDef = _config.ItemDefinitions[0];
+            for (int i = 0; i < _config.InventorySize; i++)
+                _runner.Inventory.TryAdd(itemDef);
+
+            var ruleset = DefaultRulesets.CreateDefaultMicro();
+            int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
+            Assert.AreEqual(0, result, "When inventory is full, InventoryFull rule (index 0) should match first");
+            Assert.AreEqual(ActionType.FinishTask, ruleset.Rules[result].Action.Type);
+        }
+
+        [Test]
+        public void DefaultMicro_GatherHereMatches_WhenNotFull()
         {
             var ruleset = DefaultRulesets.CreateDefaultMicro();
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
-            Assert.AreEqual(0, result, "Default micro's Always rule should always match");
+            Assert.AreEqual(1, result, "When inventory is not full, GatherHere rule (index 1) should match");
+            Assert.AreEqual(ActionType.GatherHere, ruleset.Rules[result].Action.Type);
         }
 
         // ─── DeepCopy ───────────────────────────────────────
@@ -327,9 +346,9 @@ namespace ProjectGuild.Tests
             });
 
             // Copy should be unchanged
-            Assert.AreEqual("Gather resource", copy.Rules[0].Label);
+            Assert.AreEqual("Deposit when full", copy.Rules[0].Label);
             Assert.IsNull(copy.Rules[0].Action.StringParam);
-            Assert.AreEqual(1, copy.Rules.Count);
+            Assert.AreEqual(2, copy.Rules.Count);
         }
 
         [Test]
@@ -342,7 +361,7 @@ namespace ProjectGuild.Tests
                 {
                     Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50),
                 },
-                Action = AutomationAction.TravelTo("forest"),
+                Action = AutomationAction.WorkAt("forest"),
             });
 
             var copy = original.DeepCopy();

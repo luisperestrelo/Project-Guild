@@ -7,8 +7,8 @@ namespace ProjectGuild.Simulation.Automation
     {
         /// <summary>
         /// Default macro ruleset: empty.
-        /// The assignment's task sequence handles the gather→deposit→repeat loop.
-        /// Macro rules are for assignment *changes* — the player adds them when they want
+        /// The task sequence handles the gather→deposit→repeat loop.
+        /// Macro rules are for task sequence *changes* — the player adds them when they want
         /// condition-based switching (e.g. "IF BankContains(copper) >= 200 THEN switch to oak").
         /// </summary>
         public static Ruleset CreateDefaultMacro()
@@ -24,6 +24,14 @@ namespace ProjectGuild.Simulation.Automation
         public static Ruleset CreateDefaultMicro()
         {
             var ruleset = new Ruleset();
+
+            ruleset.Rules.Add(new Rule
+            {
+                Label = "Deposit when full",
+                Conditions = { Condition.InventoryFull() },
+                Action = AutomationAction.FinishTask(),
+                Enabled = true,
+            });
 
             ruleset.Rules.Add(new Rule
             {

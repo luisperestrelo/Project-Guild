@@ -24,7 +24,7 @@ View (references Bridge + Simulation + UnityEngine)
 
 **Bridge** is thin glue. It drives the simulation forward using Unity's frame loop and handles things that need Unity APIs (file paths, Time.deltaTime, ScriptableObject loading).
 
-**View** is MonoBehaviours that render the game — runner models, animations, camera, UI. The view never modifies simulation state directly — it goes through commands on GameSimulation (like `CommandTravel`, `CommandGather`).
+**View** is MonoBehaviours that render the game — runner models, animations, camera, UI. The view never modifies simulation state directly — it goes through `AssignRunner()` on GameSimulation.
 
 Data flows one direction: **Simulation produces state and events. Bridge ticks the simulation. View reads state and reacts to events.**
 
@@ -50,21 +50,38 @@ SimulationRunner.Update()              ← Bridge layer (MonoBehaviour)
 GameSimulation.Tick()                  ← Simulation layer (pure C#)
     │  TickCount++
     │  For each runner:
-    │    ├─ Idle? → do nothing
+    │    ├─ Non-Idle? → EvaluateMacroRules("Tick") every tick
+    │    │    └─ If Immediate rule fires → AssignRunner, skip rest of tick
+    │    ├─ Idle? → AdvanceMacroStep()
+    │    │    ├─ EvaluateMacroRules (StepAdvance trigger)
+    │    │    └─ Execute current step (TravelTo / Work / Deposit)
+    │    │         └─ Work step → EvaluateMicroRules
+    │    │              ├─ GatherHere(idx) → StartGathering
+    │    │              ├─ FinishTask → advance past Work, AdvanceMacroStep
+    │    │              └─ NoMatch → Publish(NoMicroRuleMatched), stay idle
     │    ├─ Traveling? → TickTravel()
     │    │    ├─ Award Athletics XP (every tick)
     │    │    │    └─ Level up? → Publish(RunnerSkillLeveledUp)
     │    │    └─ Arrived? → set Idle, Publish(RunnerArrivedAtNode)
-    │    │                   └─ HandleGatheringArrival() if mid-loop
-    │    │                        ├─ At hub? → DepositAndReturn()
-    │    │                        └─ At node? → ResumeGathering()
-    │    └─ Gathering? → TickGathering()
-    │         ├─ Award skill XP (every tick, decoupled from item production)
-    │         │    └─ Level up? → Publish(RunnerSkillLeveledUp)
-    │         └─ Tick accumulator full?
-    │              ├─ Produce item → Publish(ItemGathered)
-    │              └─ Inventory full? → Publish(InventoryFull)
-    │                                   → BeginAutoReturn() (hardcoded)
+    │    │         ├─ EvaluateMacroRules (ArrivedAtNode trigger)
+    │    │         └─ AdvanceMacroStep (next step in task sequence)
+    │    ├─ Gathering? → TickGathering()
+    │    │    ├─ Award skill XP (every tick, decoupled from item production)
+    │    │    │    └─ Level up? → Publish(RunnerSkillLeveledUp)
+    │    │    └─ Tick accumulator full?
+    │    │         ├─ Produce item → Publish(ItemGathered)
+    │    │         └─ Inventory full? → Publish(InventoryFull)
+    │    │    └─ ReevaluateMicroDuringGathering (every tick, not just after items)
+    │    │         ├─ GatherHere(idx) → continue gathering (or switch resource)
+    │    │         ├─ FinishTask → advance past Work, AdvanceMacroStep
+    │    │         │    (default micro: IF InventoryFull → FinishTask)
+    │    │         └─ NoMatch → Publish(NoMicroRuleMatched), stay stuck
+    │    └─ Depositing? → TickDepositing()
+    │         └─ Done? → Publish(RunnerDeposited), set Idle
+    │              ├─ Non-looping? → HandleSequenceCompleted (idle + macro re-eval)
+    │              ├─ ApplyPendingTaskSequence (deferred macro rule)
+    │              ├─ EvaluateMacroRules (DepositCompleted trigger)
+    │              └─ AdvanceMacroStep (wraps to TravelTo step)
     │  Publish(SimulationTickCompleted)
     │
     ▼
@@ -84,17 +101,17 @@ Back to Tick() (continues processing)
 
 | Script | Layer | Role |
 |--------|-------|------|
-| `GameSimulation.cs` | Simulation | The brain. Owns all state, processes ticks |
+| `GameSimulation.cs` | Simulation | The brain. Owns all state, processes ticks, macro/micro rule evaluation |
 | `GameState.cs` | Simulation | The data. All saveable state lives here |
 | `SimulationConfig.cs` | Simulation | The rulebook. All tuning values |
 | `EventBus.cs` | Simulation | The intercom. Type-safe pub/sub |
 | `SimulationEvents.cs` | Simulation | The vocabulary. Defines what events exist |
+| `EventLogService.cs` | Simulation | The recorder. Subscribes to all events, ring buffer, collapsing, queries |
 | `WorldMap.cs` | Simulation | The terrain. Nodes, edges, pathfinding |
-| `Runner.cs` | Simulation | The adventurer. State, skills, inventory |
+| `Runner.cs` | Simulation | The adventurer. State, skills, inventory, macro/micro rulesets, task sequence |
 | `GatherableConfig.cs` | Simulation | The resource. What a gatherable produces and costs |
-| `RuleEvaluator.cs` | Simulation | The referee. Evaluates automation rules against context (not yet integrated into tick loop) |
-| `ActionExecutor.cs` | Simulation | The dispatcher. Placeholder awaiting Phase 4 integration |
-| `DecisionLog.cs` | Simulation | The playback. Ring-buffer log of automation decisions (not yet populated at runtime) |
+| `RuleEvaluator.cs` | Simulation | The referee. Evaluates automation rules against context |
+| `DecisionLog.cs` | Simulation | The playback. Ring-buffer log of macro + micro rule decisions |
 | `SimulationRunner.cs` | Bridge | The clock. Drives ticks from Unity's frame loop |
 | `SimulationConfigAsset.cs` | Data | The inspector. SO wrapper for config values |
 | `ItemDefinitionAsset.cs` | Data | The catalog. SO wrapper for item definitions |
@@ -139,7 +156,7 @@ Key field groups:
 - **Skills/XP**: `PassionEffectivenessMultiplier`, `PassionXpMultiplier`, `XpCurveBase`, `XpCurveGrowth`
 - **Runner Generation**: `MinStartingLevel`, `MaxStartingLevel`, `PassionChance`, `EasterEggNameChance`
 - **Gathering**: `GlobalGatheringSpeedMultiplier`, `GatheringFormula`, `GatheringSpeedExponent`, `HyperbolicSpeedPerLevel`
-- **Automation**: `DecisionLogMaxEntries` (default 100). Additional config fields (e.g. periodic check interval) will be added in Phase 4.
+- **Automation**: `DecisionLogMaxEntries` (default 100), `EventLogMaxEntries` (default 500)
 - **Items**: `ItemDefinitions[]` (populated from SOs at load time)
 - **Inventory**: `InventorySize` (default 28)
 - **Death**: `DeathRespawnBaseTime`, `DeathRespawnTravelMultiplier`
@@ -164,7 +181,7 @@ One skill on one runner. Holds level, accumulated XP, and whether the runner has
 All methods take a `SimulationConfig` parameter so tuning values are never hardcoded.
 
 ### `Simulation/Core/Runner.cs`
-The core data class for a runner. Identity (ID, name), current state (Idle/Traveling/Gathering/etc.), location (which world node), 15 skills, an `Inventory` (28-slot OSRS-style), a `TravelState` for when they're moving, a `GatheringState` for when they're gathering, and a `Ruleset` for automation rules (data only — not evaluated by the tick loop yet, awaiting Phase 4). The constructor initializes all skills to level 1 — actual values come from RunnerFactory.
+The core data class for a runner. Identity (ID, name), current state (Idle/Traveling/Gathering/Depositing), location (which world node), 15 skills, an `Inventory` (28-slot OSRS-style), a `TravelState` for when they're moving, a `GatheringState` for when they're gathering, a `DepositingState` for when depositing, a `TaskSequence` (current step sequence), a `PendingTaskSequence` (deferred macro rule result), a `MacroRuleset` (what task sequence to switch to), and a `MicroRuleset` (what to do at a Work step). The constructor initializes all skills to level 1 — actual values come from RunnerFactory.
 
 **`TravelState`** — tracks from/to nodes, total distance, distance covered, and a `Progress` property (0.0-1.0). Also has optional `StartWorldX`/`StartWorldZ` float fields — when set, the view layer uses these as the travel start position instead of the FromNode's position. Used by the redirect system to prevent visual snapping when a runner changes destination mid-travel. Null means "use the FromNode position as usual."
 
@@ -193,27 +210,35 @@ Event definitions — small structs carrying just the data a listener needs:
 | `GatheringStarted` | RunnerId, NodeId, ItemId, Skill | Runner begins gathering |
 | `GatheringFailed` | RunnerId, NodeId, ItemId, Skill, RequiredLevel, CurrentLevel | Runner tried to gather but doesn't meet level requirement |
 | `ItemGathered` | RunnerId, ItemId, InventoryFreeSlots | One item produced |
-| `InventoryFull` | RunnerId | Inventory filled, auto-return triggered |
+| `InventoryFull` | RunnerId | Inventory filled |
 | `RunnerDeposited` | RunnerId, ItemsDeposited | Items deposited at bank |
+| `TaskSequenceChanged` | RunnerId, TargetNodeId, Reason | Runner's task sequence changed (manual or macro rule) |
+| `TaskSequenceStepAdvanced` | RunnerId, StepType, StepIndex | Runner advanced to next step in task sequence |
+| `TaskSequenceCompleted` | RunnerId, SequenceName | Non-looping task sequence finished all steps |
+| `AutomationRuleFired` | RunnerId, RuleIndex, RuleLabel, TriggerReason, ActionType, WasDeferred | A macro rule's conditions matched |
+| `AutomationPendingActionExecuted` | RunnerId, ActionType, ActionDetail | A deferred macro action executed |
+| `NoMicroRuleMatched` | RunnerId, RunnerName, NodeId, RulesetIsEmpty, RuleCount | Micro rules don't cover current situation |
 | `SimulationTickCompleted` | TickNumber | Every tick |
 
 ### `Simulation/Core/GameState.cs`
-Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, and the automation DecisionLog (present but not populated at runtime until Phase 4 integration). Serializing this one object captures the entire game world.
+Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, automation DecisionLog, and saved RulesetTemplates. Serializing this one object captures the entire game world.
 
 ### `Simulation/Core/GameSimulation.cs`
-The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, and `ItemRegistry`. Its `Tick()` method processes all runners based on their current state.
+The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistry`, and `EventLogService`. Its `Tick()` method processes all runners based on their current state.
 
 `StartNewGame()` has two overloads: one taking explicit `RunnerDefinition[]` and an optional `WorldMap` for full control, one using default placeholders for quick testing. During startup: creates or accepts the world map, and populates the `ItemRegistry` from config.
 
-**Travel:** `CommandTravel()` is the public API for telling a runner to move. It handles two cases:
+**The single entry point for runner control is `AssignRunner(runnerId, taskSequence, reason)`**. It cancels current activity, sets the new task sequence, publishes `TaskSequenceChanged`, and starts executing the first step via `AdvanceMacroStep`. There is no `CommandGather` — what a runner does is entirely determined by their task sequence + micro rules.
+
+**Travel:** `StartTravelInternal()` is the shared helper for starting travel. It handles two cases:
 
 1. **Normal travel (runner is Idle):** Finds the path via `WorldMap.FindPath()`, sets the runner to `Traveling` state, publishes `RunnerStartedTravel`.
 
-2. **Redirect (runner is already Traveling):** Calculates the runner's current virtual position by lerping between the start and destination using travel progress. Computes the Euclidean distance from that virtual position to the new target. Creates a new `TravelState` with `StartWorldX`/`StartWorldZ` set to the virtual position, so the view can lerp smoothly from the runner's actual position to the new destination without snapping. This works for any redirect — including back to the origin node. Chained redirects work correctly because each redirect reads the previous `StartWorldX`/`StartWorldZ` override when computing the virtual position.
+2. **Redirect (runner is already Traveling):** Calculates the runner's current virtual position by lerping between the start and destination using travel progress. Computes the Euclidean distance from that virtual position to the new target. Creates a new `TravelState` with `StartWorldX`/`StartWorldZ` set to the virtual position, so the view can lerp smoothly from the runner's actual position to the new destination without snapping. Chained redirects work correctly because each redirect reads the previous `StartWorldX`/`StartWorldZ` override when computing the virtual position.
 
-`GetTravelSpeed()` calculates Athletics-based movement speed from config values. `TickTravel()` advances runners along their path each tick and awards Athletics XP every tick (same decoupling as gathering: speed = getting there faster, XP = progression). `StartTravelInternal()` is a shared helper used by both `CommandTravel` and the auto-return system.
+`GetTravelSpeed()` calculates Athletics-based movement speed from config values. `TickTravel()` advances runners along their path each tick and awards Athletics XP every tick (same decoupling as gathering: speed = getting there faster, XP = progression).
 
-**Gathering:** `CommandGather(runnerId, gatherableIndex)` validates the runner is Idle at a node with gatherables, checks minimum skill level (publishes `GatheringFailed` if not met), calculates ticks required from the skill speed formula, and puts the runner into the `Gathering` state. The `gatherableIndex` selects which gatherable in the node's array to work on (default 0). `TickGathering()` awards XP every tick (decoupled from item production), accumulates ticks, produces an item when the threshold is reached, and recalculates speed on level-up.
+**Gathering:** `StartGathering(runner, gatherableIndex, gatherableConfig)` validates skill level (publishes `GatheringFailed` if not met), calculates ticks required from the skill speed formula, and puts the runner into the `Gathering` state. Which resource to gather is determined by micro rules, not by a command parameter. `TickGathering()` awards XP every tick (decoupled from item production), accumulates ticks, produces an item when the threshold is reached, and recalculates speed on level-up.
 
 **XP decoupling:** XP is awarded per tick of gathering/traveling, not per item produced or trip completed. Speed affects economic output (items per trip). XP rate is determined by which resource you're grinding. This means a faster gatherer produces more items but doesn't level faster.
 
@@ -221,43 +246,62 @@ The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, and `ItemReg
 - **PowerCurve** (default): `speedMultiplier = effectiveLevel ^ exponent`. Higher levels are proportionally more impactful. Tuning: `BaseTicks = DesiredSecondsPerItem × TickRate × MinLevel ^ Exponent`.
 - **Hyperbolic**: `speedMultiplier = 1 + (effectiveLevel - 1) × perLevelFactor`. Diminishing returns — early levels feel most impactful.
 
-**Auto-Return Loop (hardcoded Phase 2 behavior):** When inventory fills during gathering, `BeginAutoReturn()` fires directly (hardcoded, not driven by automation rules). The runner travels to the hub. On arrival, `HandleGatheringArrival()` detects the sub-state and calls `DepositAndReturn()` — which dumps the inventory into the guild bank and starts travel back to the gathering node. On arrival back at the node, `ResumeGathering()` resets the accumulator and resumes at the same gatherable index. (Gather rate is always recomputed fresh every tick in `TickGathering` — no special recalculation needed.) This loop repeats indefinitely. Phase 4 will replace this hardcoded loop with task-driven automation.
+**Task Sequence System:** Each runner has a `TaskSequence` — a list of `TaskStep`s (TravelTo, Work, Deposit) with a `CurrentStepIndex`. Looping sequences wrap around; non-looping sequences complete and fire `TaskSequenceCompleted`, letting macro rules re-evaluate. `TaskSequence.CreateLoop(nodeId, hubId)` creates the standard gather loop: TravelTo(node) → Work → TravelTo(hub) → Deposit → repeat. When inventory fills during gathering, the default micro rule (IF InventoryFull → FinishTask) advances past the Work step — InventoryFull handling is not hardcoded but expressed as a visible, editable micro rule.
 
-### Automation — `Simulation/Automation/` (Phase 3: Foundation Only)
+**Macro Rules:** `EvaluateMacroRules(runner, triggerReason)` evaluates every tick for all runners (non-Idle via TickRunner, Idle via AdvanceMacroStep). If a macro rule fires, it calls `AssignRunner` with a new task sequence (e.g., `WorkAt` creates `TaskSequence.CreateLoop` for a different node). Same-assignment suppression prevents infinite loops. Rules with `FinishCurrentSequence = true` set a `PendingTaskSequence` that executes at the next sequence boundary instead of immediately. If there's no active sequence when a deferred rule fires, it degrades to immediate. "Work At" button sets `MacroSuspendedUntilLoop` to guarantee one cycle before macro rules resume.
 
-The automation engine exists as **data types and evaluation logic only**. It is NOT integrated into `GameSimulation`'s tick loop. The rule engine can be evaluated in isolation (and is fully tested that way), but no automation rules are actively driving runner behavior at runtime. GameSimulation still uses hardcoded Phase 2 behavior for the deposit-and-return loop.
+**Micro Rules:** `EvaluateMicroRules(runner, node)` runs when the assignment hits a Work step. Returns a gatherable index (GatherHere), -1 (FinishTask), or -2 (NoMatch = stuck). `ReevaluateMicroDuringGathering` runs after each item gathered — may switch resource, FinishTask, or stop with NoMicroRuleMatched. "Let it break" philosophy: if no rule matches, the runner stays idle and a warning event fires.
 
-**Two-layer automation design (future phases):**
-- **Macro layer (Phase 4):** Handles task assignment, navigation between nodes, task sequencing — what to do, where, in what order. Examples: "go gather copper at the mine", "when full, deposit at hub and come back", "when bank has 200 copper, switch to oak." This phase replaces the hardcoded deposit-and-return loop.
-- **Micro layer (Phase 5, with combat):** Handles behavior within a task. Examples: which resource to gather at a multi-resource node, combat ability rotation, targeting priority.
+### `Simulation/Core/EventLogService.cs`
+Pure C# service that subscribes to all 15 event types and stores formatted log entries in a ring buffer (default 500 max). Each handler formats the event as a raw struct representation (e.g. `ItemGathered { ItemId=copper_ore, FreeSlots=27 }`). Optional collapsing merges consecutive entries with the same CollapseKey + RunnerId (off by default). Query methods: `GetAll()`, `GetWarnings()`, `GetActivityFeed(runnerId)`, `GetForRunner(runnerId)`, `GetByCategories()`. Categories: Warning, Automation, StateChange, Production, Lifecycle.
 
-The rule engine uses a **data-driven, first-match-wins priority rule** design. No class hierarchy or polymorphism — flat enums + parameter fields for serialization compatibility. Adding a new condition/action type = add enum value + add case to switch statement.
+### `Simulation/Core/EventLogEntry.cs`
+Data class for event log entries: TickNumber, EventCategory, RunnerId, Summary, RepeatCount (for collapsing), CollapseKey.
 
-**`ConditionType.cs`** — Enum of condition types: Always, InventoryFull, InventorySlots, InventoryContains, BankContains, SkillLevel, RunnerStateIs, AtNode, SelfHP (placeholder for Phase 5 combat).
+### Automation — `Simulation/Automation/`
 
-**`ActionType.cs`** — Enum of action types: Idle, TravelTo, GatherAt, ReturnToHub, DepositAndResume, FleeToHub.
+The automation engine is **fully integrated** into `GameSimulation`'s tick loop. Two layers of rules drive all runner behavior:
+
+**Three-layer automation:**
+- **Task Sequence:** A list of steps the runner follows (TravelTo → Work → TravelTo → Deposit → repeat). Created via `TaskSequence.CreateLoop(nodeId, hubId)`. Null = idle. The task sequence is pure logistics — where to go, when to deposit. What the runner does at each node is emergent from micro rules. Non-looping sequences complete after the last step; the runner goes idle and macro rules re-evaluate.
+- **Macro rules (MacroRuleset):** Conditions that swap the current assignment for a different one. Fire at StepAdvance, ArrivedAtNode, InventoryFull, DepositCompleted. Same-assignment suppression prevents infinite loops.
+- **Micro rules (MicroRuleset):** What happens during the Work step (GatherHere, FinishTask). Every runner starts with default `Always → GatherHere(0)`. Evaluated at Work step entry and re-evaluated after each item gathered.
+
+The rule engine uses a **data-driven, first-match-wins priority rule** design. No class hierarchy or polymorphism — flat enums + parameter fields for serialization compatibility. The same Rule/Ruleset/Condition types serve both macro and micro layers. Adding a new condition/action type = add enum value + add case to switch statement.
+
+**"Let it break" philosophy:** When rules don't cover a situation (empty ruleset, invalid index, no matching conditions), the runner stops and a `NoMicroRuleMatched` warning event fires. The UI warns the player. Null rulesets from old saves are migrated to defaults in `LoadState`.
+
+**`ConditionType.cs`** — Enum of condition types: Always, InventoryFull, InventorySlots, InventoryContains, BankContains, SkillLevel, RunnerStateIs, AtNode, SelfHP (placeholder for combat).
+
+**`ActionType.cs`** — Enum of action types. Split into macro and micro:
+- **Macro actions:** WorkAt (create work loop at node), ReturnToHub (1-step non-looping), Idle (clear task sequence)
+- **Micro actions:** GatherHere (gather resource at index), FinishTask (signal macro to advance past Work step)
 
 **`ComparisonOperator.cs`** — Enum: GreaterThan, GreaterOrEqual, LessThan, LessOrEqual, Equal, NotEqual.
 
 **`Condition.cs`** — `[Serializable]` data class with Type, Operator, NumericValue, StringParam, IntParam. Static factory methods for readable construction (e.g., `Condition.InventoryFull()`, `Condition.BankContains("iron", GreaterOrEqual, 50)`).
 
-**`AutomationAction.cs`** — `[Serializable]` data class with Type, StringParam (nodeId), IntParam (gatherableIndex). Static factory methods (e.g., `AutomationAction.GatherAt("mine", 0)`).
+**`AutomationAction.cs`** — `[Serializable]` data class with Type, StringParam (nodeId for WorkAt), IntParam (gatherableIndex for GatherHere). Static factory methods: `WorkAt(nodeId)`, `ReturnToHub()`, `Idle()` (macro); `GatherHere(idx)`, `FinishTask()` (micro).
 
-**`Rule.cs`** — `[Serializable]`: `List<Condition>` (AND composition), `AutomationAction`, `Enabled`, `FinishCurrentTrip` (default true — FleeToHub ignores this), `Label`.
+**`Rule.cs`** — `[Serializable]`: `List<Condition>` (AND composition), `AutomationAction`, `Enabled`, `FinishCurrentSequence` (default true — macro only, defers action until sequence boundary), `Label`.
 
 **`Ruleset.cs`** — `[Serializable]`: `List<Rule>`, `DeepCopy()` for templates/copy-paste.
+
+**`TaskSequence.cs`** — `[Serializable]`: `List<TaskStep>` with `CurrentStepIndex`, `TargetNodeId`, `HubNodeId`, `Loop`, `Name`. `CreateLoop(nodeId, hubId)` builds TravelTo(node) → Work → TravelTo(hub) → Deposit with Loop=true. `AdvanceStep()` increments and wraps (returns false if non-looping and past end). `TaskStep` is `[Serializable]`: `TaskStepType` (TravelTo, Work, Deposit) + `TargetNodeId`.
 
 **`EvaluationContext.cs`** — Struct wrapping Runner + GameState + SimulationConfig. Created once per evaluation, not stored.
 
 **`RuleEvaluator.cs`** — Static, pure methods. `EvaluateRuleset()` returns first matching rule index or -1. `EvaluateCondition()` switches on ConditionType. `Compare()` generic numeric comparison. "Always compute, never cache."
 
-**`DefaultRulesets.cs`** — Factory: `CreateGathererDefault()` returns a single-rule ruleset: `IF InventoryFull THEN DepositAndResume`. Intended to replicate the hardcoded BeginAutoReturn behavior once the engine is integrated in Phase 4. Currently data-only — not evaluated at runtime.
+**`DefaultRulesets.cs`** — Factory methods:
+- `CreateDefaultMacro()` — empty ruleset (no macro rules by default)
+- `CreateDefaultMicro()` — single rule: `Always → GatherHere(0)` (always gather the first resource)
 
-**`ActionExecutor.cs`** — Placeholder static class. Will translate automation actions into GameSimulation commands in Phase 4. Currently defines the interface but is not called by any runtime code path.
+**`DecisionLogEntry.cs`** — `[Serializable]`: TickNumber, GameTime, RunnerId, RunnerName, RuleIndex, RuleLabel, TriggerReason, ActionType, ActionDetail, ConditionSnapshot, WasDeferred. One entry per macro rule firing.
 
-**`DecisionLogEntry.cs`** — `[Serializable]`: TickNumber, GameTime, RunnerId, RunnerName, RuleIndex, RuleLabel, TriggerReason, ActionType, ActionDetail, ConditionSnapshot, WasDeferred. One entry per rule firing.
+**`DecisionLog.cs`** — `[Serializable]`: Ring-buffer list storage with configurable max entries. `GetForRunner()` and `GetInRange()` filter methods (most recent first). The player's primary "why did my runner do that?" debugging tool. Populated when macro rules fire, with `FormatConditionSnapshot` for human-readable condition state.
 
-**`DecisionLog.cs`** — `[Serializable]`: Ring-buffer list storage with configurable max entries. `GetForRunner()` and `GetInRange()` filter methods (most recent first). The player's primary "why did my runner do that?" debugging tool. Not yet populated at runtime — will be written to when automation rules fire in Phase 4.
+**`RulesetTemplate.cs`** — `[Serializable]`: Named + Ruleset pair for saving/applying rule presets.
 
 ### Items — `Simulation/Items/`
 
@@ -367,21 +411,17 @@ Concrete implementation of `ISaveSystem`. Uses `JsonUtility.ToJson/FromJson` and
 ### `View/GameBootstrapper.cs`
 Entry point that wires up the simulation, visuals, and debug UI. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner.
 
-The debug UI (`OnGUI`) includes an automation data panel for inspecting and editing runner rulesets and viewing the decision log, but no automation is actively running — it is purely for inspection/editing of the data structures that will drive behavior in Phase 4.
-
-The debug UI is organized into four panels:
+The debug UI (`OnGUI`) provides full inspection and editing of the automation system. It is organized into panels:
 
 **Top-center — Runner selector:** Compact multi-column table of all runners. Shows name and abbreviated state. Click to select.
 
 **Left panel — Runner info & commands:**
-- Runner name, state, location
+- Runner name, state, location, assignment info
 - Travel progress (when traveling)
 - Gathering progress (when gathering)
-- Auto-return sub-state (when in deposit loop)
+- Depositing progress (when depositing)
 - Inventory summary (slot count, items by type)
-- Stop Gathering button (when gathering)
-- Gather buttons per gatherable at the current node (showing index, item name, level requirement)
-- Zone list for travel/redirect: when Idle, shows "Send to:" with all other nodes. When Traveling, shows "Redirect to:" with all nodes except current destination (including origin node, for turning around).
+- "Send to" buttons per node (creates assignment via `AssignRunner`)
 
 **Bottom-center — Pawn generation & Guild Bank:**
 - Random and Tutorial pawn generation buttons
@@ -391,6 +431,15 @@ The debug UI is organized into four panels:
 **Right panel — Skills & Live Stats:**
 - All 15 skills: level, passion marker (yellow P), effective level, XP progress bar (current/needed)
 - Live stats: travel speed, travel ETA/distance, Athletics XP/tick, gathering ticks/item + items/min, gathering XP/tick (with passion indicator), passion summary
+
+**Automation panel (6 tabs):**
+- **Task Sequence**: View active sequence steps, current step highlighted, pending sequence, clear button
+- **Macro Rules**: View/edit/reorder/enable/delete macro rules, add rule form (condition + action + FinishCurrentSequence), copy/paste
+- **Micro Rules**: View/edit/reorder/enable/delete micro rules, add form restricted to GatherHere/FinishTask actions, shows gatherables at current node for context
+- **Decision Log**: Per-runner log of macro rule firings with condition snapshots
+- **Warnings**: All NoMicroRuleMatched and GatheringFailed events across runners
+- **Activity**: Per-runner event timeline (excludes Lifecycle noise)
+- **Event Log**: Full searchable/filterable raw event log with category toggles, runner filter, optional collapsing
 
 ### `View/VisualSyncSystem.cs`
 Bridges sim state to 3D world. Builds visual representations of world nodes (colored cylinders with floating labels) and runners (capsule primitives), updates runner positions each `LateUpdate()`.
@@ -435,7 +484,7 @@ TryAdd non-stackable, TryAdd stackable with stacking, slot limits, Remove, IsFul
 Deposit, DepositAll from inventory, Withdraw into inventory, CountItem, infinite stacking.
 
 ### `Tests/Editor/GatheringTests.cs`
-CommandGather validation (must be Idle, must be at node with gatherables), item production rate (ticks match config), XP-per-tick awards, level-up event + speed recalculation, higher skill = faster gathering, passion speed boost, inventory-full triggers auto-return to hub, full deposit-and-return loop, multiple loop accumulation in bank, GatheringStarted fires on resume.
+Gathering validation (must be at node with gatherables), item production rate (ticks match config), XP-per-tick awards, level-up event + speed recalculation, higher skill = faster gathering, passion speed boost, inventory-full triggers deposit step, full gather-deposit loop via assignments, multiple loop accumulation in bank, GatheringStarted fires on resume.
 
 ### `Tests/Editor/WorldMapTests.cs`
 Node lookup, direct distance, multi-hop pathfinding (Dijkstra), same-node path, Euclidean fallback with TravelDistanceScale. Starter map tests: hub and nodes exist, pathfinding works, shortest route selection.
@@ -445,6 +494,18 @@ Tests the automation engine in isolation (no GameSimulation). All 9 condition ty
 
 ### `Tests/Editor/AutomationRuleTests.cs`
 Tests the automation engine in isolation (no GameSimulation). AND composition (multiple conditions), first-match-wins ordering, disabled rules skipped, empty conditions = always true, DeepCopy independence.
+
+### `Tests/Editor/MacroStepTests.cs`
+Task sequence step sequencing: step advance, wrap-around, TravelTo/Work/Deposit execution order, non-looping completion.
+
+### `Tests/Editor/MacroRuleIntegrationTests.cs`
+Macro rules integrated with GameSimulation: WorkAt creates task sequence, FinishCurrentSequence defers until sequence boundary (degrades to immediate when no active sequence), same-assignment suppression, ArrivedAtNode trigger, DepositCompleted trigger, SequenceCompleted trigger, pending task sequence execution, MacroSuspendedUntilLoop (Work At one-cycle guarantee), mid-gather immediate interrupt, disabled rules skipped.
+
+### `Tests/Editor/MicroRuleTests.cs`
+Micro rules integrated with GameSimulation: default micro rule gathers, GatherHere selects resource, FinishTask advances macro, invalid index = stuck ("let it break"), empty ruleset = stuck, mid-gathering re-evaluation, NoMicroRuleMatched event tests (empty ruleset, invalid index, no matching conditions, mid-gathering no-match, valid rule doesn't fire event).
+
+### `Tests/Editor/EventLogServiceTests.cs`
+EventLogService unit tests: add/retrieve entries, collapsing (same key, different key, different runner, null key, disabled), ring buffer eviction, query methods (GetWarnings, GetActivityFeed, GetByCategories, GetForRunner, Clear). Integration tests: ItemGathered logs entries, NoMicroRuleMatched appears as warning.
 
 ### `Tests/Editor/DecisionLogTests.cs`
 Add/retrieve entries, ring buffer eviction (oldest removed), SetMaxEntries evicts existing, filter by runner (most recent first), filter by tick range, no matches returns empty, Clear removes all.
@@ -468,7 +529,9 @@ Uses a simple 3-node right triangle map (A, B, C) with constant speed for predic
 
 **Explicit RNG:** `RunnerFactory` takes a `System.Random` parameter instead of using static/shared RNG. This makes tests deterministic — same seed, same runner, every time.
 
-**Events over polling:** The view layer subscribes to events (`RunnerArrivedAtNode`) rather than checking runner state every frame. This is both more efficient and cleaner — the view only reacts when something actually happens.
+**Events over polling:** The view layer subscribes to events (`RunnerArrivedAtNode`) rather than checking runner state every frame. This is both more efficient and cleaner — the view only reacts when something actually happens. The `EventLogService` also subscribes to all events for the debug event log.
+
+**"Let it break":** When automation rules are misconfigured (empty ruleset, invalid index, no matching rule), the runner stops and a warning event fires. The UI warns the player. This applies project-wide.
 
 **Fluent builder for definitions:** `new RunnerDefinition { Name = "Bob" }.WithSkill(SkillType.Melee, 10, passion: true)` reads like English and is hard to get wrong.
 

@@ -55,12 +55,12 @@ namespace ProjectGuild.Tests
             return ticks;
         }
 
-        // ─── Assignment.AdvanceStep unit tests ──────────────────
+        // ─── TaskSequence.AdvanceStep unit tests ──────────────────
 
         [Test]
-        public void AdvanceStep_LoopingAssignment_WrapsToZero()
+        public void AdvanceStep_LoopingSequence_WrapsToZero()
         {
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             // 4 steps: TravelTo(mine), Work, TravelTo(hub), Deposit
             Assert.AreEqual(0, assignment.CurrentStepIndex);
 
@@ -75,9 +75,9 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void AdvanceStep_NonLoopingAssignment_ReturnsFalse()
+        public void AdvanceStep_NonLoopingSequence_ReturnsFalse()
         {
-            var assignment = new Assignment
+            var assignment = new TaskSequence
             {
                 Steps = new System.Collections.Generic.List<TaskStep>
                 {
@@ -96,7 +96,7 @@ namespace ProjectGuild.Tests
         [Test]
         public void AdvanceStep_EmptySteps_ReturnsFalse()
         {
-            var assignment = new Assignment
+            var assignment = new TaskSequence
             {
                 Steps = new System.Collections.Generic.List<TaskStep>(),
                 CurrentStepIndex = 0,
@@ -107,7 +107,7 @@ namespace ProjectGuild.Tests
         [Test]
         public void CreateLoop_HasCorrectSteps()
         {
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
 
             Assert.AreEqual(4, assignment.Steps.Count);
             Assert.IsTrue(assignment.Loop);
@@ -127,14 +127,14 @@ namespace ProjectGuild.Tests
         // ─── AssignRunner API ───────────────────────────────────
 
         [Test]
-        public void AssignRunner_PublishesAssignmentChangedEvent()
+        public void AssignRunner_PublishesTaskSequenceChangedEvent()
         {
             Setup("hub");
 
-            AssignmentChanged? received = null;
-            _sim.Events.Subscribe<AssignmentChanged>(e => received = e);
+            TaskSequenceChanged? received = null;
+            _sim.Events.Subscribe<TaskSequenceChanged>(e => received = e);
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment, "test");
 
             Assert.IsNotNull(received);
@@ -148,7 +148,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // First step is TravelTo(mine), runner is at hub → should start traveling
@@ -161,7 +161,7 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // First step is TravelTo(mine) — already there → skip → Work step → starts gathering
@@ -171,20 +171,20 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void AssignRunner_NullAssignment_SetsIdle()
+        public void AssignRunner_NullSequence_SetsIdle()
         {
             Setup("mine");
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             _sim.AssignRunner(_runner.Id, null);
 
             Assert.AreEqual(RunnerState.Idle, _runner.State);
-            Assert.IsNull(_runner.Assignment);
+            Assert.IsNull(_runner.TaskSequence);
         }
 
         [Test]
-        public void AssignRunner_NullAssignment_DoesNothing()
+        public void AssignRunner_NullSequence_DoesNothing()
         {
             Setup("hub");
 
@@ -204,7 +204,7 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Should start gathering
@@ -228,7 +228,7 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Tick until the runner is back at the mine gathering
@@ -249,7 +249,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3; // Deposit step
 
             _sim.AssignRunner(_runner.Id, assignment);
@@ -269,7 +269,7 @@ namespace ProjectGuild.Tests
             for (int i = 0; i < 10; i++)
                 _runner.Inventory.TryAdd(itemDef);
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3;
 
             RunnerDeposited? deposited = null;
@@ -298,7 +298,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3;
 
             RunnerDeposited? deposited = null;
@@ -322,7 +322,7 @@ namespace ProjectGuild.Tests
         {
             Setup("hub");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             assignment.CurrentStepIndex = 3;
 
             _sim.AssignRunner(_runner.Id, assignment);
@@ -339,14 +339,14 @@ namespace ProjectGuild.Tests
         // ─── Step events ────────────────────────────────────────
 
         [Test]
-        public void MacroStep_AssignmentStepAdvanced_EventFiredOnStepCompletion()
+        public void MacroStep_TaskSequenceStepAdvanced_EventFiredOnStepCompletion()
         {
             Setup("mine");
 
             int advancedCount = 0;
-            _sim.Events.Subscribe<AssignmentStepAdvanced>(e => advancedCount++);
+            _sim.Events.Subscribe<TaskSequenceStepAdvanced>(e => advancedCount++);
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Runner is at mine — TravelTo(mine) is skipped (already there),

@@ -123,8 +123,9 @@ namespace ProjectGuild.Simulation.Core
             events.Subscribe<ItemGathered>(OnItemGathered);
             events.Subscribe<InventoryFull>(OnInventoryFull);
             events.Subscribe<RunnerDeposited>(OnDeposited);
-            events.Subscribe<AssignmentChanged>(OnAssignmentChanged);
-            events.Subscribe<AssignmentStepAdvanced>(OnStepAdvanced);
+            events.Subscribe<TaskSequenceChanged>(OnTaskSequenceChanged);
+            events.Subscribe<TaskSequenceStepAdvanced>(OnStepAdvanced);
+            events.Subscribe<TaskSequenceCompleted>(OnSequenceCompleted);
             events.Subscribe<AutomationRuleFired>(OnRuleFired);
             events.Subscribe<AutomationPendingActionExecuted>(OnPendingExecuted);
             events.Subscribe<NoMicroRuleMatched>(OnNoMicroMatch);
@@ -197,7 +198,7 @@ namespace ProjectGuild.Simulation.Core
                 TickNumber = CurrentTick,
                 Category = EventCategory.Warning,
                 RunnerId = e.RunnerId,
-                Summary = $"GatheringFailed {{ ItemId={e.ItemId}, Skill={e.Skill}, Level={e.CurrentLevel}/{e.RequiredLevel} }}",
+                Summary = $"GatheringFailed {{ Reason={e.Reason}, ItemId={e.ItemId}, Skill={e.Skill}, Level={e.CurrentLevel}/{e.RequiredLevel} }}",
             });
         }
 
@@ -235,26 +236,37 @@ namespace ProjectGuild.Simulation.Core
             });
         }
 
-        private void OnAssignmentChanged(AssignmentChanged e)
+        private void OnTaskSequenceChanged(TaskSequenceChanged e)
         {
             Add(new EventLogEntry
             {
                 TickNumber = CurrentTick,
                 Category = EventCategory.Automation,
                 RunnerId = e.RunnerId,
-                Summary = $"AssignmentChanged {{ TargetNodeId={e.TargetNodeId ?? "null"}, Reason={e.Reason} }}",
+                Summary = $"TaskSequenceChanged {{ TargetNodeId={e.TargetNodeId ?? "null"}, Reason={e.Reason} }}",
             });
         }
 
-        private void OnStepAdvanced(AssignmentStepAdvanced e)
+        private void OnStepAdvanced(TaskSequenceStepAdvanced e)
         {
             Add(new EventLogEntry
             {
                 TickNumber = CurrentTick,
                 Category = EventCategory.StateChange,
                 RunnerId = e.RunnerId,
-                Summary = $"AssignmentStepAdvanced {{ StepType={e.StepType}, StepIndex={e.StepIndex} }}",
+                Summary = $"TaskSequenceStepAdvanced {{ StepType={e.StepType}, StepIndex={e.StepIndex} }}",
                 CollapseKey = $"Step:{e.RunnerId}:{e.StepType}",
+            });
+        }
+
+        private void OnSequenceCompleted(TaskSequenceCompleted e)
+        {
+            Add(new EventLogEntry
+            {
+                TickNumber = CurrentTick,
+                Category = EventCategory.Automation,
+                RunnerId = e.RunnerId,
+                Summary = $"TaskSequenceCompleted {{ Name={e.SequenceName} }}",
             });
         }
 

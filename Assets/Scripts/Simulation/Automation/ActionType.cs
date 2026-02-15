@@ -2,14 +2,10 @@ namespace ProjectGuild.Simulation.Automation
 {
     public enum ActionType
     {
-        Idle,               // Do nothing, cancel current activity
-        TravelTo,           // StringParam = nodeId
-        ReturnToHub,        // Travel to hub node
-        DepositAndResume,   // Deposit at hub, return to previous gathering node
-        FleeToHub,          // Emergency return, ignores FinishCurrentTrip
-
-        // ─── Macro actions (change assignment) ───
-        WorkAt,             // StringParam = nodeId — create work loop at target node
+        // ─── Macro actions (select task sequence) ───
+        Idle,               // Clear task sequence, runner goes idle
+        WorkAt,             // StringParam = nodeId — standard gather loop at target node
+        ReturnToHub,        // Travel to hub (1-step non-looping sequence)
 
         // ─── Micro actions (within-task behavior) ───
         GatherHere,         // IntParam = gatherableIndex at current node

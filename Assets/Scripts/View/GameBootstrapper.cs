@@ -125,8 +125,10 @@ namespace ProjectGuild.View
         private Vector2 _zoneScrollPos;
 
         // Automation panel state
-        private int _autoTab; // 0=Rules, 1=Decision Log, 2=Warnings, 3=Activity, 4=Event Log
+        private int _autoTab; // 0=Task Seq, 1=Macro Rules, 2=Micro Rules, 3=Decision Log, 4=Warnings, 5=Activity, 6=Event Log
+        private int _decisionLogFilter; // 0=All, 1=Macro, 2=Micro
         private Vector2 _rulesScrollPos;
+        private Vector2 _microRulesScrollPos;
         private Vector2 _logScrollPos;
         private Vector2 _warningsScrollPos;
         private Vector2 _activityScrollPos;
@@ -135,6 +137,7 @@ namespace ProjectGuild.View
         private bool _eventLogAllRunners = true;
         private string _eventLogSearch = "";
         private bool _showAddRule;
+        private bool _showAddMicroRule;
         private Ruleset _clipboardRuleset;
 
         // Add rule form
@@ -146,8 +149,17 @@ namespace ProjectGuild.View
         private int _newCondIntParam;
         private int _newActionType;
         private int _newActionNodeIndex;
-        private string _newActionGatherIndex = "0";
         private bool _newRuleFinishTrip = true;
+
+        // Add micro rule form
+        private string _newMicroRuleLabel = "";
+        private int _newMicroCondType;
+        private int _newMicroCondOp;
+        private string _newMicroCondValue = "0";
+        private string _newMicroCondStringParam = "";
+        private int _newMicroCondIntParam;
+        private int _newMicroActionType; // 0=GatherHere, 1=FinishTask
+        private string _newMicroGatherIndex = "0";
 
         // Templates
         private string _templateName = "";
@@ -233,11 +245,14 @@ namespace ProjectGuild.View
                 GUILayout.Label($"Depositing... ({selected.Depositing.TicksRemaining} ticks left)");
             }
 
-            if (selected.Assignment != null)
+            if (selected.TaskSequence != null)
             {
-                var step = selected.Assignment.CurrentStep;
+                var seq = selected.TaskSequence;
+                var step = seq.CurrentStep;
                 string stepDesc = step != null ? $"{step.Type}" : "done";
-                GUILayout.Label($"Assignment: {selected.Assignment.TargetNodeId ?? "?"} (step: {stepDesc})");
+                string loopTag = seq.Loop ? " [Loop]" : "";
+                string suspendTag = selected.MacroSuspendedUntilLoop ? " [Macro paused]" : "";
+                GUILayout.Label($"Task: {seq.Name ?? seq.TargetNodeId ?? "?"} (step {seq.CurrentStepIndex}/{seq.Steps?.Count ?? 0}: {stepDesc}){loopTag}{suspendTag}");
             }
 
             // Inventory
@@ -260,16 +275,16 @@ namespace ProjectGuild.View
 
             GUILayout.Space(5);
 
-            // Cancel assignment button
-            if (selected.Assignment != null)
+            // Cancel task sequence button
+            if (selected.TaskSequence != null)
             {
-                if (GUILayout.Button("Cancel Assignment"))
+                if (GUILayout.Button("Cancel Task"))
                     sim.AssignRunner(selected.Id, null, "manual cancel");
             }
 
-            // Assign to node buttons — always visible, works from anywhere
+            // Work At buttons — creates task sequence + one-shot shield macro rule
             GUILayout.Space(5);
-            GUILayout.Label("<b>Send to:</b>", richLabel);
+            GUILayout.Label("<b>Work At:</b>", richLabel);
             _zoneScrollPos = GUILayout.BeginScrollView(_zoneScrollPos);
             string hubId = sim.CurrentGameState.Map?.HubNodeId ?? "hub";
             foreach (var node in sim.CurrentGameState.Map.Nodes)
@@ -288,8 +303,9 @@ namespace ProjectGuild.View
 
                 if (GUILayout.Button($"{node.Name}{detail}", GUILayout.Height(20f)))
                 {
-                    var assignment = Assignment.CreateLoop(nodeId, hubId);
-                    sim.AssignRunner(selected.Id, assignment, "manual assign");
+                    var taskSeq = TaskSequence.CreateLoop(nodeId, hubId);
+                    sim.AssignRunner(selected.Id, taskSeq, "Work At");
+                    selected.MacroSuspendedUntilLoop = true;
                 }
             }
             GUILayout.EndScrollView();
@@ -461,44 +477,125 @@ namespace ProjectGuild.View
 
         private void DrawAutomationPanel(GameSimulation sim, Runner selected, GUIStyle richLabel, float panelW, float panelH)
         {
-            GUILayout.Label("<color=#888888>Automation (data only — Phase 4 activates)</color>", richLabel);
+            GUILayout.Label("<color=#888888>Automation</color>", richLabel);
 
             // Tab bar
             GUILayout.BeginHorizontal();
-            if (GUILayout.Toggle(_autoTab == 0, "Rules", GUI.skin.button, GUILayout.Height(22f)))
+            if (GUILayout.Toggle(_autoTab == 0, "Task Seq", GUI.skin.button, GUILayout.Height(22f)))
                 _autoTab = 0;
-            if (GUILayout.Toggle(_autoTab == 1, "Decision Log", GUI.skin.button, GUILayout.Height(22f)))
+            if (GUILayout.Toggle(_autoTab == 1, "Macro Rules", GUI.skin.button, GUILayout.Height(22f)))
                 _autoTab = 1;
-            if (GUILayout.Toggle(_autoTab == 2, "Warnings", GUI.skin.button, GUILayout.Height(22f)))
+            if (GUILayout.Toggle(_autoTab == 2, "Micro Rules", GUI.skin.button, GUILayout.Height(22f)))
                 _autoTab = 2;
-            if (GUILayout.Toggle(_autoTab == 3, "Activity", GUI.skin.button, GUILayout.Height(22f)))
+            if (GUILayout.Toggle(_autoTab == 3, "Decision Log", GUI.skin.button, GUILayout.Height(22f)))
                 _autoTab = 3;
-            if (GUILayout.Toggle(_autoTab == 4, "Event Log", GUI.skin.button, GUILayout.Height(22f)))
+            if (GUILayout.Toggle(_autoTab == 4, "Warnings", GUI.skin.button, GUILayout.Height(22f)))
                 _autoTab = 4;
+            if (GUILayout.Toggle(_autoTab == 5, "Activity", GUI.skin.button, GUILayout.Height(22f)))
+                _autoTab = 5;
+            if (GUILayout.Toggle(_autoTab == 6, "Event Log", GUI.skin.button, GUILayout.Height(22f)))
+                _autoTab = 6;
             GUILayout.FlexibleSpace();
 
-            // Copy/Paste buttons (always visible)
-            if (GUILayout.Button("Copy", GUILayout.Width(50f), GUILayout.Height(22f)))
+            // Copy/Paste buttons (for whichever ruleset tab is active)
+            if (_autoTab == 1 || _autoTab == 2)
             {
-                _clipboardRuleset = selected.MacroRuleset?.DeepCopy();
+                if (GUILayout.Button("Copy", GUILayout.Width(50f), GUILayout.Height(22f)))
+                {
+                    var src = _autoTab == 1 ? selected.MacroRuleset : selected.MicroRuleset;
+                    _clipboardRuleset = src?.DeepCopy();
+                }
+                GUI.enabled = _clipboardRuleset != null;
+                if (GUILayout.Button("Paste", GUILayout.Width(50f), GUILayout.Height(22f)))
+                {
+                    if (_autoTab == 1)
+                        selected.MacroRuleset = _clipboardRuleset.DeepCopy();
+                    else
+                        selected.MicroRuleset = _clipboardRuleset.DeepCopy();
+                }
+                GUI.enabled = true;
             }
-            GUI.enabled = _clipboardRuleset != null;
-            if (GUILayout.Button("Paste", GUILayout.Width(50f), GUILayout.Height(22f)))
-            {
-                selected.MacroRuleset = _clipboardRuleset.DeepCopy();
-            }
-            GUI.enabled = true;
             GUILayout.EndHorizontal();
 
             GUILayout.Space(3);
 
             switch (_autoTab)
             {
-                case 0: DrawRulesTab(sim, selected, richLabel, panelW); break;
-                case 1: DrawDecisionLogTab(sim, selected, richLabel); break;
-                case 2: DrawWarningsTab(sim, richLabel); break;
-                case 3: DrawActivityTab(sim, selected, richLabel); break;
-                case 4: DrawEventLogTab(sim, selected, richLabel); break;
+                case 0: DrawTaskSequenceTab(sim, selected, richLabel); break;
+                case 1: DrawRulesTab(sim, selected, richLabel, panelW); break;
+                case 2: DrawMicroRulesTab(sim, selected, richLabel); break;
+                case 3: DrawDecisionLogTab(sim, selected, richLabel); break;
+                case 4: DrawWarningsTab(sim, richLabel); break;
+                case 5: DrawActivityTab(sim, selected, richLabel); break;
+                case 6: DrawEventLogTab(sim, selected, richLabel); break;
+            }
+        }
+
+        // ─── Task Sequence Tab ───────────────────────────────────────
+
+        private Vector2 _taskSeqScrollPos;
+
+        private void DrawTaskSequenceTab(GameSimulation sim, Runner selected, GUIStyle richLabel)
+        {
+            GUILayout.Label($"<b>Task Sequence for {selected.Name}</b>", richLabel);
+
+            var seq = selected.TaskSequence;
+            if (seq == null)
+            {
+                GUILayout.Label("  (no active task sequence — runner is idle)");
+            }
+            else
+            {
+                GUILayout.Label($"Name: <b>{seq.Name ?? "(unnamed)"}</b>  |  Loop: {(seq.Loop ? "Yes" : "No")}  |  Target: {seq.TargetNodeId ?? "?"}", richLabel);
+
+                _taskSeqScrollPos = GUILayout.BeginScrollView(_taskSeqScrollPos);
+                if (seq.Steps != null)
+                {
+                    for (int i = 0; i < seq.Steps.Count; i++)
+                    {
+                        var step = seq.Steps[i];
+                        string prefix = i == seq.CurrentStepIndex ? "<color=#88ff88>>>> </color>" : "    ";
+                        string stepDesc = step.Type switch
+                        {
+                            TaskStepType.TravelTo => $"TravelTo({step.TargetNodeId})",
+                            TaskStepType.Work => "Work",
+                            TaskStepType.Deposit => "Deposit",
+                            _ => step.Type.ToString(),
+                        };
+                        GUILayout.Label($"{prefix}<color={(i == seq.CurrentStepIndex ? "#88ff88" : "#cccccc")}>[{i}] {stepDesc}</color>", richLabel);
+                    }
+                }
+                GUILayout.EndScrollView();
+            }
+
+            GUILayout.Space(5);
+
+            // Macro suspension indicator
+            if (selected.MacroSuspendedUntilLoop)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("<color=orange>Macro rules paused (1 cycle)</color>", richLabel);
+                if (GUILayout.Button("Resume", GUILayout.Width(60f), GUILayout.Height(18f)))
+                    selected.MacroSuspendedUntilLoop = false;
+                GUILayout.EndHorizontal();
+            }
+
+            // Pending task sequence
+            if (selected.PendingTaskSequence != null)
+            {
+                GUILayout.Label($"<color=yellow>Pending: {selected.PendingTaskSequence.Name ?? selected.PendingTaskSequence.TargetNodeId ?? "?"}</color>", richLabel);
+            }
+
+            GUILayout.Space(5);
+
+            // Cancel button
+            if (seq != null)
+            {
+                if (GUILayout.Button("Clear Task Sequence", GUILayout.Height(22f)))
+                {
+                    selected.MacroSuspendedUntilLoop = false;
+                    sim.AssignRunner(selected.Id, null, "manual clear");
+                }
             }
         }
 
@@ -530,7 +627,7 @@ namespace ProjectGuild.View
                     // Rule summary
                     string condSummary = FormatConditions(rule.Conditions);
                     string actionSummary = FormatAction(rule.Action);
-                    string tripLabel = rule.FinishCurrentTrip ? "<color=#88ff88>Trip</color>" : "<color=#888888>Imm</color>";
+                    string tripLabel = rule.FinishCurrentSequence ? "<color=#88ff88>Finish Seq</color>" : "<color=#888888>Immediately</color>";
                     string enabledColor = rule.Enabled ? "white" : "#666666";
                     string label = rule.Label.Length > 0 ? $"\"{rule.Label}\"" : $"#{i}";
                     GUILayout.Label(
@@ -581,10 +678,294 @@ namespace ProjectGuild.View
             DrawTemplateControls(sim, selected, richLabel);
         }
 
-        // ─── Add Rule Form ──────────────────────────────────────────
+        // ─── Micro Rules Tab ────────────────────────────────────────
+
+        private static readonly string[] MicroActionNames = { "GatherHere", "FinishTask" };
+
+        private void DrawMicroRulesTab(GameSimulation sim, Runner selected, GUIStyle richLabel)
+        {
+            var ruleset = selected.MicroRuleset;
+            int ruleCount = ruleset?.Rules?.Count ?? 0;
+
+            GUILayout.Label($"<b>Micro Rules for {selected.Name}</b> ({ruleCount} rules)", richLabel);
+
+            // Show gatherables at current node for context
+            var node = sim.CurrentGameState.Map.GetNode(selected.CurrentNodeId);
+            if (node != null && node.Gatherables.Length > 0)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("<color=#888888>Node gatherables:</color>", richLabel);
+                for (int g = 0; g < node.Gatherables.Length; g++)
+                {
+                    GUILayout.Label($"<color=#88ddff>[{g}] {node.Gatherables[g].ProducedItemId}</color>", richLabel);
+                }
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                GUILayout.Label("<color=#888888>Runner is not at a gathering node</color>", richLabel);
+            }
+
+            GUILayout.Space(2);
+
+            _microRulesScrollPos = GUILayout.BeginScrollView(_microRulesScrollPos);
+
+            if (ruleset != null && ruleset.Rules != null)
+            {
+                int deleteIndex = -1;
+                int moveUpIndex = -1;
+                int moveDownIndex = -1;
+
+                for (int i = 0; i < ruleset.Rules.Count; i++)
+                {
+                    var rule = ruleset.Rules[i];
+                    GUILayout.BeginHorizontal();
+
+                    // Enable toggle
+                    rule.Enabled = GUILayout.Toggle(rule.Enabled, "", GUILayout.Width(18f));
+
+                    // Rule summary
+                    string condSummary = FormatConditions(rule.Conditions);
+                    string actionSummary = FormatMicroAction(rule.Action, node);
+                    string enabledColor = rule.Enabled ? "white" : "#666666";
+                    string label = rule.Label.Length > 0 ? $"\"{rule.Label}\"" : $"#{i}";
+                    GUILayout.Label(
+                        $"<color={enabledColor}>{label}: IF {condSummary} THEN {actionSummary}</color>",
+                        richLabel);
+
+                    GUILayout.FlexibleSpace();
+
+                    // Reorder / delete buttons
+                    GUI.enabled = i > 0;
+                    if (GUILayout.Button("^", GUILayout.Width(22f), GUILayout.Height(18f)))
+                        moveUpIndex = i;
+                    GUI.enabled = i < ruleset.Rules.Count - 1;
+                    if (GUILayout.Button("v", GUILayout.Width(22f), GUILayout.Height(18f)))
+                        moveDownIndex = i;
+                    GUI.enabled = true;
+                    if (GUILayout.Button("x", GUILayout.Width(22f), GUILayout.Height(18f)))
+                        deleteIndex = i;
+
+                    GUILayout.EndHorizontal();
+                }
+
+                // Apply deferred operations
+                if (deleteIndex >= 0)
+                    ruleset.Rules.RemoveAt(deleteIndex);
+                if (moveUpIndex > 0)
+                    (ruleset.Rules[moveUpIndex], ruleset.Rules[moveUpIndex - 1]) =
+                        (ruleset.Rules[moveUpIndex - 1], ruleset.Rules[moveUpIndex]);
+                if (moveDownIndex >= 0 && moveDownIndex < ruleset.Rules.Count - 1)
+                    (ruleset.Rules[moveDownIndex], ruleset.Rules[moveDownIndex + 1]) =
+                        (ruleset.Rules[moveDownIndex + 1], ruleset.Rules[moveDownIndex]);
+            }
+            else
+            {
+                GUILayout.Label("  (no ruleset)");
+            }
+
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(3);
+
+            // ─── Add Micro Rule ───
+            _showAddMicroRule = GUILayout.Toggle(_showAddMicroRule, _showAddMicroRule ? "Hide Add Rule" : "Add Rule...", GUI.skin.button);
+            if (_showAddMicroRule)
+                DrawAddMicroRuleForm(sim, selected, node);
+
+            GUILayout.Space(3);
+
+            // Reset to default
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Reset Default", GUILayout.Width(100f)))
+            {
+                selected.MicroRuleset = DefaultRulesets.CreateDefaultMicro();
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawAddMicroRuleForm(GameSimulation sim, Runner selected, WorldNode node)
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+
+            // Label
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Label:", GUILayout.Width(45f));
+            _newMicroRuleLabel = GUILayout.TextField(_newMicroRuleLabel, GUILayout.Width(150f));
+            GUILayout.EndHorizontal();
+
+            // Condition type (reuses same condition types as macro)
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("IF:", GUILayout.Width(25f));
+            if (GUILayout.Button(ConditionTypeNames[_newMicroCondType], GUILayout.Width(120f)))
+                _newMicroCondType = (_newMicroCondType + 1) % ConditionTypeNames.Length;
+
+            var condType = (ConditionType)_newMicroCondType;
+
+            bool needsOperator = condType == ConditionType.InventorySlots
+                || condType == ConditionType.InventoryContains
+                || condType == ConditionType.BankContains
+                || condType == ConditionType.SkillLevel
+                || condType == ConditionType.SelfHP;
+            bool needsStringParam = condType == ConditionType.InventoryContains
+                || condType == ConditionType.BankContains
+                || condType == ConditionType.AtNode;
+            bool needsIntParam = condType == ConditionType.SkillLevel
+                || condType == ConditionType.RunnerStateIs;
+
+            if (needsStringParam)
+            {
+                if (condType == ConditionType.AtNode)
+                {
+                    var nodes = sim.CurrentGameState.Map.Nodes;
+                    if (nodes.Count > 0)
+                    {
+                        if (_newMicroCondIntParam >= nodes.Count) _newMicroCondIntParam = 0;
+                        if (GUILayout.Button(nodes[_newMicroCondIntParam].Name, GUILayout.Width(130f)))
+                            _newMicroCondIntParam = (_newMicroCondIntParam + 1) % nodes.Count;
+                        _newMicroCondStringParam = nodes[_newMicroCondIntParam].Id;
+                    }
+                }
+                else
+                {
+                    _newMicroCondStringParam = GUILayout.TextField(_newMicroCondStringParam, GUILayout.Width(80f));
+                }
+            }
+
+            if (needsIntParam)
+            {
+                if (condType == ConditionType.SkillLevel)
+                {
+                    if (GUILayout.Button(SkillNames[_newMicroCondIntParam], GUILayout.Width(90f)))
+                        _newMicroCondIntParam = (_newMicroCondIntParam + 1) % SkillNames.Length;
+                }
+                else if (condType == ConditionType.RunnerStateIs)
+                {
+                    string[] stateNames = Enum.GetNames(typeof(RunnerState));
+                    int stateIdx = Mathf.Clamp(_newMicroCondIntParam, 0, stateNames.Length - 1);
+                    if (GUILayout.Button(stateNames[stateIdx], GUILayout.Width(80f)))
+                        _newMicroCondIntParam = (_newMicroCondIntParam + 1) % stateNames.Length;
+                }
+            }
+
+            if (needsOperator)
+            {
+                if (GUILayout.Button(OperatorNames[_newMicroCondOp], GUILayout.Width(30f)))
+                    _newMicroCondOp = (_newMicroCondOp + 1) % OperatorNames.Length;
+                _newMicroCondValue = GUILayout.TextField(_newMicroCondValue, GUILayout.Width(40f));
+            }
+
+            GUILayout.EndHorizontal();
+
+            // Action type — micro only: GatherHere or FinishTask
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("THEN:", GUILayout.Width(40f));
+            if (GUILayout.Button(MicroActionNames[_newMicroActionType], GUILayout.Width(100f)))
+                _newMicroActionType = (_newMicroActionType + 1) % MicroActionNames.Length;
+
+            if (_newMicroActionType == 0) // GatherHere
+            {
+                // Show gatherable selector if at a gathering node
+                if (node != null && node.Gatherables.Length > 0)
+                {
+                    int.TryParse(_newMicroGatherIndex, out int gIdx);
+                    gIdx = Mathf.Clamp(gIdx, 0, node.Gatherables.Length - 1);
+                    string gatherName = $"[{gIdx}] {node.Gatherables[gIdx].ProducedItemId}";
+                    if (GUILayout.Button(gatherName, GUILayout.Width(150f)))
+                    {
+                        gIdx = (gIdx + 1) % node.Gatherables.Length;
+                        _newMicroGatherIndex = gIdx.ToString();
+                    }
+                }
+                else
+                {
+                    GUILayout.Label("idx:", GUILayout.Width(25f));
+                    _newMicroGatherIndex = GUILayout.TextField(_newMicroGatherIndex, GUILayout.Width(25f));
+                }
+            }
+
+            GUILayout.EndHorizontal();
+
+            // Create button
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Create Rule", GUILayout.Width(90f)))
+            {
+                CreateMicroRuleFromForm(selected);
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+        }
+
+        private void CreateMicroRuleFromForm(Runner selected)
+        {
+            if (selected.MicroRuleset == null)
+                selected.MicroRuleset = new Ruleset();
+
+            // Build condition
+            var condType = (ConditionType)_newMicroCondType;
+            var condition = new Condition { Type = condType };
+
+            float.TryParse(_newMicroCondValue, out float numVal);
+            condition.NumericValue = numVal;
+            condition.Operator = (ComparisonOperator)_newMicroCondOp;
+            condition.StringParam = _newMicroCondStringParam;
+            condition.IntParam = _newMicroCondIntParam;
+
+            // Build action
+            AutomationAction action;
+            if (_newMicroActionType == 0)
+            {
+                int.TryParse(_newMicroGatherIndex, out int gatherIdx);
+                action = AutomationAction.GatherHere(gatherIdx);
+            }
+            else
+            {
+                action = AutomationAction.FinishTask();
+            }
+
+            // Build rule
+            var rule = new Rule
+            {
+                Label = _newMicroRuleLabel.Length > 0 ? _newMicroRuleLabel : "",
+                Action = action,
+                FinishCurrentSequence = false, // not applicable to micro
+                Enabled = true,
+            };
+
+            if (condType != ConditionType.Always)
+                rule.Conditions.Add(condition);
+
+            selected.MicroRuleset.Rules.Add(rule);
+
+            // Reset form
+            _newMicroRuleLabel = "";
+            _showAddMicroRule = false;
+        }
+
+        private static string FormatMicroAction(AutomationAction action, WorldNode node)
+        {
+            if (action.Type == ActionType.FinishTask)
+                return "<color=#ffaa44>FinishTask</color>";
+
+            if (action.Type == ActionType.GatherHere)
+            {
+                int idx = action.IntParam;
+                string itemName = "";
+                if (node != null && idx >= 0 && idx < node.Gatherables.Length)
+                    itemName = $" ({node.Gatherables[idx].ProducedItemId})";
+                return $"<color=#88ddff>GatherHere[{idx}]{itemName}</color>";
+            }
+
+            return $"<color=#ff8888>{action.Type}</color>"; // unexpected action type in micro
+        }
+
+        // ─── Add Macro Rule Form ────────────────────────────────────
 
         private static readonly string[] ConditionTypeNames = Enum.GetNames(typeof(ConditionType));
-        private static readonly string[] ActionTypeNames = Enum.GetNames(typeof(ActionType));
+        private static readonly string[] MacroActionNames = { "WorkAt", "ReturnToHub", "Idle" };
+        private static readonly ActionType[] MacroActionTypes = { ActionType.WorkAt, ActionType.ReturnToHub, ActionType.Idle };
         private static readonly string[] OperatorNames = { ">", ">=", "<", "<=", "==", "!=" };
         private static readonly string[] SkillNames = Enum.GetNames(typeof(SkillType));
 
@@ -663,14 +1044,14 @@ namespace ProjectGuild.View
 
             GUILayout.EndHorizontal();
 
-            // Action type
+            // Action type — macro only: WorkAt, ReturnToHub, Idle
             GUILayout.BeginHorizontal();
             GUILayout.Label("THEN:", GUILayout.Width(40f));
-            if (GUILayout.Button(ActionTypeNames[_newActionType], GUILayout.Width(130f)))
-                _newActionType = (_newActionType + 1) % ActionTypeNames.Length;
+            if (GUILayout.Button(MacroActionNames[_newActionType], GUILayout.Width(130f)))
+                _newActionType = (_newActionType + 1) % MacroActionNames.Length;
 
-            var actionType = (ActionType)_newActionType;
-            bool actionNeedsNode = actionType == ActionType.TravelTo || actionType == ActionType.WorkAt;
+            var actionType = MacroActionTypes[_newActionType];
+            bool actionNeedsNode = actionType == ActionType.WorkAt;
 
             if (actionNeedsNode)
             {
@@ -683,17 +1064,11 @@ namespace ProjectGuild.View
                 }
             }
 
-            if (actionType == ActionType.GatherHere)
-            {
-                GUILayout.Label("idx:", GUILayout.Width(25f));
-                _newActionGatherIndex = GUILayout.TextField(_newActionGatherIndex, GUILayout.Width(25f));
-            }
-
             GUILayout.EndHorizontal();
 
-            // FinishCurrentTrip + Create button
+            // FinishCurrentSequence + Create button
             GUILayout.BeginHorizontal();
-            _newRuleFinishTrip = GUILayout.Toggle(_newRuleFinishTrip, "Finish Current Trip", GUILayout.Width(150f));
+            _newRuleFinishTrip = GUILayout.Toggle(_newRuleFinishTrip, "Finish Current Sequence", GUILayout.Width(170f));
 
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Create Rule", GUILayout.Width(90f)))
@@ -721,22 +1096,19 @@ namespace ProjectGuild.View
             condition.IntParam = _newCondIntParam;
 
             // Build action
-            var actionType = (ActionType)_newActionType;
+            var actionType = MacroActionTypes[_newActionType];
             var action = new AutomationAction { Type = actionType };
 
             var nodes = sim.CurrentGameState.Map.Nodes;
             if (nodes.Count > 0 && _newActionNodeIndex < nodes.Count)
                 action.StringParam = nodes[_newActionNodeIndex].Id;
 
-            int.TryParse(_newActionGatherIndex, out int gatherIdx);
-            action.IntParam = gatherIdx;
-
             // Build rule
             var rule = new Rule
             {
                 Label = _newRuleLabel.Length > 0 ? _newRuleLabel : "",
                 Action = action,
-                FinishCurrentTrip = _newRuleFinishTrip,
+                FinishCurrentSequence = _newRuleFinishTrip,
                 Enabled = true,
             };
 
@@ -795,7 +1167,27 @@ namespace ProjectGuild.View
         {
             GUILayout.Label($"<b>Decision Log for {selected.Name}</b>", richLabel);
 
-            var entries = sim.CurrentGameState.DecisionLog.GetForRunner(selected.Id);
+            // Layer filter
+            GUILayout.BeginHorizontal();
+            string[] filterNames = { "All", "Macro", "Micro" };
+            for (int i = 0; i < filterNames.Length; i++)
+            {
+                if (GUILayout.Toggle(_decisionLogFilter == i, filterNames[i], GUI.skin.button, GUILayout.Height(18f)))
+                    _decisionLogFilter = i;
+            }
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Clear Log", GUILayout.Width(70f), GUILayout.Height(18f)))
+                sim.CurrentGameState.DecisionLog.Clear();
+            GUILayout.EndHorizontal();
+
+            DecisionLayer? layerFilter = _decisionLogFilter switch
+            {
+                1 => DecisionLayer.Macro,
+                2 => DecisionLayer.Micro,
+                _ => null,
+            };
+
+            var entries = sim.CurrentGameState.DecisionLog.GetForRunner(selected.Id, layerFilter);
 
             if (entries.Count == 0)
             {
@@ -808,8 +1200,11 @@ namespace ProjectGuild.View
             foreach (var entry in entries)
             {
                 string deferred = entry.WasDeferred ? " <color=yellow>[deferred]</color>" : "";
+                string layerTag = entry.Layer == DecisionLayer.Macro
+                    ? "<color=#88ff88>[MACRO]</color>"
+                    : "<color=#88ddff>[MICRO]</color>";
                 GUILayout.Label(
-                    $"<color=#aaaaaa>T{entry.TickNumber}</color> [{entry.TriggerReason}] " +
+                    $"<color=#aaaaaa>T{entry.TickNumber}</color> {layerTag} [{entry.TriggerReason}] " +
                     $"<b>{entry.RuleLabel}</b> -> {entry.ActionDetail}{deferred}",
                     richLabel);
                 GUILayout.Label(
@@ -818,11 +1213,6 @@ namespace ProjectGuild.View
             }
 
             GUILayout.EndScrollView();
-
-            if (GUILayout.Button("Clear Log", GUILayout.Height(18f)))
-            {
-                sim.CurrentGameState.DecisionLog.Clear();
-            }
         }
 
         // ─── Warnings Tab ─────────────────────────────────────────────
@@ -1014,12 +1404,10 @@ namespace ProjectGuild.View
             return a.Type switch
             {
                 ActionType.Idle => "Idle",
-                ActionType.TravelTo => $"Travel -> {a.StringParam}",
                 ActionType.WorkAt => $"Work @ {a.StringParam}",
-                ActionType.GatherHere => $"Gather Here[{a.IntParam}]",
                 ActionType.ReturnToHub => "Return to Hub",
-                ActionType.DepositAndResume => "Deposit & Resume",
-                ActionType.FleeToHub => "Flee to Hub",
+                ActionType.GatherHere => $"Gather Here[{a.IntParam}]",
+                ActionType.FinishTask => "FinishTask",
                 _ => a.Type.ToString(),
             };
         }

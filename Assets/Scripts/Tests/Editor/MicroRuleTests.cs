@@ -67,7 +67,7 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
@@ -91,7 +91,7 @@ namespace ProjectGuild.Tests
                 Enabled = true,
             });
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
@@ -130,7 +130,7 @@ namespace ProjectGuild.Tests
                 Enabled = true,
             });
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Should start gathering copper (index 0)
@@ -176,7 +176,7 @@ namespace ProjectGuild.Tests
                 Enabled = true,
             });
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // ExecuteGatherStep evaluates micro → FinishTask → advance macro
@@ -208,7 +208,7 @@ namespace ProjectGuild.Tests
                 Enabled = true,
             });
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
@@ -232,7 +232,7 @@ namespace ProjectGuild.Tests
             // Empty micro ruleset — player deleted all rules. Runner should be stuck.
             _runner.MicroRuleset = new Ruleset();
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Runner should NOT be gathering — no micro rule matched, stuck at Work step
@@ -250,7 +250,7 @@ namespace ProjectGuild.Tests
             // In production, LoadState migrates nulls to defaults before gameplay.
             _runner.MicroRuleset = null;
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Idle, _runner.State,
@@ -274,7 +274,7 @@ namespace ProjectGuild.Tests
                 Enabled = true,
             });
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Runner should NOT be gathering — rule is broken, stuck at Work step
@@ -295,7 +295,7 @@ namespace ProjectGuild.Tests
             NoMicroRuleMatched? received = null;
             _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.IsNotNull(received, "NoMicroRuleMatched should fire for empty ruleset");
@@ -320,7 +320,7 @@ namespace ProjectGuild.Tests
             NoMicroRuleMatched? received = null;
             _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.IsNotNull(received, "NoMicroRuleMatched should fire for invalid index");
@@ -345,7 +345,7 @@ namespace ProjectGuild.Tests
             NoMicroRuleMatched? received = null;
             _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.IsNotNull(received, "NoMicroRuleMatched should fire when no conditions match");
@@ -371,7 +371,7 @@ namespace ProjectGuild.Tests
 
             NoMicroRuleMatched? received = null;
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State, "Should start gathering");
@@ -399,7 +399,7 @@ namespace ProjectGuild.Tests
             NoMicroRuleMatched? received = null;
             _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
 
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Tick a few times to make sure it never fires
@@ -408,6 +408,166 @@ namespace ProjectGuild.Tests
 
             Assert.IsNull(received, "NoMicroRuleMatched should NOT fire when a valid rule matches");
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
+        }
+
+        // ─── InventoryFull as micro rule (not hardcoded) ──────
+
+        [Test]
+        public void InventoryFull_MicroRule_TriggersFinishTask()
+        {
+            Setup("mine");
+
+            // Default micro: [InventoryFull → FinishTask, Always → GatherHere(0)]
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            // Fill inventory to capacity minus 1
+            var itemDef = new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore);
+            for (int i = 0; i < _sim.Config.InventorySize - 1; i++)
+                _runner.Inventory.TryAdd(itemDef);
+
+            // Tick until inventory fills — the micro rule should trigger FinishTask
+            TickUntil(() => _runner.State != RunnerState.Gathering, safetyLimit: 500);
+
+            // Runner should have advanced past Work step (FinishTask) and be traveling to hub
+            Assert.AreEqual(RunnerState.Traveling, _runner.State,
+                "InventoryFull micro rule should trigger FinishTask → travel to hub");
+        }
+
+        [Test]
+        public void InventoryFull_MicroRuleDeleted_RunnerKeepsGathering()
+        {
+            Setup("mine");
+
+            // Remove the InventoryFull rule — only keep GatherHere
+            _runner.MicroRuleset = new Ruleset();
+            _runner.MicroRuleset.Rules.Add(new Rule
+            {
+                Label = "Gather only",
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            // Fill inventory almost full
+            var itemDef = new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore);
+            for (int i = 0; i < _sim.Config.InventorySize - 1; i++)
+                _runner.Inventory.TryAdd(itemDef);
+
+            // Tick enough for inventory to fill
+            for (int i = 0; i < 500; i++)
+                _sim.Tick();
+
+            // Without the InventoryFull rule, runner should still be gathering (stuck trying to add)
+            // or at least still at the mine on the Work step — NOT traveling to hub
+            Assert.AreEqual("mine", _runner.CurrentNodeId,
+                "Without InventoryFull rule, runner should not auto-return to hub");
+        }
+
+        // ─── GatheringFailed with Reason ──────────────────────
+
+        [Test]
+        public void GatheringFailed_NoGatherablesAtNode_StaysStuck()
+        {
+            // Setup with runner at hub (which has no gatherables)
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, 1),
+            };
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub"); // No gatherables!
+            map.AddNode("mine", "Mine", 0f, 0f, CopperGatherable);
+            map.AddEdge("hub", "mine", 8f);
+            map.Initialize();
+
+            _sim.StartNewGame(defs, map, "hub");
+            _runner = _sim.CurrentGameState.Runners[0];
+
+            GatheringFailed? failed = null;
+            _sim.Events.Subscribe<GatheringFailed>(e => failed = e);
+
+            // Create sequence that puts runner at hub and tries to work
+            var seq = new TaskSequence
+            {
+                Name = "Work at hub",
+                TargetNodeId = "hub",
+                Loop = true,
+                CurrentStepIndex = 0,
+                Steps = new System.Collections.Generic.List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.Work),
+                },
+            };
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.IsNotNull(failed, "GatheringFailed should fire when node has no gatherables");
+            Assert.AreEqual(GatheringFailureReason.NoGatherablesAtNode, failed.Value.Reason);
+            Assert.AreEqual("hub", failed.Value.NodeId);
+
+            // Runner should NOT have advanced — stays stuck at Work step
+            Assert.AreEqual(0, _runner.TaskSequence.CurrentStepIndex,
+                "Runner should stay stuck at Work step (let it break)");
+        }
+
+        [Test]
+        public void GatheringFailed_NotEnoughSkill_StaysStuck()
+        {
+            Setup("mine");
+
+            // Create a high-level gatherable the runner can't harvest
+            var hardGatherable = new Simulation.Gathering.GatherableConfig("gold_ore", SkillType.Mining, 40f, 0.5f, 50);
+
+            // Replace the mine node with the hard gatherable
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("mine", "Mine", 0f, 0f, hardGatherable);
+            map.AddEdge("hub", "mine", 8f);
+            map.Initialize();
+
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("gold_ore", "Gold Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, 1), // Level 1, needs 50
+            };
+
+            _sim.StartNewGame(defs, map, "mine");
+            _runner = _sim.CurrentGameState.Runners[0];
+
+            GatheringFailed? failed = null;
+            _sim.Events.Subscribe<GatheringFailed>(e => failed = e);
+
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            Assert.IsNotNull(failed, "GatheringFailed should fire when skill level is too low");
+            Assert.AreEqual(GatheringFailureReason.NotEnoughSkill, failed.Value.Reason);
+            Assert.AreEqual(50, failed.Value.RequiredLevel);
+            Assert.AreEqual(1, failed.Value.CurrentLevel);
         }
     }
 }

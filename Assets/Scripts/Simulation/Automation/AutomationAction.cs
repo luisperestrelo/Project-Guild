@@ -10,7 +10,7 @@ namespace ProjectGuild.Simulation.Automation
     public class AutomationAction
     {
         public ActionType Type;
-        public string StringParam;   // nodeId for WorkAt/TravelTo
+        public string StringParam;   // nodeId for WorkAt
         public int IntParam;         // gatherableIndex for GatherHere
 
         public AutomationAction() { }
@@ -20,8 +20,7 @@ namespace ProjectGuild.Simulation.Automation
         public static AutomationAction Idle()
             => new AutomationAction { Type = ActionType.Idle };
 
-        public static AutomationAction TravelTo(string nodeId)
-            => new AutomationAction { Type = ActionType.TravelTo, StringParam = nodeId };
+        // ─── Macro actions (select task sequence) ───
 
         /// <summary>
         /// Macro action: create a work loop at the target node.
@@ -30,20 +29,16 @@ namespace ProjectGuild.Simulation.Automation
         public static AutomationAction WorkAt(string nodeId)
             => new AutomationAction { Type = ActionType.WorkAt, StringParam = nodeId };
 
+        public static AutomationAction ReturnToHub()
+            => new AutomationAction { Type = ActionType.ReturnToHub };
+
+        // ─── Micro actions (within-task behavior) ───
+
         /// <summary>
         /// Micro action: gather the resource at the given index at the current node.
         /// </summary>
         public static AutomationAction GatherHere(int gatherableIndex = 0)
             => new AutomationAction { Type = ActionType.GatherHere, IntParam = gatherableIndex };
-
-        public static AutomationAction ReturnToHub()
-            => new AutomationAction { Type = ActionType.ReturnToHub };
-
-        public static AutomationAction DepositAndResume()
-            => new AutomationAction { Type = ActionType.DepositAndResume };
-
-        public static AutomationAction FleeToHub()
-            => new AutomationAction { Type = ActionType.FleeToHub };
 
         public static AutomationAction FinishTask()
             => new AutomationAction { Type = ActionType.FinishTask };

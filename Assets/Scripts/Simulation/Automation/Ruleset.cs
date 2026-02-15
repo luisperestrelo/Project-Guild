@@ -31,7 +31,7 @@ namespace ProjectGuild.Simulation.Automation
                         IntParam = rule.Action.IntParam,
                     },
                     Enabled = rule.Enabled,
-                    FinishCurrentTrip = rule.FinishCurrentTrip,
+                    FinishCurrentSequence = rule.FinishCurrentSequence,
                     Label = rule.Label,
                 };
                 foreach (var cond in rule.Conditions)

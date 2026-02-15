@@ -26,20 +26,27 @@ namespace ProjectGuild.Simulation.Automation
     }
 
     /// <summary>
-    /// A runner's standing order — a loop of logistics steps.
-    /// The assignment handles WHERE to go and WHEN to deposit.
+    /// A runner's task sequence — an ordered list of steps.
+    /// The sequence handles WHERE to go and WHEN to deposit.
     /// Micro rules decide WHAT to do at each node (gather, fight, craft).
-    /// Null assignment = idle (no standing orders).
+    /// Null sequence = idle (no standing orders).
+    /// When Loop is true, the sequence wraps back to step 0 after the last step.
+    /// When Loop is false, the sequence ends after the last step and the runner goes idle.
     /// </summary>
     [Serializable]
-    public class Assignment
+    public class TaskSequence
     {
         public List<TaskStep> Steps;
         public int CurrentStepIndex;
         public bool Loop;
 
-        // Metadata for display
-        public string TargetNodeId;  // primary node (for UI label)
+        /// <summary>
+        /// Display name for this sequence (e.g. "Gather at Copper Mine").
+        /// </summary>
+        public string Name;
+
+        // Metadata for display / same-sequence suppression
+        public string TargetNodeId;  // primary node
 
         public TaskStep CurrentStep =>
             Steps != null && CurrentStepIndex >= 0 && CurrentStepIndex < Steps.Count
@@ -75,10 +82,11 @@ namespace ProjectGuild.Simulation.Automation
         /// Standard work loop: Travel to node → Work → Travel to hub → Deposit → repeat.
         /// What happens during the Work step is determined by the runner's micro rules.
         /// </summary>
-        public static Assignment CreateLoop(string nodeId, string hubNodeId)
+        public static TaskSequence CreateLoop(string nodeId, string hubNodeId)
         {
-            return new Assignment
+            return new TaskSequence
             {
+                Name = $"Gather at {nodeId}",
                 TargetNodeId = nodeId,
                 Loop = true,
                 CurrentStepIndex = 0,

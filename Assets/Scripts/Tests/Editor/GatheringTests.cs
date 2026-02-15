@@ -49,12 +49,12 @@ namespace ProjectGuild.Tests
         }
 
         /// <summary>
-        /// Start gathering via the assignment system (the only way now).
+        /// Start gathering via the task sequence system (the only way now).
         /// Runner must be at the mine already.
         /// </summary>
         private void AssignGathering()
         {
-            var assignment = Assignment.CreateLoop("mine", "hub");
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment, "test");
         }
 
@@ -335,7 +335,7 @@ namespace ProjectGuild.Tests
                 "Passion should increase effective level, resulting in fewer ticks");
         }
 
-        // ─── Inventory full -> auto-return (assignment-driven) ──────
+        // ─── Inventory full -> auto-return (task sequence driven) ──────
 
         [Test]
         public void Gathering_InventoryFull_PublishesEvent()
@@ -361,8 +361,7 @@ namespace ProjectGuild.Tests
 
             TickUntilInventoryFull();
 
-            // With assignment-driven logic: inventory full → stop gathering → Idle
-            // → AdvanceMacroStep → TravelTo(hub) → Traveling
+            // Micro rule: InventoryFull → FinishTask → advance macro → TravelTo(hub) → Traveling
             Assert.AreEqual(RunnerState.Traveling, _runner.State,
                 "Runner should start traveling to hub after inventory fills");
             Assert.AreEqual("hub", _runner.Travel.ToNodeId);

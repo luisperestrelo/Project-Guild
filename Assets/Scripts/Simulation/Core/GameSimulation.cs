@@ -14,9 +14,9 @@ namespace ProjectGuild.Simulation.Core
     /// This class is pure C# — no Unity dependency. The Bridge layer's
     /// SimulationRunner MonoBehaviour calls Tick() at a fixed rate.
     ///
-    /// The macro layer (Assignment + task steps) drives the work→deposit→return loop.
+    /// The macro layer (TaskSequence + steps) drives the work→deposit→return loop.
     /// Micro rules evaluate within the Work step (e.g. which resource to gather, what to fight).
-    /// Macro rules change assignments based on conditions (e.g. switch nodes when bank threshold hit).
+    /// Macro rules change task sequences based on conditions (e.g. switch nodes when bank threshold hit).
     /// </summary>
     public class GameSimulation
     {
@@ -169,10 +169,18 @@ namespace ProjectGuild.Simulation.Core
 
         private void TickRunner(Runner runner)
         {
+            // Evaluate macro rules every tick for all active (non-Idle) runners.
+            // Idle runners evaluate via AdvanceMacroStep which also handles step execution.
+            // An Immediate rule that fires here will call AssignRunner, changing state — skip the rest of the tick.
+            if (runner.State != RunnerState.Idle)
+            {
+                if (EvaluateMacroRules(runner, "Tick"))
+                    return;
+            }
+
             switch (runner.State)
             {
                 case RunnerState.Idle:
-                    // Idle runner with an assignment → advance macro step
                     AdvanceMacroStep(runner);
                     break;
 
@@ -439,40 +447,26 @@ namespace ProjectGuild.Simulation.Core
                     });
                 }
 
-                // Inventory full — stop gathering, go idle. Advance past Gather step.
+                // Publish InventoryFull event for visibility (Event Log, macro conditions)
                 if (runner.Inventory.IsFull(itemDef))
                 {
                     Events.Publish(new InventoryFull { RunnerId = runner.Id });
-
-                    runner.State = RunnerState.Idle;
-                    runner.Gathering = null;
-
-                    // Advance past the Gather step so AdvanceMacroStep picks up the next one
-                    if (runner.Assignment != null)
-                    {
-                        runner.Assignment.AdvanceStep();
-                        PublishStepAdvanced(runner, runner.Assignment);
-                    }
-
-                    // Evaluate macro rules on inventory full
-                    if (!EvaluateMacroRules(runner, "InventoryFull"))
-                        AdvanceMacroStep(runner);
-                }
-                else
-                {
-                    // Re-evaluate micro rules after each item — may switch resources or FinishTask
-                    ReevaluateMicroDuringGathering(runner, node);
                 }
             }
+
+            // Re-evaluate micro rules every tick — may switch resources, FinishTask,
+            // or handle InventoryFull (the default micro ruleset has IF InventoryFull → FinishTask).
+            // Runs every tick, not just after item production, so condition changes are caught immediately.
+            ReevaluateMicroDuringGathering(runner, node);
         }
 
-        // ─── Macro Layer: Assignment + Step Logic ───────────────────
+        // ─── Macro Layer: Task Sequence + Step Logic ───────────────────
 
         /// <summary>
         /// Assign a runner to a new task sequence. Cancels current activity,
-        /// publishes AssignmentChanged, and starts executing the first step.
+        /// publishes TaskSequenceChanged, and starts executing the first step.
         /// </summary>
-        public void AssignRunner(string runnerId, Assignment assignment, string reason = "")
+        public void AssignRunner(string runnerId, TaskSequence taskSequence, string reason = "")
         {
             var runner = FindRunner(runnerId);
             if (runner == null) return;
@@ -483,12 +477,14 @@ namespace ProjectGuild.Simulation.Core
             runner.Depositing = null;
             runner.State = RunnerState.Idle;
 
-            runner.Assignment = assignment;
+            runner.TaskSequence = taskSequence;
+            // Don't clear MacroSuspendedUntilLoop here — "Work At" sets it AFTER
+            // AssignRunner, and we want it to persist through the first cycle.
 
-            Events.Publish(new AssignmentChanged
+            Events.Publish(new TaskSequenceChanged
             {
                 RunnerId = runner.Id,
-                TargetNodeId = assignment?.TargetNodeId,
+                TargetNodeId = taskSequence?.TargetNodeId,
                 Reason = reason,
             });
 
@@ -497,7 +493,7 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Execute the current step of the runner's assignment.
+        /// Execute the current step of the runner's task sequence.
         /// Called when the runner becomes Idle (after arriving, after depositing, etc.).
         /// </summary>
         private void AdvanceMacroStep(Runner runner)
@@ -505,41 +501,45 @@ namespace ProjectGuild.Simulation.Core
             if (runner.State != RunnerState.Idle) return;
 
             // Evaluate macro rules before executing the next step.
-            // If a rule fires and changes the assignment, AssignRunner will call
-            // AdvanceMacroStep again. Same-assignment suppression prevents infinite loops.
+            // If a rule fires and changes the task sequence, AssignRunner will call
+            // AdvanceMacroStep again. Same-sequence suppression prevents infinite loops.
             if (EvaluateMacroRules(runner, "StepAdvance")) return;
 
-            var assignment = runner.Assignment;
-            if (assignment == null) return;
+            var seq = runner.TaskSequence;
+            if (seq == null) return;
 
-            var step = assignment.CurrentStep;
+            var step = seq.CurrentStep;
             if (step == null) return;
 
             switch (step.Type)
             {
                 case TaskStepType.TravelTo:
-                    ExecuteTravelStep(runner, step, assignment);
+                    ExecuteTravelStep(runner, step, seq);
                     break;
 
                 case TaskStepType.Work:
-                    ExecuteWorkStep(runner, assignment);
+                    ExecuteWorkStep(runner, seq);
                     break;
 
                 case TaskStepType.Deposit:
-                    ExecuteDepositStep(runner, assignment);
+                    ExecuteDepositStep(runner, seq);
                     break;
             }
         }
 
-        private void ExecuteTravelStep(Runner runner, TaskStep step, Assignment assignment)
+        private void ExecuteTravelStep(Runner runner, TaskStep step, TaskSequence seq)
         {
             // Already at target? Step is done — advance past it and handle next.
             if (runner.CurrentNodeId == step.TargetNodeId)
             {
-                if (assignment.AdvanceStep())
+                if (seq.AdvanceStep())
                 {
-                    PublishStepAdvanced(runner, assignment);
+                    PublishStepAdvanced(runner, seq);
                     AdvanceMacroStep(runner); // recurse for next step
+                }
+                else
+                {
+                    HandleSequenceCompleted(runner);
                 }
                 return;
             }
@@ -550,17 +550,18 @@ namespace ProjectGuild.Simulation.Core
             StartTravelInternal(runner, step.TargetNodeId);
         }
 
-        private void ExecuteWorkStep(Runner runner, Assignment assignment)
+        private void ExecuteWorkStep(Runner runner, TaskSequence seq)
         {
             var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
             if (node == null || node.Gatherables.Length == 0)
             {
-                // Can't gather here — skip step
-                if (assignment.AdvanceStep())
+                // No gatherables at this node — runner stays stuck. "Let it break."
+                Events.Publish(new GatheringFailed
                 {
-                    PublishStepAdvanced(runner, assignment);
-                    AdvanceMacroStep(runner);
-                }
+                    RunnerId = runner.Id,
+                    NodeId = runner.CurrentNodeId,
+                    Reason = GatheringFailureReason.NoGatherablesAtNode,
+                });
                 return;
             }
 
@@ -570,11 +571,15 @@ namespace ProjectGuild.Simulation.Core
             // FinishTask signal — micro says "done gathering, advance macro"
             if (gatherableIndex == MicroResultFinishTask)
             {
-                if (assignment.AdvanceStep())
+                if (seq.AdvanceStep())
                 {
-                    PublishStepAdvanced(runner, assignment);
+                    PublishStepAdvanced(runner, seq);
+                    AdvanceMacroStep(runner);
                 }
-                AdvanceMacroStep(runner);
+                else
+                {
+                    HandleSequenceCompleted(runner);
+                }
                 return;
             }
 
@@ -593,12 +598,17 @@ namespace ProjectGuild.Simulation.Core
                 var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
                 if (skill.Level < gatherableConfig.MinLevel)
                 {
-                    // Can't gather — skip
-                    if (assignment.AdvanceStep())
+                    // Can't gather — runner stays stuck at Work step. "Let it break."
+                    Events.Publish(new GatheringFailed
                     {
-                        PublishStepAdvanced(runner, assignment);
-                        AdvanceMacroStep(runner);
-                    }
+                        RunnerId = runner.Id,
+                        NodeId = runner.CurrentNodeId,
+                        ItemId = gatherableConfig.ProducedItemId,
+                        Skill = gatherableConfig.RequiredSkill,
+                        RequiredLevel = gatherableConfig.MinLevel,
+                        CurrentLevel = skill.Level,
+                        Reason = GatheringFailureReason.NotEnoughSkill,
+                    });
                     return;
                 }
             }
@@ -610,7 +620,7 @@ namespace ProjectGuild.Simulation.Core
             // advances past this step, then calls AdvanceMacroStep for the next one.
         }
 
-        private void ExecuteDepositStep(Runner runner, Assignment assignment)
+        private void ExecuteDepositStep(Runner runner, TaskSequence seq)
         {
             // Start the deposit timer — actual deposit happens when it completes
             runner.State = RunnerState.Depositing;
@@ -642,16 +652,25 @@ namespace ProjectGuild.Simulation.Core
 
             if (ruleIndex >= 0)
             {
-                var action = runner.MicroRuleset.Rules[ruleIndex].Action;
+                var rule = runner.MicroRuleset.Rules[ruleIndex];
+                var action = rule.Action;
 
                 if (action.Type == ActionType.FinishTask)
+                {
+                    LogDecision(runner, ruleIndex, rule, "MicroEval",
+                        "FinishTask", false, DecisionLayer.Micro);
                     return MicroResultFinishTask;
+                }
 
                 if (action.Type == ActionType.GatherHere)
                 {
                     int index = action.IntParam;
                     if (index >= 0 && index < node.Gatherables.Length)
+                    {
+                        LogDecision(runner, ruleIndex, rule, "MicroEval",
+                            $"GatherHere({index})", false, DecisionLayer.Micro);
                         return index;
+                    }
                 }
 
                 // Rule matched but action is invalid (wrong type, out-of-bounds index).
@@ -671,7 +690,7 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         private void ReevaluateMicroDuringGathering(Runner runner, World.WorldNode node)
         {
-            if (runner.Assignment == null) return;
+            if (runner.TaskSequence == null) return;
 
             int newIndex = EvaluateMicroRules(runner, node);
 
@@ -681,11 +700,15 @@ namespace ProjectGuild.Simulation.Core
                 runner.State = RunnerState.Idle;
                 runner.Gathering = null;
 
-                if (runner.Assignment.AdvanceStep())
+                if (runner.TaskSequence.AdvanceStep())
                 {
-                    PublishStepAdvanced(runner, runner.Assignment);
+                    PublishStepAdvanced(runner, runner.TaskSequence);
+                    AdvanceMacroStep(runner);
                 }
-                AdvanceMacroStep(runner);
+                else
+                {
+                    HandleSequenceCompleted(runner);
+                }
                 return;
             }
 
@@ -733,46 +756,103 @@ namespace ProjectGuild.Simulation.Core
             runner.Depositing = null;
 
             // Advance past the Deposit step
-            if (runner.Assignment != null && runner.Assignment.AdvanceStep())
+            if (runner.TaskSequence != null)
             {
-                PublishStepAdvanced(runner, runner.Assignment);
+                if (runner.TaskSequence.AdvanceStep())
+                {
+                    PublishStepAdvanced(runner, runner.TaskSequence);
+                }
+                else
+                {
+                    // Non-looping sequence completed
+                    HandleSequenceCompleted(runner);
+                    return;
+                }
             }
 
-            // Loop boundary — apply pending assignment from earlier in the loop
-            if (ApplyPendingAssignment(runner)) return;
+            // Sequence boundary — apply pending task sequence from earlier in the cycle
+            if (ApplyPendingTaskSequence(runner)) return;
 
             // Evaluate macro rules at deposit completion
             if (EvaluateMacroRules(runner, "DepositCompleted")) return;
 
-            // Apply pending set by the macro eval above (deferred rule that fired at deposit boundary)
-            if (ApplyPendingAssignment(runner)) return;
+            // Apply pending set by the macro eval above (deferred rule that fired at sequence boundary)
+            if (ApplyPendingTaskSequence(runner)) return;
 
             AdvanceMacroStep(runner);
         }
 
-        private void PublishStepAdvanced(Runner runner, Assignment assignment)
+        private void PublishStepAdvanced(Runner runner, TaskSequence seq)
         {
-            var step = assignment.CurrentStep;
+            var step = seq.CurrentStep;
             if (step == null) return;
 
-            Events.Publish(new AssignmentStepAdvanced
+            // Sequence looped — clear the "Work At" one-cycle suspension
+            if (seq.CurrentStepIndex == 0 && runner.MacroSuspendedUntilLoop)
+                runner.MacroSuspendedUntilLoop = false;
+
+            Events.Publish(new TaskSequenceStepAdvanced
             {
                 RunnerId = runner.Id,
                 StepType = step.Type,
-                StepIndex = assignment.CurrentStepIndex,
+                StepIndex = seq.CurrentStepIndex,
             });
+        }
+
+        /// <summary>
+        /// Handle a non-looping sequence completing (AdvanceStep returned false).
+        /// Clears the runner's task sequence, publishes completion event,
+        /// and lets macro rules re-evaluate.
+        /// </summary>
+        private void HandleSequenceCompleted(Runner runner)
+        {
+            string seqName = runner.TaskSequence?.Name ?? "";
+            runner.TaskSequence = null;
+            runner.State = RunnerState.Idle;
+
+            Events.Publish(new TaskSequenceCompleted
+            {
+                RunnerId = runner.Id,
+                SequenceName = seqName,
+            });
+
+            // Macro rules get a chance to assign a new sequence.
+            // If a rule fires, AssignRunner calls AdvanceMacroStep internally.
+            // If no rule fires, runner stays idle — next tick picks it up.
+            EvaluateMacroRules(runner, "SequenceCompleted");
         }
 
         // ─── Macro Layer: Rule Evaluation ────────────────────────────
 
+        private int _macroEvalDepth;
+
         /// <summary>
         /// Evaluate the runner's macro ruleset. If a rule matches, its action maps
-        /// to a new assignment. FinishCurrentTrip defers via PendingAssignment.
-        /// Returns true if the runner's assignment was changed (immediate), meaning
+        /// to a new task sequence. FinishCurrentSequence defers via PendingTaskSequence.
+        /// Returns true if the runner's task sequence was changed (immediate), meaning
         /// the caller should NOT proceed with normal step advancement.
         /// </summary>
         private bool EvaluateMacroRules(Runner runner, string triggerReason)
         {
+            // Safety valve: prevent infinite recursion from instantly-completing sequences
+            // (e.g., ReturnToHub when already at hub → completes → re-evaluates → same rule fires).
+            if (_macroEvalDepth > 3) return false;
+            _macroEvalDepth++;
+            try
+            {
+                return EvaluateMacroRulesInternal(runner, triggerReason);
+            }
+            finally
+            {
+                _macroEvalDepth--;
+            }
+        }
+
+        private bool EvaluateMacroRulesInternal(Runner runner, string triggerReason)
+        {
+            if (runner.MacroSuspendedUntilLoop)
+                return false;
+
             if (runner.MacroRuleset == null || runner.MacroRuleset.Rules.Count == 0)
                 return false;
 
@@ -782,50 +862,41 @@ namespace ProjectGuild.Simulation.Core
             if (ruleIndex < 0) return false;
 
             var rule = runner.MacroRuleset.Rules[ruleIndex];
-            var newAssignment = ActionToAssignment(rule.Action);
+            var newSeq = ActionToTaskSequence(rule.Action);
 
-            // If the new assignment is the same as current, skip (avoid infinite reassignment).
+            // If the new sequence is the same as current, skip (avoid infinite reassignment).
             // Both null = already idle, rule wants idle → suppress.
-            if (newAssignment == null && runner.Assignment == null)
+            if (newSeq == null && runner.TaskSequence == null)
                 return false;
 
-            if (runner.Assignment != null && newAssignment != null
-                && runner.Assignment.TargetNodeId == newAssignment.TargetNodeId)
+            if (runner.TaskSequence != null && newSeq != null
+                && runner.TaskSequence.TargetNodeId == newSeq.TargetNodeId)
                 return false;
 
             // Log the decision
             LogDecision(runner, ruleIndex, rule, triggerReason,
-                newAssignment != null ? $"Work @ {newAssignment.TargetNodeId}" : "Idle",
-                rule.FinishCurrentTrip && rule.Action.Type != ActionType.FleeToHub);
+                newSeq != null ? $"Work @ {newSeq.TargetNodeId}" : "Idle",
+                rule.FinishCurrentSequence);
 
-            // FleeToHub always immediate, ignores FinishCurrentTrip
-            if (rule.Action.Type == ActionType.FleeToHub)
+            // Deferred: store as pending, apply at sequence boundary.
+            // But if there's no active sequence, degrade to Immediately —
+            // there's nothing to "finish" so waiting makes no sense.
+            if (rule.FinishCurrentSequence && runner.TaskSequence != null)
             {
-                string hubId = CurrentGameState.Map?.HubNodeId ?? "hub";
-                AssignRunner(runner.Id, null, "flee to hub");
-                // Start travel to hub directly
-                if (runner.CurrentNodeId != hubId)
-                    StartTravelInternal(runner, hubId);
-                return true;
-            }
-
-            // Deferred: store as pending, apply at loop boundary
-            if (rule.FinishCurrentTrip)
-            {
-                runner.PendingAssignment = newAssignment;
+                runner.PendingTaskSequence = newSeq;
                 return false;
             }
 
-            // Immediate: change assignment now
-            AssignRunner(runner.Id, newAssignment, $"macro rule: {rule.Label}");
+            // Immediate: change task sequence now
+            AssignRunner(runner.Id, newSeq, $"macro rule: {rule.Label}");
             return true;
         }
 
         /// <summary>
-        /// Map a macro rule's action to an Assignment.
-        /// Returns null for Idle (clear assignment).
+        /// Map a macro rule's action to a TaskSequence.
+        /// Returns null for Idle (clear task sequence).
         /// </summary>
-        private Assignment ActionToAssignment(AutomationAction action)
+        private TaskSequence ActionToTaskSequence(AutomationAction action)
         {
             string hubId = CurrentGameState.Map?.HubNodeId ?? "hub";
 
@@ -834,7 +905,20 @@ namespace ProjectGuild.Simulation.Core
                 case ActionType.WorkAt:
                     string nodeId = string.IsNullOrEmpty(action.StringParam) ? null : action.StringParam;
                     if (nodeId == null) return null;
-                    return Assignment.CreateLoop(nodeId, hubId);
+                    return TaskSequence.CreateLoop(nodeId, hubId);
+
+                case ActionType.ReturnToHub:
+                    return new TaskSequence
+                    {
+                        Name = "Return to Hub",
+                        TargetNodeId = hubId,
+                        Loop = false,
+                        CurrentStepIndex = 0,
+                        Steps = new System.Collections.Generic.List<TaskStep>
+                        {
+                            new TaskStep(TaskStepType.TravelTo, hubId),
+                        },
+                    };
 
                 case ActionType.Idle:
                     return null;
@@ -845,15 +929,15 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Check and apply PendingAssignment at loop boundaries.
+        /// Check and apply PendingTaskSequence at sequence boundaries.
         /// Called after a step advances and wraps to step 0 (start of a new loop cycle).
         /// </summary>
-        private bool ApplyPendingAssignment(Runner runner)
+        private bool ApplyPendingTaskSequence(Runner runner)
         {
-            if (runner.PendingAssignment == null) return false;
+            if (runner.PendingTaskSequence == null) return false;
 
-            var pending = runner.PendingAssignment;
-            runner.PendingAssignment = null;
+            var pending = runner.PendingTaskSequence;
+            runner.PendingTaskSequence = null;
 
             AssignRunner(runner.Id, pending, "deferred macro rule");
             return true;
@@ -875,7 +959,8 @@ namespace ProjectGuild.Simulation.Core
         // ─── Internal Helpers ──────────────────────────────────────
 
         private void LogDecision(Runner runner, int ruleIndex, Rule rule,
-            string triggerReason, string actionDetail, bool wasDeferred)
+            string triggerReason, string actionDetail, bool wasDeferred,
+            DecisionLayer layer = DecisionLayer.Macro)
         {
             CurrentGameState.DecisionLog.Add(new DecisionLogEntry
             {
@@ -883,6 +968,7 @@ namespace ProjectGuild.Simulation.Core
                 GameTime = CurrentGameState.TotalTimeElapsed,
                 RunnerId = runner.Id,
                 RunnerName = runner.Name,
+                Layer = layer,
                 RuleIndex = ruleIndex,
                 RuleLabel = !string.IsNullOrEmpty(rule.Label) ? rule.Label : $"Rule #{ruleIndex}",
                 TriggerReason = triggerReason,

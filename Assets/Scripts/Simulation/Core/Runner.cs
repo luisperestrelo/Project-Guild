@@ -27,8 +27,8 @@ namespace ProjectGuild.Simulation.Core
     /// - Current state and location in the world
     /// - Inventory (OSRS-style 28-slot)
     /// - Equipment (TODO)
-    /// - Assignment (macro layer): what task sequence to execute
-    /// - MacroRuleset: rules that change assignments based on conditions
+    /// - TaskSequence (macro layer): what step sequence to execute
+    /// - MacroRuleset: rules that change task sequences based on conditions
     /// - MicroRuleset: rules for within-task behavior (e.g. which resource to gather)
     /// </summary>
     [Serializable]
@@ -57,16 +57,23 @@ namespace ProjectGuild.Simulation.Core
         // ─── Automation ────────────────────────────────────────────
 
         /// <summary>
-        /// Current macro assignment — the task sequence this runner is executing.
-        /// Null means no assignment (runner is idle with no standing orders).
+        /// Current task sequence this runner is executing.
+        /// Null means no active sequence (runner is idle with no standing orders).
         /// </summary>
-        public Assignment Assignment;
+        public TaskSequence TaskSequence;
 
         /// <summary>
-        /// Deferred assignment from a FinishCurrentTrip rule.
-        /// Applied when the current loop cycle completes.
+        /// Deferred task sequence from a FinishCurrentSequence rule.
+        /// Applied when the current sequence cycle completes.
         /// </summary>
-        public Assignment PendingAssignment;
+        public TaskSequence PendingTaskSequence;
+
+        /// <summary>
+        /// When true, macro rules are skipped until the current sequence loops
+        /// (step index wraps back to 0). Used by "Work At" to guarantee one cycle.
+        /// Cleared automatically on loop wrap, or when the sequence is cancelled/replaced.
+        /// </summary>
+        public bool MacroSuspendedUntilLoop;
 
         /// <summary>
         /// Rules that change the assignment based on conditions
@@ -108,7 +115,7 @@ namespace ProjectGuild.Simulation.Core
     /// <summary>
     /// State tracked while a runner is gathering resources.
     /// Simplified from Phase 2 — no longer tracks sub-state for the auto-return loop.
-    /// The macro layer (Assignment) handles the gather→deposit→return cycle.
+    /// The macro layer (TaskSequence) handles the gather→deposit→return cycle.
     /// </summary>
     [Serializable]
     public class GatheringState
