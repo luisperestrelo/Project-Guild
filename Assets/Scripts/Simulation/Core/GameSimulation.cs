@@ -463,6 +463,47 @@ namespace ProjectGuild.Simulation.Core
         // ─── Macro Layer: Task Sequence + Step Logic ───────────────────
 
         /// <summary>
+        /// Send a runner to gather at a node with one guaranteed cycle
+        /// (macro rules suspended until the sequence loops).
+        /// This is the single entry point for the "Work At" player action.
+        /// </summary>
+        public void CommandWorkAtSuspendMacrosForOneCycle(string runnerId, string nodeId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+
+            var hubId = CurrentGameState.Map.HubNodeId;
+            var taskSeq = TaskSequence.CreateLoop(nodeId, hubId);
+            runner.MacroSuspendedUntilLoop = true;
+            AssignRunner(runnerId, taskSeq, "Work At");
+        }
+
+        /// <summary>
+        /// Clear a runner's task sequence and resume macro rule evaluation.
+        /// This is the single entry point for the "Clear Task" player action.
+        /// </summary>
+        public void ClearTaskSequence(string runnerId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+
+            runner.MacroSuspendedUntilLoop = false;
+            AssignRunner(runnerId, null, "manual clear");
+        }
+
+        /// <summary>
+        /// Resume macro rule evaluation for a runner whose rules were
+        /// suspended (e.g., after "Work At" one-cycle guarantee).
+        /// </summary>
+        public void ResumeMacroRules(string runnerId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+
+            runner.MacroSuspendedUntilLoop = false;
+        }
+
+        /// <summary>
         /// Assign a runner to a new task sequence. Cancels current activity,
         /// publishes TaskSequenceChanged, and starts executing the first step.
         /// </summary>
@@ -498,7 +539,7 @@ namespace ProjectGuild.Simulation.Core
 
             runner.TaskSequence = taskSequence;
             runner.LastCompletedSequenceTargetNodeId = null;
-            // Don't clear MacroSuspendedUntilLoop here — "Work At" sets it BEFORE
+            // Don't clear MacroSuspendedUntilLoop here — WorkAt() sets it before
             // calling AssignRunner, and we want it to persist through the first cycle.
 
             Events.Publish(new TaskSequenceChanged

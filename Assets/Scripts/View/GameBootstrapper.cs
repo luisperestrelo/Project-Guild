@@ -279,7 +279,7 @@ namespace ProjectGuild.View
             if (selected.TaskSequence != null)
             {
                 if (GUILayout.Button("Cancel Task"))
-                    sim.AssignRunner(selected.Id, null, "manual cancel");
+                    sim.ClearTaskSequence(selected.Id);
             }
 
             // Work At buttons — creates task sequence + one-shot shield macro rule
@@ -303,9 +303,7 @@ namespace ProjectGuild.View
 
                 if (GUILayout.Button($"{node.Name}{detail}", GUILayout.Height(20f)))
                 {
-                    var taskSeq = TaskSequence.CreateLoop(nodeId, hubId);
-                    selected.MacroSuspendedUntilLoop = true;
-                    sim.AssignRunner(selected.Id, taskSeq, "Work At");
+                    sim.CommandWorkAtSuspendMacrosForOneCycle(selected.Id, nodeId);
                 }
             }
             GUILayout.EndScrollView();
@@ -576,7 +574,7 @@ namespace ProjectGuild.View
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("<color=orange>Macro rules paused (1 cycle)</color>", richLabel);
                 if (GUILayout.Button("Resume", GUILayout.Width(60f), GUILayout.Height(18f)))
-                    selected.MacroSuspendedUntilLoop = false;
+                    sim.ResumeMacroRules(selected.Id);
                 GUILayout.EndHorizontal();
             }
 
@@ -593,8 +591,7 @@ namespace ProjectGuild.View
             {
                 if (GUILayout.Button("Clear Task Sequence", GUILayout.Height(22f)))
                 {
-                    selected.MacroSuspendedUntilLoop = false;
-                    sim.AssignRunner(selected.Id, null, "manual clear");
+                    sim.ClearTaskSequence(selected.Id);
                 }
             }
         }
