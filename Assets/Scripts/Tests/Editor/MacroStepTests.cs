@@ -55,53 +55,54 @@ namespace ProjectGuild.Tests
             return ticks;
         }
 
-        // ─── TaskSequence.AdvanceStep unit tests ──────────────────
+        // ─── Step advancement (through simulation) ──────────────────
 
         [Test]
-        public void AdvanceStep_LoopingSequence_WrapsToZero()
+        public void StepAdvancement_LoopingSequence_WrapsToZero()
         {
+            Setup("mine");
+
             var assignment = TaskSequence.CreateLoop("mine", "hub");
-            // 4 steps: TravelTo(mine), Work, TravelTo(hub), Deposit
-            Assert.AreEqual(0, assignment.CurrentStepIndex);
+            _sim.AssignRunner(_runner.Id, assignment);
 
-            Assert.IsTrue(assignment.AdvanceStep()); // → 1
-            Assert.AreEqual(1, assignment.CurrentStepIndex);
+            // Runner is at mine. TravelTo(mine) skips → step advances through Work → Gathering.
+            // We just need to verify the looping behavior through a full cycle.
+            // Tick until back at mine gathering again (full loop: Work → TravelTo(hub) → Deposit → TravelTo(mine) → Work)
+            TickUntil(() =>
+                _runner.CurrentNodeId == "mine"
+                && _runner.State == RunnerState.Gathering
+                && _sim.CurrentGameState.Bank.CountItem("copper_ore") > 0);
 
-            Assert.IsTrue(assignment.AdvanceStep()); // → 2
-            Assert.IsTrue(assignment.AdvanceStep()); // → 3
-
-            Assert.IsTrue(assignment.AdvanceStep()); // → wraps to 0
-            Assert.AreEqual(0, assignment.CurrentStepIndex);
+            // Step index should be back on Work (1) after looping
+            Assert.AreEqual(1, _runner.TaskSequenceCurrentStepIndex,
+                "After a full loop, runner should be back on the Work step");
         }
 
         [Test]
-        public void AdvanceStep_NonLoopingSequence_ReturnsFalse()
+        public void StepAdvancement_NonLoopingSequence_RunnerGoesIdle()
         {
+            Setup("hub");
+
+            // Non-looping sequence: just travel to hub (already there) → completed
             var assignment = new TaskSequence
             {
+                Id = "test-non-loop",
                 Steps = new System.Collections.Generic.List<TaskStep>
                 {
-                    new TaskStep(TaskStepType.TravelTo, "mine"),
-                    new TaskStep(TaskStepType.Work),
+                    new TaskStep(TaskStepType.TravelTo, "hub"),
                 },
-                CurrentStepIndex = 0,
                 Loop = false,
             };
 
-            Assert.IsTrue(assignment.AdvanceStep());  // → 1
-            Assert.IsFalse(assignment.AdvanceStep()); // past end
-            Assert.IsNull(assignment.CurrentStep);
-        }
+            TaskSequenceCompleted? completed = null;
+            _sim.Events.Subscribe<TaskSequenceCompleted>(e => completed = e);
 
-        [Test]
-        public void AdvanceStep_EmptySteps_ReturnsFalse()
-        {
-            var assignment = new TaskSequence
-            {
-                Steps = new System.Collections.Generic.List<TaskStep>(),
-                CurrentStepIndex = 0,
-            };
-            Assert.IsFalse(assignment.AdvanceStep());
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            // Already at hub → TravelTo skips → sequence ends → runner goes idle
+            Assert.IsNotNull(completed, "Non-looping sequence should complete");
+            Assert.AreEqual(RunnerState.Idle, _runner.State);
+            Assert.IsNull(_runner.TaskSequence);
         }
 
         [Test]
@@ -250,9 +251,11 @@ namespace ProjectGuild.Tests
             Setup("hub");
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
-            assignment.CurrentStepIndex = 3; // Deposit step
-
             _sim.AssignRunner(_runner.Id, assignment);
+            // Manually move to Deposit step (index 3) — AssignRunner resets to 0
+            _runner.TaskSequenceCurrentStepIndex = 3;
+            _runner.State = RunnerState.Idle;
+            _sim.Tick(); // AdvanceMacroStep sees Deposit step
 
             Assert.AreEqual(RunnerState.Depositing, _runner.State);
             Assert.IsNotNull(_runner.Depositing);
@@ -270,14 +273,16 @@ namespace ProjectGuild.Tests
                 _runner.Inventory.TryAdd(itemDef);
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
-            assignment.CurrentStepIndex = 3;
 
             RunnerDeposited? deposited = null;
             _sim.Events.Subscribe<RunnerDeposited>(e => deposited = e);
 
             _sim.AssignRunner(_runner.Id, assignment);
+            _runner.TaskSequenceCurrentStepIndex = 3;
+            _runner.State = RunnerState.Idle;
+            _sim.Tick(); // enters Depositing
 
-            // Tick one less than the duration — should still be depositing
+            // Tick one less than the remaining duration — should still be depositing
             for (int i = 0; i < _config.DepositDurationTicks - 1; i++)
                 _sim.Tick();
 
@@ -299,14 +304,16 @@ namespace ProjectGuild.Tests
             Setup("hub");
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
-            assignment.CurrentStepIndex = 3;
 
             RunnerDeposited? deposited = null;
             _sim.Events.Subscribe<RunnerDeposited>(e => deposited = e);
 
             _sim.AssignRunner(_runner.Id, assignment);
+            _runner.TaskSequenceCurrentStepIndex = 3;
+            _runner.State = RunnerState.Idle;
+            _sim.Tick(); // enters Depositing
 
-            // Tick through the deposit duration
+            // Tick through the remaining deposit duration
             for (int i = 0; i < _config.DepositDurationTicks; i++)
                 _sim.Tick();
 
@@ -323,9 +330,10 @@ namespace ProjectGuild.Tests
             Setup("hub");
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
-            assignment.CurrentStepIndex = 3;
-
             _sim.AssignRunner(_runner.Id, assignment);
+            _runner.TaskSequenceCurrentStepIndex = 3;
+            _runner.State = RunnerState.Idle;
+            _sim.Tick(); // enters Depositing
 
             // Tick through deposit
             for (int i = 0; i < _config.DepositDurationTicks; i++)

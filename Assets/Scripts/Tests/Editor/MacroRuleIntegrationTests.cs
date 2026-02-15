@@ -63,6 +63,16 @@ namespace ProjectGuild.Tests
             return ticks;
         }
 
+        /// <summary>Create a macro ruleset, register it in the library, and assign to the runner.</summary>
+        private Ruleset SetRunnerMacroRuleset(string id = "test-macro")
+        {
+            var ruleset = new Ruleset { Id = id, Name = id, Category = RulesetCategory.General };
+            _sim.CurrentGameState.MacroRulesetLibrary.Add(ruleset);
+            _runner.MacroRulesetId = id;
+            _runner.MacroRuleset = ruleset;
+            return ruleset;
+        }
+
         // ─── Macro rule fires on condition ──────────────────────
 
         [Test]
@@ -71,8 +81,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Macro rule: IF BankContains(copper) >= 28 THEN WorkAt(forest)
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, _config.InventorySize) },
@@ -104,8 +114,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Macro rule: IF BankContains(copper) >= 28 THEN WorkAt(forest), finish trip first
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest (deferred)",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, _config.InventorySize) },
@@ -143,8 +153,8 @@ namespace ProjectGuild.Tests
             // Add enough to bank so the rule fires immediately on deposit
             _sim.CurrentGameState.Bank.Deposit("copper_ore", _config.InventorySize);
 
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, _config.InventorySize) },
@@ -175,8 +185,8 @@ namespace ProjectGuild.Tests
             // Pre-fill bank so rule fires immediately
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest now",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
@@ -208,8 +218,8 @@ namespace ProjectGuild.Tests
 
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Stop when enough copper",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
@@ -238,8 +248,8 @@ namespace ProjectGuild.Tests
 
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
@@ -270,8 +280,8 @@ namespace ProjectGuild.Tests
 
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Deferred switch",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
@@ -304,8 +314,8 @@ namespace ProjectGuild.Tests
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
             // Rule says "gather at mine" — same as current assignment
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Stay at mine",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
@@ -348,8 +358,8 @@ namespace ProjectGuild.Tests
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
             // Runner 1: macro rule to switch to forest
-            _runner.MacroRuleset = new Ruleset();
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
@@ -389,7 +399,8 @@ namespace ProjectGuild.Tests
             for (int i = 0; i < 50; i++)
                 _sim.CurrentGameState.Bank.Deposit("copper_ore", 1);
 
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset("degrade-macro");
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Deferred but no sequence",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
@@ -423,7 +434,6 @@ namespace ProjectGuild.Tests
                 Name = "One-trip",
                 TargetNodeId = "hub",
                 Loop = false,
-                CurrentStepIndex = 0,
                 Steps = new System.Collections.Generic.List<TaskStep>
                 {
                     new TaskStep(TaskStepType.TravelTo, "hub"),
@@ -481,7 +491,8 @@ namespace ProjectGuild.Tests
 
             // Now add an Immediate macro rule with a condition that's already true
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
-            _runner.MacroRuleset.Rules.Add(new Rule
+            var macroRuleset = SetRunnerMacroRuleset("interrupt-macro");
+            macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest now",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },

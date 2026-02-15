@@ -66,16 +66,22 @@ namespace ProjectGuild.Simulation.Core
         // ─── Automation ────────────────────────────────────────────
 
         /// <summary>
-        /// Current task sequence this runner is executing.
+        /// ID reference into TaskSequenceLibrary for the runner's active task sequence.
         /// Null means no active sequence (runner is idle with no standing orders).
         /// </summary>
-        public TaskSequence TaskSequence;
+        public string TaskSequenceId;
 
         /// <summary>
-        /// Deferred task sequence from a FinishCurrentSequence rule.
-        /// Applied when the current sequence cycle completes.
+        /// Per-runner progress through the current task sequence.
+        /// The TaskSequence itself is a pure template; this tracks where the runner is in it.
         /// </summary>
-        public TaskSequence PendingTaskSequence;
+        public int TaskSequenceCurrentStepIndex;
+
+        /// <summary>
+        /// ID reference into TaskSequenceLibrary for the deferred task sequence
+        /// from a FinishCurrentSequence rule. Applied when the current sequence cycle completes.
+        /// </summary>
+        public string PendingTaskSequenceId;
 
         /// <summary>
         /// When true, macro rules are skipped until the current sequence loops
@@ -93,15 +99,16 @@ namespace ProjectGuild.Simulation.Core
         public string LastCompletedSequenceTargetNodeId;
 
         /// <summary>
-        /// Rules that change the assignment based on conditions
-        /// (e.g. BankContains threshold → switch gathering target).
+        /// ID reference into MacroRulesetLibrary.
         /// </summary>
-        public Ruleset MacroRuleset;
+        public string MacroRulesetId;
 
-        /// <summary>
-        /// Rules for within-task behavior — which resource to gather,
-        /// combat rotations, etc. Evaluated during the relevant task step.
-        /// </summary>
+        // ─── Legacy fields for save migration (populated in old saves) ───
+        // These are read by MigrateRunnerRulesets() during LoadState, then cleared.
+        // New saves only populate the ID fields above.
+        public TaskSequence TaskSequence;
+        public TaskSequence PendingTaskSequence;
+        public Ruleset MacroRuleset;
         public Ruleset MicroRuleset;
 
         public Runner()

@@ -20,7 +20,13 @@ namespace ProjectGuild.Simulation.Core
         public WorldMap Map;
         public Bank Bank = new();
         public DecisionLog DecisionLog = new();
-        public List<RulesetTemplate> RulesetTemplates = new();
+
+        // ─── Global Automation Libraries ────────────────────────────
+        // Named templates with IDs. Runners hold string refs into these.
+        // Editing a library entry immediately affects all runners/sequences referencing it.
+        public List<TaskSequence> TaskSequenceLibrary = new();
+        public List<Ruleset> MacroRulesetLibrary = new();
+        public List<Ruleset> MicroRulesetLibrary = new();
 
         // Economy state (TODO)
     }

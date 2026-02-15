@@ -60,6 +60,29 @@ namespace ProjectGuild.Tests
             return ticks;
         }
 
+        /// <summary>
+        /// Create a micro ruleset and register it in the library.
+        /// Call SetWorkStepMicroRuleset on the TaskSequence BEFORE AssignRunner to use it.
+        /// </summary>
+        private Ruleset CreateAndRegisterMicroRuleset(string id = "test-micro")
+        {
+            var ruleset = new Ruleset { Id = id, Name = id, Category = RulesetCategory.Gathering };
+            _sim.CurrentGameState.MicroRulesetLibrary.Add(ruleset);
+            _runner.MicroRuleset = ruleset; // legacy field for backward compat
+            return ruleset;
+        }
+
+        /// <summary>Set the MicroRulesetId on Work steps of a task sequence. Call BEFORE AssignRunner.</summary>
+        private void SetWorkStepMicroRuleset(TaskSequence seq, string microRulesetId)
+        {
+            if (seq?.Steps == null) return;
+            foreach (var step in seq.Steps)
+            {
+                if (step.Type == TaskStepType.Work)
+                    step.MicroRulesetId = microRulesetId;
+            }
+        }
+
         // ─── Default micro rule ─────────────────────────────────
 
         [Test]
@@ -83,8 +106,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Micro rule: always gather index 1 (tin)
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
                 Action = AutomationAction.GatherHere(1),
@@ -92,6 +115,7 @@ namespace ProjectGuild.Tests
             });
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
@@ -107,22 +131,22 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Rules: gather copper until 3, then gather tin until 3, then FinishTask
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Label = "Copper until 3",
                 Conditions = { Condition.InventoryContains("copper_ore", ComparisonOperator.LessThan, 3) },
                 Action = AutomationAction.GatherHere(0),
                 Enabled = true,
             });
-            _runner.MicroRuleset.Rules.Add(new Rule
+            microRuleset.Rules.Add(new Rule
             {
                 Label = "Tin until 3",
                 Conditions = { Condition.InventoryContains("tin_ore", ComparisonOperator.LessThan, 3) },
                 Action = AutomationAction.GatherHere(1),
                 Enabled = true,
             });
-            _runner.MicroRuleset.Rules.Add(new Rule
+            microRuleset.Rules.Add(new Rule
             {
                 Label = "Done",
                 Conditions = { Condition.Always() },
@@ -131,6 +155,7 @@ namespace ProjectGuild.Tests
             });
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Should start gathering copper (index 0)
@@ -168,8 +193,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Micro rule: always FinishTask (never actually gathers)
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
                 Action = AutomationAction.FinishTask(),
@@ -177,6 +202,7 @@ namespace ProjectGuild.Tests
             });
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // ExecuteGatherStep evaluates micro → FinishTask → advance macro
@@ -192,15 +218,15 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Start with normal micro (gather copper), then switch to FinishTask after 2 items
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Label = "Copper until 2",
                 Conditions = { Condition.InventoryContains("copper_ore", ComparisonOperator.LessThan, 2) },
                 Action = AutomationAction.GatherHere(0),
                 Enabled = true,
             });
-            _runner.MicroRuleset.Rules.Add(new Rule
+            microRuleset.Rules.Add(new Rule
             {
                 Label = "Done after 2",
                 Conditions = { Condition.Always() },
@@ -209,6 +235,7 @@ namespace ProjectGuild.Tests
             });
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
@@ -230,9 +257,10 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Empty micro ruleset — player deleted all rules. Runner should be stuck.
-            _runner.MicroRuleset = new Ruleset();
+            var emptyMicro = CreateAndRegisterMicroRuleset("empty-micro");
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "empty-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Runner should NOT be gathering — no micro rule matched, stuck at Work step
@@ -246,11 +274,13 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            // Null = broken data (old save). Runner should get stuck, same as empty.
-            // In production, LoadState migrates nulls to defaults before gameplay.
+            // Null/missing micro ruleset = broken data. Runner should get stuck.
+            // In production, LoadState migrates to defaults before gameplay.
             _runner.MicroRuleset = null;
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            // Set Work step to point to a non-existent ruleset — simulates bad data
+            SetWorkStepMicroRuleset(assignment, "nonexistent-ruleset");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Idle, _runner.State,
@@ -266,8 +296,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Micro rule points to index 99 which doesn't exist — broken rule
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
                 Action = AutomationAction.GatherHere(99),
@@ -275,6 +305,7 @@ namespace ProjectGuild.Tests
             });
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Runner should NOT be gathering — rule is broken, stuck at Work step
@@ -290,12 +321,13 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            _runner.MicroRuleset = new Ruleset();
+            var emptyMicro = CreateAndRegisterMicroRuleset("empty-micro-event");
 
             NoMicroRuleMatched? received = null;
             _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "empty-micro-event");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.IsNotNull(received, "NoMicroRuleMatched should fire for empty ruleset");
@@ -309,8 +341,8 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
                 Action = AutomationAction.GatherHere(99),
@@ -321,6 +353,7 @@ namespace ProjectGuild.Tests
             _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.IsNotNull(received, "NoMicroRuleMatched should fire for invalid index");
@@ -334,8 +367,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Rule that never matches: requires 999 copper in inventory
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.InventoryContains("copper_ore", ComparisonOperator.GreaterOrEqual, 999) },
                 Action = AutomationAction.GatherHere(0),
@@ -346,6 +379,7 @@ namespace ProjectGuild.Tests
             _sim.Events.Subscribe<NoMicroRuleMatched>(e => received = e);
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.IsNotNull(received, "NoMicroRuleMatched should fire when no conditions match");
@@ -360,8 +394,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Start with copper until 2, then no fallback → stuck
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Label = "Copper until 2",
                 Conditions = { Condition.InventoryContains("copper_ore", ComparisonOperator.LessThan, 2) },
@@ -372,6 +406,7 @@ namespace ProjectGuild.Tests
             NoMicroRuleMatched? received = null;
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State, "Should start gathering");
@@ -440,8 +475,8 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Remove the InventoryFull rule — only keep GatherHere
-            _runner.MicroRuleset = new Ruleset();
-            _runner.MicroRuleset.Rules.Add(new Rule
+            var microRuleset = CreateAndRegisterMicroRuleset();
+            microRuleset.Rules.Add(new Rule
             {
                 Label = "Gather only",
                 Conditions = { Condition.Always() },
@@ -450,6 +485,7 @@ namespace ProjectGuild.Tests
             });
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "test-micro");
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Fill inventory almost full
@@ -507,10 +543,9 @@ namespace ProjectGuild.Tests
                 Name = "Work at hub",
                 TargetNodeId = "hub",
                 Loop = true,
-                CurrentStepIndex = 0,
                 Steps = new System.Collections.Generic.List<TaskStep>
                 {
-                    new TaskStep(TaskStepType.Work),
+                    new TaskStep(TaskStepType.Work, microRulesetId: DefaultRulesets.DefaultMicroId),
                 },
             };
             _sim.AssignRunner(_runner.Id, seq);
@@ -520,7 +555,7 @@ namespace ProjectGuild.Tests
             Assert.AreEqual("hub", failed.Value.NodeId);
 
             // Runner should NOT have advanced — stays stuck at Work step
-            Assert.AreEqual(0, _runner.TaskSequence.CurrentStepIndex,
+            Assert.AreEqual(0, _runner.TaskSequenceCurrentStepIndex,
                 "Runner should stay stuck at Work step (let it break)");
         }
 

@@ -272,10 +272,16 @@ namespace ProjectGuild.Tests
             sim.StartNewGame(defs, map, "mine");
             var runner = sim.CurrentGameState.Runners[0];
 
-            // Clear micro rules to trigger NoMicroRuleMatched
-            runner.MicroRuleset = new Ruleset();
+            // Register an empty micro ruleset to trigger NoMicroRuleMatched
+            var emptyMicro = new Ruleset { Id = "empty-micro", Name = "Empty", Category = RulesetCategory.Gathering };
+            sim.CurrentGameState.MicroRulesetLibrary.Add(emptyMicro);
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
+            foreach (var step in assignment.Steps)
+            {
+                if (step.Type == TaskStepType.Work)
+                    step.MicroRulesetId = "empty-micro";
+            }
             sim.AssignRunner(runner.Id, assignment);
 
             var warnings = sim.EventLog.GetWarnings();

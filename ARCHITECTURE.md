@@ -108,7 +108,7 @@ Back to Tick() (continues processing)
 | `SimulationEvents.cs` | Simulation | The vocabulary. Defines what events exist |
 | `EventLogService.cs` | Simulation | The recorder. Subscribes to all events, ring buffer, collapsing, queries |
 | `WorldMap.cs` | Simulation | The terrain. Nodes, edges, pathfinding |
-| `Runner.cs` | Simulation | The adventurer. State, skills, inventory, macro/micro rulesets, task sequence |
+| `Runner.cs` | Simulation | The adventurer. State, skills, inventory, ID refs into automation libraries |
 | `GatherableConfig.cs` | Simulation | The resource. What a gatherable produces and costs |
 | `RuleEvaluator.cs` | Simulation | The referee. Evaluates automation rules against context |
 | `DecisionLog.cs` | Simulation | The playback. Ring-buffer log of macro + micro rule decisions |
@@ -181,7 +181,7 @@ One skill on one runner. Holds level, accumulated XP, and whether the runner has
 All methods take a `SimulationConfig` parameter so tuning values are never hardcoded.
 
 ### `Simulation/Core/Runner.cs`
-The core data class for a runner. Identity (ID, name), current state (Idle/Traveling/Gathering/Depositing), location (which world node), 15 skills, an `Inventory` (28-slot OSRS-style), a `TravelState` for when they're moving, a `GatheringState` for when they're gathering, a `DepositingState` for when depositing, a `TaskSequence` (current step sequence), a `PendingTaskSequence` (deferred macro rule result), a `MacroRuleset` (what task sequence to switch to), and a `MicroRuleset` (what to do at a Work step). The constructor initializes all skills to level 1 — actual values come from RunnerFactory.
+The core data class for a runner. Identity (ID, name), current state (Idle/Traveling/Gathering/Depositing), location (which world node), 15 skills, an `Inventory` (28-slot OSRS-style), a `TravelState` for when they're moving, a `GatheringState` for when they're gathering, a `DepositingState` for when depositing. Automation state uses **string ID references** into global libraries on GameState: `TaskSequenceId` (current step sequence), `PendingTaskSequenceId` (deferred macro rule result), `MacroRulesetId` (macro rules). `TaskSequenceCurrentStepIndex` tracks per-runner progress through the shared task sequence template. Micro rulesets are **per-Work-step** (on `TaskStep.MicroRulesetId`), not per-runner. The constructor initializes all skills to level 1 — actual values come from RunnerFactory. Legacy direct-object fields (`TaskSequence`, `MacroRuleset`, `MicroRuleset`) exist for save migration.
 
 **`TravelState`** — tracks from/to nodes, total distance, distance covered, and a `Progress` property (0.0-1.0). Also has optional `StartWorldX`/`StartWorldZ` float fields — when set, the view layer uses these as the travel start position instead of the FromNode's position. Used by the redirect system to prevent visual snapping when a runner changes destination mid-travel. Null means "use the FromNode position as usual."
 
@@ -221,7 +221,7 @@ Event definitions — small structs carrying just the data a listener needs:
 | `SimulationTickCompleted` | TickNumber | Every tick |
 
 ### `Simulation/Core/GameState.cs`
-Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, automation DecisionLog, and saved RulesetTemplates. Serializing this one object captures the entire game world.
+Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, automation DecisionLog, and three **global automation libraries**: `TaskSequenceLibrary`, `MacroRulesetLibrary`, `MicroRulesetLibrary` (all `List<T>` indexed by string ID). Runners reference library entries by ID. Editing a library entry immediately affects all runners/sequences using it. Serializing this one object captures the entire game world.
 
 ### `Simulation/Core/GameSimulation.cs`
 The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistry`, and `EventLogService`. Its `Tick()` method processes all runners based on their current state.
@@ -246,7 +246,7 @@ The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistr
 - **PowerCurve** (default): `speedMultiplier = effectiveLevel ^ exponent`. Higher levels are proportionally more impactful. Tuning: `BaseTicks = DesiredSecondsPerItem × TickRate × MinLevel ^ Exponent`.
 - **Hyperbolic**: `speedMultiplier = 1 + (effectiveLevel - 1) × perLevelFactor`. Diminishing returns — early levels feel most impactful.
 
-**Task Sequence System:** Each runner has a `TaskSequence` — a list of `TaskStep`s (TravelTo, Work, Deposit) with a `CurrentStepIndex`. Looping sequences wrap around; non-looping sequences complete and fire `TaskSequenceCompleted`, letting macro rules re-evaluate. `TaskSequence.CreateLoop(nodeId, hubId)` creates the standard gather loop: TravelTo(node) → Work → TravelTo(hub) → Deposit → repeat. When inventory fills during gathering, the default micro rule (IF InventoryFull → FinishTask) advances past the Work step — InventoryFull handling is not hardcoded but expressed as a visible, editable micro rule.
+**Task Sequence System:** Task sequences live in a **global library** on GameState. Runners hold a `TaskSequenceId` string reference and a `TaskSequenceCurrentStepIndex` for per-runner progress. A `TaskSequence` is a list of `TaskStep`s (TravelTo, Work, Deposit) with an `Id` and `Name`. Looping sequences wrap around; non-looping sequences complete and fire `TaskSequenceCompleted`, letting macro rules re-evaluate. `TaskSequence.CreateLoop(nodeId, hubId)` creates the standard gather loop: TravelTo(node) → Work → TravelTo(hub) → Deposit → repeat. Work steps explicitly specify their `MicroRulesetId` — no implicit fallbacks. When inventory fills during gathering, the default micro rule (IF InventoryFull → FinishTask) advances past the Work step — InventoryFull handling is not hardcoded but expressed as a visible, editable micro rule.
 
 **Macro Rules:** `EvaluateMacroRules(runner, triggerReason)` evaluates every tick for all runners (non-Idle via TickRunner, Idle via AdvanceMacroStep). If a macro rule fires, it calls `AssignRunner` with a new task sequence (e.g., `WorkAt` creates `TaskSequence.CreateLoop` for a different node). Same-assignment suppression prevents infinite loops. Rules with `FinishCurrentSequence = true` set a `PendingTaskSequence` that executes at the next sequence boundary instead of immediately. If there's no active sequence when a deferred rule fires, it degrades to immediate. "Work At" button sets `MacroSuspendedUntilLoop` to guarantee one cycle before macro rules resume.
 
@@ -262,10 +262,11 @@ Data class for event log entries: TickNumber, EventCategory, RunnerId, Summary, 
 
 The automation engine is **fully integrated** into `GameSimulation`'s tick loop. Two layers of rules drive all runner behavior:
 
-**Three-layer automation:**
-- **Task Sequence:** A list of steps the runner follows (TravelTo → Work → TravelTo → Deposit → repeat). Created via `TaskSequence.CreateLoop(nodeId, hubId)`. Null = idle. The task sequence is pure logistics — where to go, when to deposit. What the runner does at each node is emergent from micro rules. Non-looping sequences complete after the last step; the runner goes idle and macro rules re-evaluate.
-- **Macro rules (MacroRuleset):** Conditions that swap the current assignment for a different one. Fire at StepAdvance, ArrivedAtNode, InventoryFull, DepositCompleted. Same-assignment suppression prevents infinite loops.
-- **Micro rules (MicroRuleset):** What happens during the Work step (GatherHere, FinishTask). Every runner starts with default `Always → GatherHere(0)`. Evaluated at Work step entry and re-evaluated after each item gathered.
+**Three-layer automation (global libraries):**
+All three automation components live in **global libraries** on GameState. Runners hold string ID references. Editing a template updates all runners using it.
+- **Task Sequence (TaskSequenceLibrary):** A list of steps the runner follows (TravelTo → Work → TravelTo → Deposit → repeat). Created via `TaskSequence.CreateLoop(nodeId, hubId)`. Null = idle. Pure logistics — where to go, when to deposit. What the runner does at each node is emergent from micro rules. Each Work step explicitly specifies its `MicroRulesetId`. Non-looping sequences complete after the last step; the runner goes idle and macro rules re-evaluate.
+- **Macro rules (MacroRulesetLibrary):** Per-runner. Conditions that swap the current task sequence for a different one. Evaluate every tick for all runners. Same-assignment suppression prevents infinite loops.
+- **Micro rules (MicroRulesetLibrary):** Per-Work-step, not per-runner. What happens during the Work step (GatherHere, FinishTask). Default: `Always → GatherHere(0)`. Evaluated at Work step entry and re-evaluated after each item gathered. `GatherHere` supports item-ID resolution via `StringParam` (e.g., `"iron_ore"` resolves to gatherable index at current node) alongside positional `IntParam`.
 
 The rule engine uses a **data-driven, first-match-wins priority rule** design. No class hierarchy or polymorphism — flat enums + parameter fields for serialization compatibility. The same Rule/Ruleset/Condition types serve both macro and micro layers. Adding a new condition/action type = add enum value + add case to switch statement.
 
@@ -285,9 +286,9 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 
 **`Rule.cs`** — `[Serializable]`: `List<Condition>` (AND composition), `AutomationAction`, `Enabled`, `FinishCurrentSequence` (default true — macro only, defers action until sequence boundary), `Label`.
 
-**`Ruleset.cs`** — `[Serializable]`: `List<Rule>`, `DeepCopy()` for templates/copy-paste.
+**`Ruleset.cs`** — `[Serializable]`: `Id` (string, unique identifier for library lookups), `Name` (player-facing display name), `Category` (enum: General, Gathering, Combat, Crafting for library organization), `List<Rule>`, `DeepCopy()` generates a new Id (clone, not alias).
 
-**`TaskSequence.cs`** — `[Serializable]`: `List<TaskStep>` with `CurrentStepIndex`, `TargetNodeId`, `HubNodeId`, `Loop`, `Name`. `CreateLoop(nodeId, hubId)` builds TravelTo(node) → Work → TravelTo(hub) → Deposit with Loop=true. `AdvanceStep()` increments and wraps (returns false if non-looping and past end). `TaskStep` is `[Serializable]`: `TaskStepType` (TravelTo, Work, Deposit) + `TargetNodeId`.
+**`TaskSequence.cs`** — `[Serializable]`: `Id` (string, unique identifier), `List<TaskStep>`, `TargetNodeId`, `HubNodeId`, `Loop`, `Name`. `CreateLoop(nodeId, hubId, microRulesetId)` builds TravelTo(node) → Work → TravelTo(hub) → Deposit with Loop=true. `TaskStep` is `[Serializable]`: `TaskStepType` (TravelTo, Work, Deposit), `TargetNodeId`, `MicroRulesetId` (for Work steps — always explicit, UI enforces selection). Per-runner step progress (`TaskSequenceCurrentStepIndex`) lives on Runner, not on TaskSequence.
 
 **`EvaluationContext.cs`** — Struct wrapping Runner + GameState + SimulationConfig. Created once per evaluation, not stored.
 

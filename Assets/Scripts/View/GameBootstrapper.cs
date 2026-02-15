@@ -162,7 +162,6 @@ namespace ProjectGuild.View
         private string _newMicroGatherIndex = "0";
 
         // Templates
-        private string _templateName = "";
 
         private void OnGUI()
         {
@@ -248,11 +247,12 @@ namespace ProjectGuild.View
             if (selected.TaskSequence != null)
             {
                 var seq = selected.TaskSequence;
-                var step = seq.CurrentStep;
+                int stepIdx = selected.TaskSequenceCurrentStepIndex;
+                var step = seq.Steps != null && stepIdx >= 0 && stepIdx < seq.Steps.Count ? seq.Steps[stepIdx] : null;
                 string stepDesc = step != null ? $"{step.Type}" : "done";
                 string loopTag = seq.Loop ? " [Loop]" : "";
                 string suspendTag = selected.MacroSuspendedUntilLoop ? " [Macro paused]" : "";
-                GUILayout.Label($"Task: {seq.Name ?? seq.TargetNodeId ?? "?"} (step {seq.CurrentStepIndex}/{seq.Steps?.Count ?? 0}: {stepDesc}){loopTag}{suspendTag}");
+                GUILayout.Label($"Task: {seq.Name ?? seq.TargetNodeId ?? "?"} (step {stepIdx}/{seq.Steps?.Count ?? 0}: {stepDesc}){loopTag}{suspendTag}");
             }
 
             // Inventory
@@ -552,7 +552,8 @@ namespace ProjectGuild.View
                     for (int i = 0; i < seq.Steps.Count; i++)
                     {
                         var step = seq.Steps[i];
-                        string prefix = i == seq.CurrentStepIndex ? "<color=#88ff88>>>> </color>" : "    ";
+                        int curIdx = selected.TaskSequenceCurrentStepIndex;
+                        string prefix = i == curIdx ? "<color=#88ff88>>>> </color>" : "    ";
                         string stepDesc = step.Type switch
                         {
                             TaskStepType.TravelTo => $"TravelTo({step.TargetNodeId})",
@@ -560,7 +561,7 @@ namespace ProjectGuild.View
                             TaskStepType.Deposit => "Deposit",
                             _ => step.Type.ToString(),
                         };
-                        GUILayout.Label($"{prefix}<color={(i == seq.CurrentStepIndex ? "#88ff88" : "#cccccc")}>[{i}] {stepDesc}</color>", richLabel);
+                        GUILayout.Label($"{prefix}<color={(i == curIdx ? "#88ff88" : "#cccccc")}>[{i}] {stepDesc}</color>", richLabel);
                     }
                 }
                 GUILayout.EndScrollView();
@@ -1125,37 +1126,12 @@ namespace ProjectGuild.View
         private void DrawTemplateControls(GameSimulation sim, Runner selected, GUIStyle richLabel)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Templates:", GUILayout.Width(70f));
-            _templateName = GUILayout.TextField(_templateName, GUILayout.Width(100f));
-            if (GUILayout.Button("Save", GUILayout.Width(45f)))
-            {
-                if (_templateName.Length > 0 && selected.MacroRuleset != null)
-                {
-                    sim.CurrentGameState.RulesetTemplates.Add(
-                        new RulesetTemplate(_templateName, selected.MacroRuleset.DeepCopy()));
-                    _templateName = "";
-                }
-            }
-            if (GUILayout.Button("Reset Default", GUILayout.Width(90f)))
+            if (GUILayout.Button("Reset Macro to Default", GUILayout.Width(160f)))
             {
                 selected.MacroRuleset = DefaultRulesets.CreateDefaultMacro();
+                selected.MacroRulesetId = DefaultRulesets.DefaultMacroId;
             }
             GUILayout.EndHorizontal();
-
-            // Show saved templates
-            var templates = sim.CurrentGameState.RulesetTemplates;
-            if (templates.Count > 0)
-            {
-                GUILayout.BeginHorizontal();
-                for (int t = 0; t < templates.Count; t++)
-                {
-                    if (GUILayout.Button($"Apply: {templates[t].Name}", GUILayout.Height(18f)))
-                    {
-                        selected.MacroRuleset = templates[t].Ruleset.DeepCopy();
-                    }
-                }
-                GUILayout.EndHorizontal();
-            }
         }
 
         // ─── Decision Log Tab ───────────────────────────────────────

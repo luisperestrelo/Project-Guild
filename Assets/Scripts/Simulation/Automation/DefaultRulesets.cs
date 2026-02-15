@@ -1,10 +1,16 @@
+using ProjectGuild.Simulation.Core;
+
 namespace ProjectGuild.Simulation.Automation
 {
     /// <summary>
     /// Factory methods for default rulesets assigned to new runners.
+    /// Well-known IDs for the default templates.
     /// </summary>
     public static class DefaultRulesets
     {
+        public const string DefaultMacroId = "default-macro";
+        public const string DefaultMicroId = "default-micro";
+
         /// <summary>
         /// Default macro ruleset: empty.
         /// The task sequence handles the gather→deposit→repeat loop.
@@ -13,7 +19,12 @@ namespace ProjectGuild.Simulation.Automation
         /// </summary>
         public static Ruleset CreateDefaultMacro()
         {
-            return new Ruleset();
+            return new Ruleset
+            {
+                Id = DefaultMacroId,
+                Name = "Default Macro",
+                Category = RulesetCategory.General,
+            };
         }
 
         /// <summary>
@@ -23,7 +34,12 @@ namespace ProjectGuild.Simulation.Automation
         /// </summary>
         public static Ruleset CreateDefaultMicro()
         {
-            var ruleset = new Ruleset();
+            var ruleset = new Ruleset
+            {
+                Id = DefaultMicroId,
+                Name = "Default Gather",
+                Category = RulesetCategory.Gathering,
+            };
 
             ruleset.Rules.Add(new Rule
             {
@@ -42,6 +58,22 @@ namespace ProjectGuild.Simulation.Automation
             });
 
             return ruleset;
+        }
+
+        /// <summary>
+        /// Ensure the default macro and micro rulesets exist in the library.
+        /// Called during StartNewGame and LoadState. Idempotent — skips if already present.
+        /// </summary>
+        public static void EnsureInLibrary(GameState state)
+        {
+            bool hasMacro = false, hasMicro = false;
+            foreach (var r in state.MacroRulesetLibrary)
+                if (r.Id == DefaultMacroId) { hasMacro = true; break; }
+            foreach (var r in state.MicroRulesetLibrary)
+                if (r.Id == DefaultMicroId) { hasMicro = true; break; }
+
+            if (!hasMacro) state.MacroRulesetLibrary.Add(CreateDefaultMacro());
+            if (!hasMicro) state.MicroRulesetLibrary.Add(CreateDefaultMicro());
         }
     }
 }
