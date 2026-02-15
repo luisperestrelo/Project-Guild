@@ -48,6 +48,15 @@ namespace ProjectGuild.Simulation.Core
         // Travel state (populated when State == Traveling)
         public TravelState Travel;
 
+        /// <summary>
+        /// Virtual world position captured when travel is interrupted mid-journey.
+        /// Used by StartTravelInternal to start new travel from the runner's
+        /// actual visual position instead of snapping to CurrentNodeId.
+        /// Cleared after being consumed.
+        /// </summary>
+        public float? RedirectWorldX;
+        public float? RedirectWorldZ;
+
         // Gathering state (populated when State == Gathering)
         public GatheringState Gathering;
 
@@ -74,6 +83,14 @@ namespace ProjectGuild.Simulation.Core
         /// Cleared automatically on loop wrap, or when the sequence is cancelled/replaced.
         /// </summary>
         public bool MacroSuspendedUntilLoop;
+
+        /// <summary>
+        /// Tracks the TargetNodeId of the last completed (non-looping) sequence.
+        /// Used by same-assignment suppression to prevent re-assigning the same
+        /// sequence that just completed (e.g., ReturnToHub when already at hub).
+        /// Cleared when a different sequence is assigned.
+        /// </summary>
+        public string LastCompletedSequenceTargetNodeId;
 
         /// <summary>
         /// Rules that change the assignment based on conditions

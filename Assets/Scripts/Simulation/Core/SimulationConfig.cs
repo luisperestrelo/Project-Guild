@@ -181,7 +181,7 @@ namespace ProjectGuild.Simulation.Core
         /// <summary>
         /// Maximum entries kept in the decision log (ring buffer eviction).
         /// </summary>
-        public int DecisionLogMaxEntries = 100;
+        public int DecisionLogMaxEntries = 2000;
 
         /// <summary>
         /// Maximum entries kept in the event log (ring buffer eviction).

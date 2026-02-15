@@ -304,8 +304,8 @@ namespace ProjectGuild.View
                 if (GUILayout.Button($"{node.Name}{detail}", GUILayout.Height(20f)))
                 {
                     var taskSeq = TaskSequence.CreateLoop(nodeId, hubId);
-                    sim.AssignRunner(selected.Id, taskSeq, "Work At");
                     selected.MacroSuspendedUntilLoop = true;
+                    sim.AssignRunner(selected.Id, taskSeq, "Work At");
                 }
             }
             GUILayout.EndScrollView();

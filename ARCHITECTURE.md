@@ -156,7 +156,7 @@ Key field groups:
 - **Skills/XP**: `PassionEffectivenessMultiplier`, `PassionXpMultiplier`, `XpCurveBase`, `XpCurveGrowth`
 - **Runner Generation**: `MinStartingLevel`, `MaxStartingLevel`, `PassionChance`, `EasterEggNameChance`
 - **Gathering**: `GlobalGatheringSpeedMultiplier`, `GatheringFormula`, `GatheringSpeedExponent`, `HyperbolicSpeedPerLevel`
-- **Automation**: `DecisionLogMaxEntries` (default 100), `EventLogMaxEntries` (default 500)
+- **Automation**: `DecisionLogMaxEntries` (default 2000), `EventLogMaxEntries` (default 500)
 - **Items**: `ItemDefinitions[]` (populated from SOs at load time)
 - **Inventory**: `InventorySize` (default 28)
 - **Death**: `DeathRespawnBaseTime`, `DeathRespawnTravelMultiplier`

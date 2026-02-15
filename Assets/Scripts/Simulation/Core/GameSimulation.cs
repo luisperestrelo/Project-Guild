@@ -471,15 +471,35 @@ namespace ProjectGuild.Simulation.Core
             var runner = FindRunner(runnerId);
             if (runner == null) return;
 
-            // Cancel current activity
+            // Cancel current activity — if mid-travel, capture virtual position for redirect
+            float? redirectWorldX = null;
+            float? redirectWorldZ = null;
+            if (runner.State == RunnerState.Traveling && runner.Travel != null)
+            {
+                var map = CurrentGameState.Map;
+                var fromNode = map.GetNode(runner.Travel.FromNodeId);
+                var toNode = map.GetNode(runner.Travel.ToNodeId);
+                if (fromNode != null && toNode != null)
+                {
+                    float progress = runner.Travel.Progress;
+                    float startX = runner.Travel.StartWorldX ?? fromNode.WorldX;
+                    float startZ = runner.Travel.StartWorldZ ?? fromNode.WorldZ;
+                    redirectWorldX = startX + (toNode.WorldX - startX) * progress;
+                    redirectWorldZ = startZ + (toNode.WorldZ - startZ) * progress;
+                }
+            }
+
             runner.Gathering = null;
             runner.Travel = null;
             runner.Depositing = null;
             runner.State = RunnerState.Idle;
+            runner.RedirectWorldX = redirectWorldX;
+            runner.RedirectWorldZ = redirectWorldZ;
 
             runner.TaskSequence = taskSequence;
-            // Don't clear MacroSuspendedUntilLoop here — "Work At" sets it AFTER
-            // AssignRunner, and we want it to persist through the first cycle.
+            runner.LastCompletedSequenceTargetNodeId = null;
+            // Don't clear MacroSuspendedUntilLoop here — "Work At" sets it BEFORE
+            // calling AssignRunner, and we want it to persist through the first cycle.
 
             Events.Publish(new TaskSequenceChanged
             {
@@ -530,7 +550,9 @@ namespace ProjectGuild.Simulation.Core
         private void ExecuteTravelStep(Runner runner, TaskStep step, TaskSequence seq)
         {
             // Already at target? Step is done — advance past it and handle next.
-            if (runner.CurrentNodeId == step.TargetNodeId)
+            // But if there's a redirect position, the runner was interrupted mid-travel
+            // and isn't actually at CurrentNodeId — they need to travel.
+            if (runner.CurrentNodeId == step.TargetNodeId && !runner.RedirectWorldX.HasValue)
             {
                 if (seq.AdvanceStep())
                 {
@@ -807,6 +829,7 @@ namespace ProjectGuild.Simulation.Core
         private void HandleSequenceCompleted(Runner runner)
         {
             string seqName = runner.TaskSequence?.Name ?? "";
+            runner.LastCompletedSequenceTargetNodeId = runner.TaskSequence?.TargetNodeId;
             runner.TaskSequence = null;
             runner.State = RunnerState.Idle;
 
@@ -871,6 +894,12 @@ namespace ProjectGuild.Simulation.Core
 
             if (runner.TaskSequence != null && newSeq != null
                 && runner.TaskSequence.TargetNodeId == newSeq.TargetNodeId)
+                return false;
+
+            // Also suppress if the sequence just completed with the same target
+            // (e.g., ReturnToHub completed → macro fires ReturnToHub again → suppress).
+            if (runner.TaskSequence == null && newSeq != null
+                && runner.LastCompletedSequenceTargetNodeId == newSeq.TargetNodeId)
                 return false;
 
             // Log the decision
@@ -1006,10 +1035,28 @@ namespace ProjectGuild.Simulation.Core
 
         private void StartTravelInternal(Runner runner, string targetNodeId)
         {
-            float distance = CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out _);
-            if (distance < 0) return;
-
             string fromNode = runner.CurrentNodeId;
+            float? startX = runner.RedirectWorldX;
+            float? startZ = runner.RedirectWorldZ;
+            runner.RedirectWorldX = null;
+            runner.RedirectWorldZ = null;
+
+            // If redirecting mid-travel, calculate distance from virtual position
+            float distance;
+            if (startX.HasValue && startZ.HasValue)
+            {
+                var targetNode = CurrentGameState.Map.GetNode(targetNodeId);
+                if (targetNode == null) return;
+                float dx = targetNode.WorldX - startX.Value;
+                float dz = targetNode.WorldZ - startZ.Value;
+                distance = (float)Math.Sqrt(dx * dx + dz * dz) * CurrentGameState.Map.TravelDistanceScale;
+            }
+            else
+            {
+                distance = CurrentGameState.Map.FindPath(fromNode, targetNodeId, out _);
+                if (distance < 0) return;
+            }
+
             runner.State = RunnerState.Traveling;
             runner.Travel = new TravelState
             {
@@ -1017,6 +1064,8 @@ namespace ProjectGuild.Simulation.Core
                 ToNodeId = targetNodeId,
                 TotalDistance = distance,
                 DistanceCovered = 0f,
+                StartWorldX = startX,
+                StartWorldZ = startZ,
             };
 
             float speed = GetTravelSpeed(runner);
