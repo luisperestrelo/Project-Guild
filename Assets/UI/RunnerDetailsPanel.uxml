@@ -65,5 +65,10 @@
             <ui:VisualElement name="skills-list" class="skills-list" />
         </ui:ScrollView>
 
+        <!-- ─── Automation Tab ──────────────────────────────── -->
+        <ui:VisualElement name="tab-content-automation" class="tab-content tab-content-hidden">
+            <!-- AutomationTab.uxml content is instantiated here by RunnerDetailsPanelController -->
+        </ui:VisualElement>
+
     </ui:VisualElement>
 </ui:UXML>

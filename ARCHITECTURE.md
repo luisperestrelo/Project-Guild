@@ -295,14 +295,28 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 **`RuleEvaluator.cs`** — Static, pure methods. `EvaluateRuleset()` returns first matching rule index or -1. `EvaluateCondition()` switches on ConditionType. `Compare()` generic numeric comparison. "Always compute, never cache."
 
 **`DefaultRulesets.cs`** — Factory methods:
-- `CreateDefaultMacro()` — empty ruleset (no macro rules by default)
-- `CreateDefaultMicro()` — single rule: `Always → GatherHere(0)` (always gather the first resource)
+- `CreateDefaultMicro()` — two rules: `InventoryFull → FinishTask`, `Always → GatherHere(0)`. The default micro for gathering Work steps.
+- `EnsureInLibrary(state)` — ensures default micro exists in library (idempotent). No default macro — runners start with null macro (no auto-switching until player sets up rules).
 
 **`DecisionLogEntry.cs`** — `[Serializable]`: TickNumber, GameTime, RunnerId, RunnerName, RuleIndex, RuleLabel, TriggerReason, ActionType, ActionDetail, ConditionSnapshot, WasDeferred. One entry per macro rule firing.
 
 **`DecisionLog.cs`** — `[Serializable]`: Ring-buffer list storage with configurable max entries. `GetForRunner()` and `GetInRange()` filter methods (most recent first). The player's primary "why did my runner do that?" debugging tool. Populated when macro rules fire, with `FormatConditionSnapshot` for human-readable condition state.
 
-**`RulesetTemplate.cs`** — `[Serializable]`: Named + Ruleset pair for saving/applying rule presets.
+**Library CRUD commands on `GameSimulation`:**
+- `CommandCreate*` / `CommandDelete*` / `CommandAssign*ToRunner` / `CommandClone*` for all three library types (task sequences, macro rulesets, micro rulesets)
+- `CommandCloneMacroRulesetForRunner(runnerId)` — deep-copies and assigns to runner
+
+**Ruleset mutation commands:** All operate on both macro and micro libraries via `FindRulesetInAnyLibrary(id)` (GUID-based, searches both libraries):
+- `CommandAddRuleToRuleset`, `CommandRemoveRuleFromRuleset`, `CommandMoveRuleInRuleset`
+- `CommandToggleRuleEnabled`, `CommandUpdateRule`, `CommandResetRulesetToDefault`, `CommandRenameRuleset`
+
+**Task sequence mutation commands:** Include runner step index adjustment for live editing:
+- `CommandAddStepToTaskSequence` — insert before current → increment runner index
+- `CommandRemoveStepFromTaskSequence` — remove before current → decrement; remove AT current → clamp; empty → runner goes idle
+- `CommandMoveStepInTaskSequence` — runner index follows the moved step
+- `CommandSetTaskSequenceLoop`, `CommandSetWorkStepMicroRuleset`, `CommandRenameTaskSequence`
+
+**Query helpers:** `CountRunnersUsing*`, `GetRunnerNamesUsing*`, `CountSequencesUsingMicroRuleset`
 
 ### Items — `Simulation/Items/`
 
@@ -458,18 +472,56 @@ Orbit camera with zoom. Uses Unity's New Input System (inline action definitions
 MonoBehaviour attached to each runner's 3D representation. Handles interpolated movement between positions set by VisualSyncSystem — the simulation ticks at 10/sec but the view renders at 60fps, so RunnerVisual smoothly interpolates between tick positions over one tick interval. Also creates and manages a floating name label (TextMeshPro) that billboards toward the camera.
 
 ### `View/UI/UIManager.cs`
-Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates `RunnerPortraitBarController` and `RunnerDetailsPanelController` as plain C# controller objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` to refresh both controllers every tick (10/sec). Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`.
+Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates `RunnerPortraitBarController`, `RunnerDetailsPanelController`, and `AutomationPanelController` as plain C# controller objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` to refresh all controllers every tick (10/sec). Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Provides `OpenAutomationPanelToItem()` and `OpenAutomationPanelToItemFromRunner()` for navigation from the runner Automation tab to the editing panel. The Automation toggle button is added programmatically to the root element. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`.
 
 ### `View/UI/RunnerPortraitBarController.cs`
 Plain C# class (not MonoBehaviour). Manages the portrait bar at the top of the screen. Clones `RunnerPortrait.uxml` templates per runner. Handles click-to-select (USS class `selected` toggle) and periodic state label refresh. Each portrait shows runner name and short state text.
 
 ### `View/UI/RunnerDetailsPanelController.cs`
-Plain C# class. Manages the bottom-right details panel showing the Overview tab for the selected runner: name, state+location, current task (from `GetRunnerTaskSequence`), travel progress bar, inventory summary with item aggregation, and all 15 skills with level/passion/XP progress bars. Skill rows are built programmatically once at construction. Tab headers for Inventory, Equipment, and Automation are present but disabled (future batches).
+Plain C# class. Manages the bottom-right details panel showing four tabs for the selected runner: Overview (name, state, task, travel progress, inventory summary, live stats, skills summary), Inventory (28-slot grid with icons), Skills (15 skill rows with XP bars), and Automation (sub-tabs for task sequence, macro rules, micro rules — read-only summary with "Edit in Library" buttons). Equipment tab remains disabled. The Automation tab is lazy-initialized on first switch. Accepts optional `VisualTreeAsset` for the automation tab template.
+
+### `View/UI/AutomationTabController.cs`
+Plain C# class. Controller for the runner Automation tab (read-only portal). Three sub-tabs:
+- **Task Seq**: Shows active sequence steps with current step highlighted (gold), loop status, macro suspension indicator, pending sequence, [Clear Task] / [Resume Macros] / [Edit in Library] buttons.
+- **Macro**: Shows ruleset rules as natural language sentences with enabled indicator and timing tag. "Used by N runners" label.
+- **Micro**: Shows each Work step in the current sequence with its micro ruleset and rules. "Used by N sequences" label.
+
+All [Edit in Library] buttons navigate to the Automation panel via `UIManager.OpenAutomationPanelToItemFromRunner()`.
+
+### `View/UI/AutomationPanelController.cs`
+Plain C# class. Manages the Automation overlay panel (toggle via top-left button, close with Escape). Three library tabs: Task Sequences, Macro Rulesets, Micro Rulesets. Each tab delegates to a sub-controller. Provides `OpenToItem()` and `OpenToItemFromRunner()` for navigation from the runner tab. Refreshed every tick while open.
+
+### `View/UI/TaskSequenceEditorController.cs`
+Plain C# class. Master-detail editor for the Task Sequence library. Left pane: searchable list with [+ New]. Right pane: name field, loop toggle, step list with node/micro dropdowns, [+ Add Step] (step type picker), shared template warning banner when used by >1 runner, [Clone] / [Delete], "Used by: runner names" footer.
+
+### `View/UI/MacroRulesetEditorController.cs`
+Plain C# class. Master-detail editor for the Macro Ruleset library. Left pane: searchable list. Right pane: name field, interactive rule list (via `RuleEditorController`), [+ Add Rule], [Clone] / [Reset to Default] / [Delete], shared template banner.
+
+### `View/UI/MicroRulesetEditorController.cs`
+Plain C# class. Master-detail editor for the Micro Ruleset library. Same structure as Macro but with micro-specific action types (GatherHere, FinishTask) and no timing toggle. Shows "Used by N sequences" instead of runners.
+
+### `View/UI/RuleEditorController.cs`
+Static helper class. Builds interactive rule rows with inline editing. Each row has: enable toggle, condition picker (cascading dropdowns for type → parameters), action picker (macro: Idle/WorkAt/ReturnToHub with node dropdown; micro: GatherHere/FinishTask with item picker), timing toggle (macro only), move up/down buttons, delete button. All changes go through `GameSimulation` commands. Used by both Macro and Micro editor controllers.
+
+### `View/UI/AutomationUIHelpers.cs`
+Static helper class (pure C#, no Unity deps). Natural language formatting for automation components:
+- `FormatCondition()` — "Bank contains Copper Ore >= 200"
+- `FormatAction()` — "Work at Copper Mine"
+- `FormatRule()` — "IF Bank contains Copper Ore >= 200 THEN Work at Pine Forest"
+- `FormatTimingTag()` — "Immediately" or "Finish Current Sequence"
+- `FormatStep()` — "Travel to Copper Mine", "Work (Default Gather)", "Deposit"
+- `FormatOperator()` — >, >=, <, <=, =, !=
+- `HumanizeId()` — "copper_ore" → "Copper Ore"
+
+Resolves node IDs via GameState.Map, item IDs via optional `ItemNameResolver` delegate (falls back to `HumanizeId`).
 
 ### UI Assets — `Assets/UI/`
-`MainLayout.uxml/.uss` — Root layout with flexbox: portrait bar (top), viewport spacer (center), details panel container (bottom-right). All containers use `picking-mode: ignore` so mouse clicks pass through to the 3D world.
+`MainLayout.uxml/.uss` — Root layout with flexbox: portrait bar (top), viewport spacer (center), details panel container (bottom-right). Also styles the Automation toggle button (absolute-positioned top-left). All containers use `picking-mode: ignore` so mouse clicks pass through to the 3D world.
 `RunnerPortrait.uxml/.uss` — Template for one portrait, cloned per runner. Dark background, gold border on `.selected`, hover effect.
-`RunnerDetailsPanel.uxml/.uss` — Bottom-right panel with tab bar and ScrollView content. Dark theme with gold section headers.
+`RunnerDetailsPanel.uxml/.uss` — Bottom-right panel with tab bar (Overview, Inventory, Skills, Equipment*, Automation) and ScrollView content. Dark theme with gold section headers.
+`AutomationTab.uxml/.uss` — Sub-tab bar (Task Seq / Macro / Micro) with content containers for read-only runner automation summary. Instantiated into the details panel's automation content area.
+`AutomationPanel.uxml/.uss` — Full-screen overlay panel for editing automation libraries. Title bar with close button, library tab bar (Task Sequences / Macro Rulesets / Micro Rulesets), master-detail layout (list pane left, editor pane right). Includes shared template warning banner, step type picker, and editor field styles.
+`RuleEditor.uss` — Styles for interactive rule editing rows: condition/action pickers, operator dropdowns, move/delete buttons, timing toggle. Loaded via AutomationPanel.uxml.
 `PanelSettings.asset` — Scale With Screen Size, 1920x1080 reference, controls UI scaling across resolutions.
 
 ---
@@ -525,6 +577,9 @@ EventLogService unit tests: add/retrieve entries, collapsing (same key, differen
 
 ### `Tests/Editor/DecisionLogTests.cs`
 Add/retrieve entries, ring buffer eviction (oldest removed), SetMaxEntries evicts existing, filter by runner (most recent first), filter by tick range, no matches returns empty, Clear removes all.
+
+### `Tests/Editor/AutomationCommandTests.cs`
+Ruleset mutation commands (add/remove/reorder/toggle/update/reset/rename rules), task sequence mutation commands (add/remove/move step with runner index adjustment), query helpers (count/names of runners using templates), FindRulesetInAnyLibrary, and natural language formatting (AutomationUIHelpers). Tests cover: insert before/after/at current step, remove with index clamping, empty sequence → idle, step move with index tracking, multi-runner isolation, all operator/condition/action format strings, HumanizeId.
 
 ### `Tests/Editor/RedirectTests.cs`
 Uses a simple 3-node right triangle map (A, B, C) with constant speed for predictable math. Tests: basic redirect (changes destination, sets StartWorld override, virtual position correct, Euclidean TotalDistance, resets DistanceCovered, preserves FromNodeId, arrives at new destination), redirect to current destination is no-op, redirect back to origin (works, arrives, correct virtual pos and distance), chained redirects (virtual position correct, arrives at final destination, back-and-forth stress test), normal travel has no StartWorld override, redirect publishes RunnerStartedTravel event, edge cases (idle runner starts normal travel, redirect at progress zero).

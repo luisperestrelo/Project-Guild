@@ -2,7 +2,8 @@
     "name": "ProjectGuild.Tests.Editor",
     "rootNamespace": "ProjectGuild.Tests",
     "references": [
-        "ProjectGuild.Simulation"
+        "ProjectGuild.Simulation",
+        "ProjectGuild.View"
     ],
     "includePlatforms": [
         "Editor"

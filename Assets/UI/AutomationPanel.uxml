@@ -1,0 +1,99 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="AutomationPanel.uss" />
+    <ui:Style src="RuleEditor.uss" />
+    <ui:VisualElement name="automation-panel-root" class="panel-root">
+
+        <!-- Title bar -->
+        <ui:VisualElement name="panel-title-bar" class="panel-title-bar">
+            <ui:Label text="Automation" class="panel-title" />
+            <ui:Button name="btn-close-panel" class="panel-close-button" text="X" />
+        </ui:VisualElement>
+
+        <!-- Library tab bar -->
+        <ui:VisualElement name="panel-tab-bar" class="panel-tab-bar">
+            <ui:Button name="panel-tab-taskseq" class="panel-tab-button panel-tab-active" text="Task Sequences" />
+            <ui:Button name="panel-tab-macro" class="panel-tab-button" text="Macro Rulesets" />
+            <ui:Button name="panel-tab-micro" class="panel-tab-button" text="Micro Rulesets" />
+        </ui:VisualElement>
+
+        <!-- Master-detail body -->
+        <ui:VisualElement name="panel-body" class="panel-body">
+
+            <!-- ─── Task Sequences Tab ──────────────────── -->
+            <ui:VisualElement name="panel-content-taskseq" class="panel-content">
+                <!-- Left: library list -->
+                <ui:VisualElement name="taskseq-list-pane" class="list-pane">
+                    <ui:VisualElement class="list-toolbar">
+                        <ui:Button name="btn-new-taskseq" class="list-toolbar-button" text="+ New" />
+                        <ui:TextField name="taskseq-search-field" class="list-search-field" />
+                    </ui:VisualElement>
+                    <ui:ScrollView name="taskseq-list-scroll" class="list-scroll" />
+                </ui:VisualElement>
+
+                <!-- Right: editor -->
+                <ui:ScrollView name="taskseq-editor-pane" class="editor-pane">
+                    <ui:Label name="taskseq-editor-empty" class="editor-empty-label" text="Select a task sequence" />
+                    <ui:VisualElement name="taskseq-editor-content" class="editor-content" style="display: none;">
+                        <!-- Shared template warning banner -->
+                        <ui:VisualElement name="taskseq-shared-banner" class="shared-banner" style="display: none;">
+                            <ui:Label name="taskseq-shared-text" class="shared-banner-text" text="" />
+                            <ui:Button name="btn-taskseq-clone-banner" class="shared-banner-button" text="Clone to create a personal copy" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="editor-field-row">
+                            <ui:Label class="editor-field-label" text="Name:" />
+                            <ui:TextField name="taskseq-name-field" class="editor-text-field" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="editor-field-row">
+                            <ui:Label class="editor-field-label" text="Loop:" />
+                            <ui:Toggle name="taskseq-loop-toggle" class="editor-toggle" />
+                        </ui:VisualElement>
+
+                        <ui:Label class="editor-section-label" text="Steps" />
+                        <ui:VisualElement name="taskseq-steps-editor" class="editor-list-container" />
+                        <ui:Button name="btn-add-step" class="editor-add-button" text="+ Add Step" />
+
+                        <ui:VisualElement class="editor-footer">
+                            <ui:Label name="taskseq-used-by-label" class="editor-used-by" text="" />
+                            <ui:VisualElement class="editor-footer-buttons">
+                                <ui:Button name="btn-clone-taskseq" class="editor-footer-button" text="Clone" />
+                                <ui:Button name="btn-delete-taskseq" class="editor-footer-button editor-delete-button" text="Delete" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:ScrollView>
+            </ui:VisualElement>
+
+            <!-- ─── Macro Rulesets Tab ──────────────────── -->
+            <ui:VisualElement name="panel-content-macro" class="panel-content panel-content-hidden">
+                <ui:VisualElement name="macro-list-pane" class="list-pane">
+                    <ui:VisualElement class="list-toolbar">
+                        <ui:Button name="btn-new-macro" class="list-toolbar-button" text="+ New" />
+                        <ui:TextField name="macro-search-field" class="list-search-field" />
+                    </ui:VisualElement>
+                    <ui:ScrollView name="macro-list-scroll" class="list-scroll" />
+                </ui:VisualElement>
+                <ui:ScrollView name="macro-editor-pane" class="editor-pane">
+                    <ui:Label name="macro-editor-empty" class="editor-empty-label" text="Select a macro ruleset" />
+                    <ui:VisualElement name="macro-editor-content" class="editor-content" style="display: none;" />
+                </ui:ScrollView>
+            </ui:VisualElement>
+
+            <!-- ─── Micro Rulesets Tab ──────────────────── -->
+            <ui:VisualElement name="panel-content-micro" class="panel-content panel-content-hidden">
+                <ui:VisualElement name="micro-list-pane" class="list-pane">
+                    <ui:VisualElement class="list-toolbar">
+                        <ui:Button name="btn-new-micro" class="list-toolbar-button" text="+ New" />
+                        <ui:TextField name="micro-search-field" class="list-search-field" />
+                    </ui:VisualElement>
+                    <ui:ScrollView name="micro-list-scroll" class="list-scroll" />
+                </ui:VisualElement>
+                <ui:ScrollView name="micro-editor-pane" class="editor-pane">
+                    <ui:Label name="micro-editor-empty" class="editor-empty-label" text="Select a micro ruleset" />
+                    <ui:VisualElement name="micro-editor-content" class="editor-content" style="display: none;" />
+                </ui:ScrollView>
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

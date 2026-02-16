@@ -1,0 +1,60 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="AutomationTab.uss" />
+    <ui:VisualElement name="automation-tab-root" class="automation-tab-root">
+
+        <!-- Sub-tab bar -->
+        <ui:VisualElement name="automation-sub-tab-bar" class="sub-tab-bar">
+            <ui:Button name="sub-tab-taskseq" class="sub-tab-button sub-tab-active" text="Task Seq" />
+            <ui:Button name="sub-tab-macro" class="sub-tab-button" text="Macro" />
+            <ui:Button name="sub-tab-micro" class="sub-tab-button" text="Micro" />
+        </ui:VisualElement>
+
+        <!-- Task Sequence sub-tab content -->
+        <ui:ScrollView name="sub-content-taskseq" class="sub-content">
+            <ui:VisualElement name="taskseq-header" class="auto-section">
+                <ui:Label name="taskseq-name-label" class="auto-name-label" text="No active task" />
+                <ui:Label name="taskseq-usage-label" class="auto-usage-label" text="" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="taskseq-loop-row" class="auto-info-row">
+                <ui:Label class="auto-info-key" text="Loop:" />
+                <ui:Label name="taskseq-loop-value" class="auto-info-value" text="-" />
+            </ui:VisualElement>
+
+            <ui:Label name="taskseq-suspension-label" class="auto-suspension-label" />
+
+            <ui:VisualElement name="taskseq-steps-container" class="auto-list-container" />
+
+            <ui:VisualElement name="taskseq-pending-section" class="auto-section auto-pending-section">
+                <ui:Label name="taskseq-pending-label" class="auto-pending-label" text="" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="taskseq-actions" class="auto-actions-row">
+                <ui:Button name="btn-clear-task" class="auto-action-button" text="Clear Task" />
+                <ui:Button name="btn-resume-macros" class="auto-action-button" text="Resume Macros" />
+                <ui:Button name="btn-edit-taskseq" class="auto-action-button auto-edit-button" text="Edit in Library" />
+            </ui:VisualElement>
+        </ui:ScrollView>
+
+        <!-- Macro Rules sub-tab content -->
+        <ui:ScrollView name="sub-content-macro" class="sub-content sub-content-hidden">
+            <ui:VisualElement name="macro-header" class="auto-section">
+                <ui:Label name="macro-name-label" class="auto-name-label" text="No macro ruleset" />
+                <ui:Label name="macro-usage-label" class="auto-usage-label" text="" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="macro-rules-container" class="auto-list-container" />
+
+            <ui:VisualElement name="macro-actions" class="auto-actions-row">
+                <ui:Button name="btn-edit-macro" class="auto-action-button auto-edit-button" text="Edit in Library" />
+            </ui:VisualElement>
+        </ui:ScrollView>
+
+        <!-- Micro Rules sub-tab content -->
+        <ui:ScrollView name="sub-content-micro" class="sub-content sub-content-hidden">
+            <ui:Label name="micro-no-task-label" class="auto-info-value" text="No active task sequence" />
+            <ui:VisualElement name="micro-steps-container" class="auto-list-container" />
+        </ui:ScrollView>
+
+    </ui:VisualElement>
+</ui:UXML>

@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Gathering;
+using ProjectGuild.Simulation.Automation;
 
 namespace ProjectGuild.View.UI
 {
@@ -24,9 +25,13 @@ namespace ProjectGuild.View.UI
         private readonly Button _tabOverview;
         private readonly Button _tabInventory;
         private readonly Button _tabSkills;
+        private readonly Button _tabAutomation;
         private readonly ScrollView _contentOverview;
         private readonly ScrollView _contentInventory;
         private readonly ScrollView _contentSkills;
+        private readonly VisualElement _contentAutomation;
+        private AutomationTabController _automationTabController;
+        private readonly VisualTreeAsset _automationTabAsset;
         private string _activeTab = "overview";
 
         // ─── Overview elements ──────────────────────────
@@ -81,24 +86,32 @@ namespace ProjectGuild.View.UI
 
         private string _currentRunnerId;
 
-        public RunnerDetailsPanelController(VisualElement root, UIManager uiManager)
+        public RunnerDetailsPanelController(VisualElement root, UIManager uiManager,
+            VisualTreeAsset automationTabAsset = null)
         {
             _root = root;
             _uiManager = uiManager;
+            _automationTabAsset = automationTabAsset;
 
             // ─── Tab buttons ────────────────────────────
             _tabOverview = root.Q<Button>("tab-overview");
             _tabInventory = root.Q<Button>("tab-inventory");
             _tabSkills = root.Q<Button>("tab-skills");
+            _tabAutomation = root.Q<Button>("tab-automation");
 
             _tabOverview.clicked += () => SwitchTab("overview");
             _tabInventory.clicked += () => SwitchTab("inventory");
             _tabSkills.clicked += () => SwitchTab("skills");
+            _tabAutomation.clicked += () => SwitchTab("automation");
+
+            // Enable the Automation tab (remove disabled class)
+            _tabAutomation.RemoveFromClassList("tab-disabled");
 
             // ─── Tab content panels ─────────────────────
             _contentOverview = root.Q<ScrollView>("tab-content-overview");
             _contentInventory = root.Q<ScrollView>("tab-content-inventory");
             _contentSkills = root.Q<ScrollView>("tab-content-skills");
+            _contentAutomation = root.Q("tab-content-automation");
 
             // ─── Overview elements ──────────────────────
             _nameLabel = root.Q<Label>("runner-name-label");
@@ -140,11 +153,17 @@ namespace ProjectGuild.View.UI
             SetTabActive(_tabOverview, tabName == "overview");
             SetTabActive(_tabInventory, tabName == "inventory");
             SetTabActive(_tabSkills, tabName == "skills");
+            SetTabActive(_tabAutomation, tabName == "automation");
 
             // Show/hide content panels
             _contentOverview.style.display = tabName == "overview" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentInventory.style.display = tabName == "inventory" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentSkills.style.display = tabName == "skills" ? DisplayStyle.Flex : DisplayStyle.None;
+            _contentAutomation.style.display = tabName == "automation" ? DisplayStyle.Flex : DisplayStyle.None;
+
+            // Lazy-init automation tab controller on first switch
+            if (tabName == "automation" && _automationTabController == null)
+                InitializeAutomationTab();
 
             Refresh();
         }
@@ -157,10 +176,26 @@ namespace ProjectGuild.View.UI
                 tab.RemoveFromClassList("tab-active");
         }
 
+        private void InitializeAutomationTab()
+        {
+            if (_automationTabAsset == null || _contentAutomation == null) return;
+
+            var instance = _automationTabAsset.Instantiate();
+            // TemplateContainer needs flex-grow to fill the tab content area,
+            // otherwise it stays zero-height and children are invisible.
+            instance.style.flexGrow = 1;
+            _contentAutomation.Add(instance);
+            _automationTabController = new AutomationTabController(instance, _uiManager);
+
+            if (_currentRunnerId != null)
+                _automationTabController.ShowRunner(_currentRunnerId);
+        }
+
         public void ShowRunner(string runnerId)
         {
             if (_isRenaming) CancelRename();
             _currentRunnerId = runnerId;
+            _automationTabController?.ShowRunner(runnerId);
             Refresh();
         }
 
@@ -250,6 +285,9 @@ namespace ProjectGuild.View.UI
                     break;
                 case "skills":
                     RefreshSkillsTab(runner, config);
+                    break;
+                case "automation":
+                    _automationTabController?.Refresh();
                     break;
             }
         }

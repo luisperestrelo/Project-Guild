@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Items;
 
 namespace ProjectGuild.Simulation.Core
@@ -65,7 +64,6 @@ namespace ProjectGuild.Simulation.Core
                 runner.Skills[i].HasPassion = rng.NextDouble() < config.PassionChance;
             }
 
-            runner.MacroRulesetId = DefaultRulesets.DefaultMacroId;
             return runner;
         }
 
@@ -132,7 +130,6 @@ namespace ProjectGuild.Simulation.Core
                 runner.Skills[i].HasPassion = def.SkillPassions[i];
             }
 
-            runner.MacroRulesetId = DefaultRulesets.DefaultMacroId;
             return runner;
         }
 

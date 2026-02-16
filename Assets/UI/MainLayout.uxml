@@ -9,16 +9,7 @@
             <!-- Portraits inserted dynamically by RunnerPortraitBarController -->
         </ui:VisualElement>
 
-        <!-- CENTER: empty spacer, 3D viewport shows through -->
-        <ui:VisualElement name="viewport-spacer" class="viewport-spacer" picking-mode="Ignore" />
-
-        <!-- BOTTOM ROW: details panel on the right -->
-        <ui:VisualElement name="bottom-row" class="bottom-row" picking-mode="Ignore">
-            <!-- Left spacer (future: logbook goes here) -->
-            <ui:VisualElement name="bottom-left-spacer" class="bottom-left-spacer" picking-mode="Ignore" />
-
-            <!-- Right: Runner details panel -->
-            <ui:VisualElement name="details-panel-container" class="details-panel-container" picking-mode="Ignore" />
-        </ui:VisualElement>
+        <!-- Runner details panel — absolute positioned, bottom-right overlay -->
+        <ui:VisualElement name="details-panel-container" class="details-panel-container" />
     </ui:VisualElement>
 </ui:UXML>

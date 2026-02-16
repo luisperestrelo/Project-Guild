@@ -58,25 +58,23 @@ namespace ProjectGuild.Tests
         // ─── Default library setup ───────────────────────────────
 
         [Test]
-        public void StartNewGame_CreatesDefaultRulesetsInLibrary()
+        public void StartNewGame_CreatesDefaultMicroRulesetInLibrary()
         {
             Setup();
 
-            Assert.IsNotNull(_sim.FindMacroRulesetInLibrary(DefaultRulesets.DefaultMacroId),
-                "Default macro ruleset should be in library after StartNewGame");
             Assert.IsNotNull(_sim.FindMicroRulesetInLibrary(DefaultRulesets.DefaultMicroId),
                 "Default micro ruleset should be in library after StartNewGame");
         }
 
         [Test]
-        public void StartNewGame_RunnersGetDefaultMacroRulesetId()
+        public void StartNewGame_RunnersHaveNullMacroRulesetId()
         {
             Setup();
 
             foreach (var runner in _sim.CurrentGameState.Runners)
             {
-                Assert.AreEqual(DefaultRulesets.DefaultMacroId, runner.MacroRulesetId,
-                    $"Runner {runner.Name} should have default macro ruleset ID");
+                Assert.IsNull(runner.MacroRulesetId,
+                    $"Runner {runner.Name} should have null macro ruleset (no auto-switching by default)");
             }
         }
 
@@ -85,8 +83,8 @@ namespace ProjectGuild.Tests
         {
             Setup();
 
-            Assert.AreEqual(1, _sim.CurrentGameState.MacroRulesetLibrary.Count,
-                "Should have exactly 1 macro ruleset (default)");
+            Assert.AreEqual(0, _sim.CurrentGameState.MacroRulesetLibrary.Count,
+                "Should have 0 macro rulesets (no default macro)");
             Assert.AreEqual(1, _sim.CurrentGameState.MicroRulesetLibrary.Count,
                 "Should have exactly 1 micro ruleset (default)");
         }

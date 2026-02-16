@@ -109,10 +109,13 @@ namespace ProjectGuild.Simulation.Core
                     runner.TaskSequenceId = runner.TaskSequence.Id;
                 }
 
-                // Ensure defaults for runners with no rulesets
-                if (string.IsNullOrEmpty(runner.MacroRulesetId))
-                    runner.MacroRulesetId = DefaultRulesets.DefaultMacroId;
+                // Migrate old saves that assigned the removed "default-macro" — clear to null
+                if (runner.MacroRulesetId == "default-macro")
+                    runner.MacroRulesetId = null;
             }
+
+            // Remove the obsolete "default-macro" entry from the library if present
+            CurrentGameState.MacroRulesetLibrary.RemoveAll(r => r.Id == "default-macro");
         }
 
         /// <summary>
@@ -1330,6 +1333,357 @@ namespace ProjectGuild.Simulation.Core
             clone.Name = (source.Name ?? "Micro") + " (copy)";
             CurrentGameState.MicroRulesetLibrary.Add(clone);
             return clone.Id;
+        }
+
+        // ─── Ruleset Mutation Commands ──────────────────────────────
+
+        /// <summary>
+        /// Find a ruleset in either the macro or micro library by ID.
+        /// Returns (ruleset, isMacro) or (null, false) if not found.
+        /// </summary>
+        public (Ruleset ruleset, bool isMacro) FindRulesetInAnyLibrary(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return (null, false);
+            var macro = FindMacroRulesetInLibrary(id);
+            if (macro != null) return (macro, true);
+            var micro = FindMicroRulesetInLibrary(id);
+            if (micro != null) return (micro, false);
+            return (null, false);
+        }
+
+        /// <summary>Add a rule to a ruleset at the given index (-1 = append).</summary>
+        public void CommandAddRuleToRuleset(string rulesetId, Rule rule, int insertIndex = -1)
+        {
+            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+
+            if (insertIndex < 0 || insertIndex >= ruleset.Rules.Count)
+                ruleset.Rules.Add(rule);
+            else
+                ruleset.Rules.Insert(insertIndex, rule);
+        }
+
+        /// <summary>Remove a rule from a ruleset by index.</summary>
+        public void CommandRemoveRuleFromRuleset(string rulesetId, int ruleIndex)
+        {
+            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+            if (ruleIndex < 0 || ruleIndex >= ruleset.Rules.Count) return;
+
+            ruleset.Rules.RemoveAt(ruleIndex);
+        }
+
+        /// <summary>Move a rule within a ruleset (reorder).</summary>
+        public void CommandMoveRuleInRuleset(string rulesetId, int fromIndex, int toIndex)
+        {
+            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+            if (fromIndex < 0 || fromIndex >= ruleset.Rules.Count) return;
+            if (toIndex < 0 || toIndex >= ruleset.Rules.Count) return;
+            if (fromIndex == toIndex) return;
+
+            var rule = ruleset.Rules[fromIndex];
+            ruleset.Rules.RemoveAt(fromIndex);
+            ruleset.Rules.Insert(toIndex, rule);
+        }
+
+        /// <summary>Toggle a rule's Enabled flag.</summary>
+        public void CommandToggleRuleEnabled(string rulesetId, int ruleIndex)
+        {
+            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+            if (ruleIndex < 0 || ruleIndex >= ruleset.Rules.Count) return;
+
+            ruleset.Rules[ruleIndex].Enabled = !ruleset.Rules[ruleIndex].Enabled;
+        }
+
+        /// <summary>Replace a rule at the given index with an updated version.</summary>
+        public void CommandUpdateRule(string rulesetId, int ruleIndex, Rule updatedRule)
+        {
+            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+            if (ruleIndex < 0 || ruleIndex >= ruleset.Rules.Count) return;
+
+            ruleset.Rules[ruleIndex] = updatedRule;
+        }
+
+        /// <summary>Reset a ruleset to the default rules for its type (macro or micro).</summary>
+        public void CommandResetRulesetToDefault(string rulesetId)
+        {
+            var (ruleset, isMacro) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+
+            ruleset.Rules.Clear();
+            // Macro default is empty (0 rules). Micro default has InventoryFull→FinishTask + Always→GatherHere.
+            if (!isMacro)
+            {
+                var defaults = DefaultRulesets.CreateDefaultMicro();
+                ruleset.Rules.AddRange(defaults.Rules);
+            }
+        }
+
+        /// <summary>Rename a ruleset.</summary>
+        public void CommandRenameRuleset(string rulesetId, string newName)
+        {
+            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+            ruleset.Name = newName?.Trim() ?? "";
+        }
+
+        // ─── Task Sequence Mutation Commands ─────────────────────────
+
+        /// <summary>
+        /// Add a step to a task sequence at the given index (-1 = append).
+        /// Adjusts runner step indices for runners using this sequence.
+        /// </summary>
+        public void CommandAddStepToTaskSequence(string seqId, TaskStep step, int insertIndex = -1)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+
+            int actualIndex;
+            if (insertIndex < 0 || insertIndex >= seq.Steps.Count)
+            {
+                actualIndex = seq.Steps.Count;
+                seq.Steps.Add(step);
+            }
+            else
+            {
+                actualIndex = insertIndex;
+                seq.Steps.Insert(insertIndex, step);
+            }
+
+            // Adjust runner step indices: insert before current → increment
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                if (runner.TaskSequenceId != seqId) continue;
+                if (actualIndex <= runner.TaskSequenceCurrentStepIndex)
+                    runner.TaskSequenceCurrentStepIndex++;
+            }
+        }
+
+        /// <summary>
+        /// Remove a step from a task sequence by index.
+        /// Adjusts runner step indices for runners using this sequence.
+        /// If the sequence becomes empty, runners using it go idle.
+        /// </summary>
+        public void CommandRemoveStepFromTaskSequence(string seqId, int stepIndex)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+            if (stepIndex < 0 || stepIndex >= seq.Steps.Count) return;
+
+            seq.Steps.RemoveAt(stepIndex);
+
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                if (runner.TaskSequenceId != seqId) continue;
+
+                if (seq.Steps.Count == 0)
+                {
+                    // Sequence is now empty — runner goes idle
+                    runner.TaskSequenceId = null;
+                    runner.TaskSequence = null;
+                    runner.TaskSequenceCurrentStepIndex = 0;
+                    runner.State = RunnerState.Idle;
+                    runner.Gathering = null;
+                    runner.Travel = null;
+                    runner.Depositing = null;
+                }
+                else if (stepIndex < runner.TaskSequenceCurrentStepIndex)
+                {
+                    // Removed before current → decrement
+                    runner.TaskSequenceCurrentStepIndex--;
+                }
+                else if (stepIndex == runner.TaskSequenceCurrentStepIndex)
+                {
+                    // Removed AT current → next step slides into position.
+                    // If was the last step, clamp to new last index.
+                    if (runner.TaskSequenceCurrentStepIndex >= seq.Steps.Count)
+                        runner.TaskSequenceCurrentStepIndex = seq.Steps.Count - 1;
+                }
+                // stepIndex > current → no change needed
+            }
+        }
+
+        /// <summary>
+        /// Move a step within a task sequence (reorder).
+        /// Adjusts runner step indices to track where their current step moved.
+        /// </summary>
+        public void CommandMoveStepInTaskSequence(string seqId, int fromIndex, int toIndex)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+            if (fromIndex < 0 || fromIndex >= seq.Steps.Count) return;
+            if (toIndex < 0 || toIndex >= seq.Steps.Count) return;
+            if (fromIndex == toIndex) return;
+
+            var step = seq.Steps[fromIndex];
+            seq.Steps.RemoveAt(fromIndex);
+            seq.Steps.Insert(toIndex, step);
+
+            // Adjust runner step indices to follow the step they were on
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                if (runner.TaskSequenceId != seqId) continue;
+
+                int current = runner.TaskSequenceCurrentStepIndex;
+                if (current == fromIndex)
+                {
+                    // Runner was on the moved step — follow it
+                    runner.TaskSequenceCurrentStepIndex = toIndex;
+                }
+                else if (fromIndex < current && toIndex >= current)
+                {
+                    // Step moved from before to after current → current shifts down
+                    runner.TaskSequenceCurrentStepIndex--;
+                }
+                else if (fromIndex > current && toIndex <= current)
+                {
+                    // Step moved from after to before current → current shifts up
+                    runner.TaskSequenceCurrentStepIndex++;
+                }
+            }
+        }
+
+        /// <summary>Set the Loop flag on a task sequence.</summary>
+        public void CommandSetTaskSequenceLoop(string seqId, bool loop)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+            seq.Loop = loop;
+        }
+
+        /// <summary>Set the micro ruleset on a Work step within a task sequence.</summary>
+        public void CommandSetWorkStepMicroRuleset(string seqId, int stepIndex, string microRulesetId)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+            if (stepIndex < 0 || stepIndex >= seq.Steps.Count) return;
+            if (seq.Steps[stepIndex].Type != TaskStepType.Work) return;
+            seq.Steps[stepIndex].MicroRulesetId = microRulesetId;
+        }
+
+        /// <summary>Set the target node on a TravelTo step within a task sequence.</summary>
+        public void CommandSetStepTargetNode(string seqId, int stepIndex, string targetNodeId)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+            if (stepIndex < 0 || stepIndex >= seq.Steps.Count) return;
+            if (seq.Steps[stepIndex].Type != TaskStepType.TravelTo) return;
+            seq.Steps[stepIndex].TargetNodeId = targetNodeId;
+        }
+
+        /// <summary>Rename a task sequence.</summary>
+        public void CommandRenameTaskSequence(string seqId, string newName)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+            seq.Name = newName?.Trim() ?? "";
+        }
+
+        // ─── Query Helpers ──────────────────────────────────────────
+
+        /// <summary>Count runners currently assigned to a task sequence.</summary>
+        public int CountRunnersUsingTaskSequence(string seqId)
+        {
+            int count = 0;
+            foreach (var runner in CurrentGameState.Runners)
+                if (runner.TaskSequenceId == seqId) count++;
+            return count;
+        }
+
+        /// <summary>Count runners currently assigned to a macro ruleset.</summary>
+        public int CountRunnersUsingMacroRuleset(string rulesetId)
+        {
+            int count = 0;
+            foreach (var runner in CurrentGameState.Runners)
+                if (runner.MacroRulesetId == rulesetId) count++;
+            return count;
+        }
+
+        /// <summary>
+        /// Count runners using a micro ruleset (searches Work steps in all active task sequences).
+        /// </summary>
+        public int CountRunnersUsingMicroRuleset(string microId)
+        {
+            if (string.IsNullOrEmpty(microId)) return 0;
+            int count = 0;
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                var seq = FindTaskSequenceInLibrary(runner.TaskSequenceId);
+                if (seq?.Steps == null) continue;
+                foreach (var step in seq.Steps)
+                {
+                    if (step.Type == TaskStepType.Work && step.MicroRulesetId == microId)
+                    {
+                        count++;
+                        break; // count runner once even if multiple Work steps use it
+                    }
+                }
+            }
+            return count;
+        }
+
+        /// <summary>Get names of runners using a task sequence.</summary>
+        public List<string> GetRunnerNamesUsingTaskSequence(string seqId)
+        {
+            var names = new List<string>();
+            foreach (var runner in CurrentGameState.Runners)
+                if (runner.TaskSequenceId == seqId) names.Add(runner.Name);
+            return names;
+        }
+
+        /// <summary>Get names of runners using a macro ruleset.</summary>
+        public List<string> GetRunnerNamesUsingMacroRuleset(string rulesetId)
+        {
+            var names = new List<string>();
+            foreach (var runner in CurrentGameState.Runners)
+                if (runner.MacroRulesetId == rulesetId) names.Add(runner.Name);
+            return names;
+        }
+
+        /// <summary>Get names of runners using a micro ruleset (via Work steps).</summary>
+        public List<string> GetRunnerNamesUsingMicroRuleset(string microId)
+        {
+            var names = new List<string>();
+            if (string.IsNullOrEmpty(microId)) return names;
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                var seq = FindTaskSequenceInLibrary(runner.TaskSequenceId);
+                if (seq?.Steps == null) continue;
+                foreach (var step in seq.Steps)
+                {
+                    if (step.Type == TaskStepType.Work && step.MicroRulesetId == microId)
+                    {
+                        names.Add(runner.Name);
+                        break;
+                    }
+                }
+            }
+            return names;
+        }
+
+        /// <summary>
+        /// Count task sequences that reference a micro ruleset in their Work steps.
+        /// </summary>
+        public int CountSequencesUsingMicroRuleset(string microId)
+        {
+            if (string.IsNullOrEmpty(microId)) return 0;
+            int count = 0;
+            foreach (var seq in CurrentGameState.TaskSequenceLibrary)
+            {
+                if (seq.Steps == null) continue;
+                foreach (var step in seq.Steps)
+                {
+                    if (step.Type == TaskStepType.Work && step.MicroRulesetId == microId)
+                    {
+                        count++;
+                        break;
+                    }
+                }
+            }
+            return count;
         }
 
         // ─── Step Index Helpers ──────────────────────────────────────

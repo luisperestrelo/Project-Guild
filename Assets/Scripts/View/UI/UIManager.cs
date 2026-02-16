@@ -23,11 +23,14 @@ namespace ProjectGuild.View.UI
         [SerializeField] private VisualTreeAsset _mainLayoutAsset;
         [SerializeField] private VisualTreeAsset _runnerPortraitAsset;
         [SerializeField] private VisualTreeAsset _runnerDetailsPanelAsset;
+        [SerializeField] private VisualTreeAsset _automationTabAsset;
+        [SerializeField] private VisualTreeAsset _automationPanelAsset;
         [SerializeField] private PanelSettings _panelSettings;
 
         private UIDocument _uiDocument;
         private RunnerPortraitBarController _portraitBarController;
         private RunnerDetailsPanelController _detailsPanelController;
+        private AutomationPanelController _automationPanelController;
 
         private string _selectedRunnerId;
         private bool _initialized;
@@ -38,6 +41,24 @@ namespace ProjectGuild.View.UI
 
         public string SelectedRunnerId => _selectedRunnerId;
         public GameSimulation Simulation => _simulationRunner?.Simulation;
+
+        /// <summary>
+        /// Returns true if the mouse pointer is over a UI Toolkit element that handles input
+        /// (i.e. not set to PickingMode.Ignore). Used by CameraController to block zoom-through.
+        /// </summary>
+        public bool IsPointerOverUI()
+        {
+            if (_uiDocument == null) return false;
+            var panel = _uiDocument.rootVisualElement?.panel;
+            if (panel == null) return false;
+
+            var mousePos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
+            var panelPos = UnityEngine.UIElements.RuntimePanelUtils.ScreenToPanel(
+                panel, new Vector2(mousePos.x, mousePos.y));
+            var picked = panel.Pick(panelPos);
+
+            return picked != null && picked.pickingMode != PickingMode.Ignore;
+        }
 
         /// <summary>
         /// Get the icon sprite for an item by its ID. Returns null if no icon is assigned.
@@ -74,8 +95,32 @@ namespace ProjectGuild.View.UI
             // Details panel — instantiate the template into the container
             var detailsContainer = root.Q("details-panel-container");
             var detailsInstance = _runnerDetailsPanelAsset.Instantiate();
+            // TemplateContainer must fill the absolute-positioned container
+            detailsInstance.style.flexGrow = 1;
             detailsContainer.Add(detailsInstance);
-            _detailsPanelController = new RunnerDetailsPanelController(detailsInstance, this);
+            _detailsPanelController = new RunnerDetailsPanelController(detailsInstance, this, _automationTabAsset);
+
+            // Automation panel (overlay)
+            if (_automationPanelAsset != null)
+            {
+                var panelInstance = _automationPanelAsset.Instantiate();
+                // TemplateContainer must fill the root so the absolute-positioned
+                // .panel-root child can anchor correctly (left/top/right/bottom offsets).
+                panelInstance.style.position = Position.Absolute;
+                panelInstance.style.left = 0;
+                panelInstance.style.top = 0;
+                panelInstance.style.right = 0;
+                panelInstance.style.bottom = 0;
+                panelInstance.pickingMode = PickingMode.Ignore;
+                root.Add(panelInstance);
+                _automationPanelController = new AutomationPanelController(panelInstance, this);
+
+                // Toggle button (top-left)
+                var toggleBtn = new Button(() => _automationPanelController.Toggle());
+                toggleBtn.text = "Automation";
+                toggleBtn.AddToClassList("automation-toggle-button");
+                root.Add(toggleBtn);
+            }
 
             // Populate portraits for runners that already exist
             foreach (var runner in Simulation.CurrentGameState.Runners)
@@ -115,11 +160,30 @@ namespace ProjectGuild.View.UI
         {
             _portraitBarController?.Refresh();
             _detailsPanelController?.Refresh();
+            _automationPanelController?.Refresh();
         }
 
         private void OnRunnerCreated(RunnerCreated evt)
         {
             _portraitBarController?.AddPortrait(evt.RunnerId);
+        }
+
+        /// <summary>
+        /// Open the Automation panel and navigate to a specific item.
+        /// Called by AutomationTabController when [Edit in Library] is clicked.
+        /// </summary>
+        public void OpenAutomationPanelToItem(string tabType, string itemId)
+        {
+            _automationPanelController?.OpenToItem(tabType, itemId);
+        }
+
+        /// <summary>
+        /// Open the Automation panel to a specific item from a runner context.
+        /// Shows shared template warning if applicable.
+        /// </summary>
+        public void OpenAutomationPanelToItemFromRunner(string tabType, string itemId, string runnerId)
+        {
+            _automationPanelController?.OpenToItemFromRunner(tabType, itemId, runnerId);
         }
 
         // ─── Tooltip ─────────────────────────────────────

@@ -8,24 +8,7 @@ namespace ProjectGuild.Simulation.Automation
     /// </summary>
     public static class DefaultRulesets
     {
-        public const string DefaultMacroId = "default-macro";
         public const string DefaultMicroId = "default-micro";
-
-        /// <summary>
-        /// Default macro ruleset: empty.
-        /// The task sequence handles the gather→deposit→repeat loop.
-        /// Macro rules are for task sequence *changes* — the player adds them when they want
-        /// condition-based switching (e.g. "IF BankContains(copper) >= 200 THEN switch to oak").
-        /// </summary>
-        public static Ruleset CreateDefaultMacro()
-        {
-            return new Ruleset
-            {
-                Id = DefaultMacroId,
-                Name = "Default Macro",
-                Category = RulesetCategory.General,
-            };
-        }
 
         /// <summary>
         /// Default micro ruleset: Always → GatherHere(0).
@@ -61,18 +44,17 @@ namespace ProjectGuild.Simulation.Automation
         }
 
         /// <summary>
-        /// Ensure the default macro and micro rulesets exist in the library.
+        /// Ensure the default micro ruleset exists in the library.
         /// Called during StartNewGame and LoadState. Idempotent — skips if already present.
+        /// Macro rulesets have no default — runners start with null (no auto-switching)
+        /// until the player actively sets up macro rules.
         /// </summary>
         public static void EnsureInLibrary(GameState state)
         {
-            bool hasMacro = false, hasMicro = false;
-            foreach (var r in state.MacroRulesetLibrary)
-                if (r.Id == DefaultMacroId) { hasMacro = true; break; }
+            bool hasMicro = false;
             foreach (var r in state.MicroRulesetLibrary)
                 if (r.Id == DefaultMicroId) { hasMicro = true; break; }
 
-            if (!hasMacro) state.MacroRulesetLibrary.Add(CreateDefaultMacro());
             if (!hasMicro) state.MicroRulesetLibrary.Add(CreateDefaultMicro());
         }
     }

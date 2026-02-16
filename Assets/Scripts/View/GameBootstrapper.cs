@@ -1169,10 +1169,10 @@ namespace ProjectGuild.View
         private void DrawTemplateControls(GameSimulation sim, Runner selected, GUIStyle richLabel)
         {
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Reset Macro to Default", GUILayout.Width(160f)))
+            if (GUILayout.Button("Clear Macro Ruleset", GUILayout.Width(160f)))
             {
-                selected.MacroRuleset = DefaultRulesets.CreateDefaultMacro();
-                selected.MacroRulesetId = DefaultRulesets.DefaultMacroId;
+                selected.MacroRuleset = null;
+                selected.MacroRulesetId = null;
             }
             GUILayout.EndHorizontal();
         }

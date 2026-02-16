@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using ProjectGuild.View.Runners;
+using ProjectGuild.View.UI;
 
 namespace ProjectGuild.View
 {
@@ -28,6 +29,9 @@ namespace ProjectGuild.View
         [SerializeField] private float _orbitSpeed = 3f;
         [SerializeField] private float _minPitch = 10f;
         [SerializeField] private float _maxPitch = 80f;
+
+        [Header("UI")]
+        [SerializeField] private UIManager _uiManager;
 
         [Header("Zoom")]
         [SerializeField] private float _zoomSpeed = 3f;
@@ -108,8 +112,10 @@ namespace ProjectGuild.View
 
         private void LateUpdate()
         {
-            // Orbit with right mouse button
-            if (_orbitButtonAction.IsPressed())
+            bool uiBlocking = _uiManager != null && _uiManager.IsPointerOverUI();
+
+            // Orbit with right mouse button (skip when pointer is over UI)
+            if (!uiBlocking && _orbitButtonAction.IsPressed())
             {
                 Vector2 lookDelta = _lookAction.ReadValue<Vector2>();
                 _currentYaw += lookDelta.x * _orbitSpeed * 0.1f;
@@ -117,15 +123,18 @@ namespace ProjectGuild.View
                 _currentPitch = Mathf.Clamp(_currentPitch, _minPitch, _maxPitch);
             }
 
-            // Zoom with scroll wheel
-            float scrollValue = _zoomAction.ReadValue<float>();
-            if (scrollValue != 0f)
+            // Zoom with scroll wheel (skip when pointer is over UI)
+            if (!uiBlocking)
             {
-                // Scroll values from New Input System are larger than old GetAxis,
-                // normalize by dividing by 120 (standard scroll tick delta)
-                float normalizedScroll = scrollValue / 120f;
-                _currentDistance -= normalizedScroll * _zoomSpeed * _currentDistance * 0.1f;
-                _currentDistance = Mathf.Clamp(_currentDistance, _minDistance, _maxDistance);
+                float scrollValue = _zoomAction.ReadValue<float>();
+                if (scrollValue != 0f)
+                {
+                    // Scroll values from New Input System are larger than old GetAxis,
+                    // normalize by dividing by 120 (standard scroll tick delta)
+                    float normalizedScroll = scrollValue / 120f;
+                    _currentDistance -= normalizedScroll * _zoomSpeed * _currentDistance * 0.1f;
+                    _currentDistance = Mathf.Clamp(_currentDistance, _minDistance, _maxDistance);
+                }
             }
 
             // Calculate camera position from orbit angles

@@ -1,0 +1,263 @@
+.automation-tab-root {
+    flex-grow: 1;
+}
+
+/* ─── Sub-tab bar ─────────────────────────────────── */
+
+.sub-tab-bar {
+    flex-direction: row;
+    padding: 2px 4px;
+    margin-bottom: 4px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.3);
+}
+
+.sub-tab-button {
+    background-color: rgba(25, 25, 40, 0.7);
+    color: rgb(140, 140, 160);
+    border-width: 0;
+    border-radius: 2px;
+    padding: 4px 10px;
+    margin-right: 2px;
+    font-size: 11px;
+}
+
+.sub-tab-button:hover {
+    background-color: rgba(35, 35, 55, 0.8);
+}
+
+.sub-tab-active {
+    background-color: rgba(45, 45, 65, 0.9);
+    color: rgb(230, 230, 240);
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(220, 180, 60);
+}
+
+/* ─── Sub-tab content ─────────────────────────────── */
+
+.sub-content {
+    flex-grow: 1;
+    padding: 6px 8px;
+}
+
+.sub-content-hidden {
+    display: none;
+}
+
+/* ─── Sections ────────────────────────────────────── */
+
+.auto-section {
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.2);
+}
+
+.auto-name-label {
+    font-size: 13px;
+    color: rgb(220, 220, 240);
+    -unity-font-style: bold;
+}
+
+.auto-usage-label {
+    font-size: 10px;
+    color: rgb(140, 140, 160);
+    margin-top: 1px;
+}
+
+/* ─── Info rows ───────────────────────────────────── */
+
+.auto-info-row {
+    flex-direction: row;
+    padding: 2px 4px;
+    margin-bottom: 2px;
+}
+
+.auto-info-key {
+    font-size: 11px;
+    color: rgb(140, 140, 160);
+    width: 50px;
+}
+
+.auto-info-value {
+    font-size: 11px;
+    color: rgb(200, 200, 215);
+}
+
+/* ─── Suspension / pending ────────────────────────── */
+
+.auto-suspension-label {
+    font-size: 10px;
+    color: rgb(220, 170, 50);
+    -unity-font-style: italic;
+    padding: 2px 4px;
+    display: none;
+}
+
+.auto-pending-section {
+    display: none;
+}
+
+.auto-pending-label {
+    font-size: 10px;
+    color: rgb(180, 160, 80);
+    -unity-font-style: italic;
+}
+
+/* ─── Step list ───────────────────────────────────── */
+
+.auto-list-container {
+    margin-top: 4px;
+}
+
+.auto-step-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 6px;
+    margin-bottom: 1px;
+    border-radius: 2px;
+}
+
+.auto-step-row:hover {
+    background-color: rgba(50, 50, 70, 0.3);
+}
+
+.auto-step-current {
+    background-color: rgba(80, 70, 30, 0.3);
+    border-left-width: 2px;
+    border-left-color: rgb(220, 180, 60);
+}
+
+.auto-step-index {
+    font-size: 10px;
+    color: rgb(120, 120, 140);
+    width: 20px;
+    -unity-text-align: middle-right;
+    margin-right: 6px;
+}
+
+.auto-step-indicator {
+    font-size: 10px;
+    color: rgb(220, 180, 60);
+    width: 12px;
+    margin-right: 2px;
+}
+
+.auto-step-label {
+    font-size: 11px;
+    color: rgb(200, 200, 215);
+    flex-grow: 1;
+}
+
+.auto-step-micro-label {
+    font-size: 9px;
+    color: rgb(120, 130, 150);
+    margin-left: 4px;
+}
+
+/* ─── Rule rows ───────────────────────────────────── */
+
+.auto-rule-row {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 3px 6px;
+    margin-bottom: 2px;
+    border-radius: 2px;
+}
+
+.auto-rule-row:hover {
+    background-color: rgba(50, 50, 70, 0.3);
+}
+
+.auto-rule-disabled {
+    opacity: 0.45;
+}
+
+.auto-rule-index {
+    font-size: 10px;
+    color: rgb(120, 120, 140);
+    width: 18px;
+    -unity-text-align: middle-right;
+    margin-right: 4px;
+}
+
+.auto-rule-enabled-indicator {
+    font-size: 10px;
+    color: rgb(80, 180, 80);
+    width: 16px;
+    margin-right: 4px;
+}
+
+.auto-rule-text {
+    font-size: 11px;
+    color: rgb(200, 200, 215);
+    flex-grow: 1;
+    flex-shrink: 1;
+    white-space: normal;
+}
+
+.auto-rule-timing {
+    font-size: 9px;
+    color: rgb(140, 140, 160);
+    margin-left: 6px;
+    flex-shrink: 0;
+}
+
+/* ─── Micro per-Work-step sections ────────────────── */
+
+.micro-work-section {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.2);
+}
+
+.micro-work-header {
+    font-size: 11px;
+    color: rgb(180, 160, 60);
+    -unity-font-style: bold;
+    margin-bottom: 3px;
+}
+
+.micro-work-ruleset-info {
+    font-size: 10px;
+    color: rgb(140, 140, 160);
+    margin-bottom: 2px;
+}
+
+/* ─── Action buttons ──────────────────────────────── */
+
+.auto-actions-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top-width: 1px;
+    border-top-color: rgba(60, 60, 80, 0.2);
+}
+
+.auto-action-button {
+    background-color: rgba(35, 35, 55, 0.8);
+    color: rgb(180, 180, 200);
+    border-width: 1px;
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 3px;
+    padding: 4px 10px;
+    margin-right: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.auto-action-button:hover {
+    background-color: rgba(50, 50, 70, 0.9);
+    border-color: rgba(100, 100, 120, 0.7);
+}
+
+.auto-edit-button {
+    color: rgb(220, 180, 60);
+    border-color: rgba(220, 180, 60, 0.3);
+}
+
+.auto-edit-button:hover {
+    border-color: rgba(220, 180, 60, 0.6);
+}

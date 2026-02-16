@@ -284,14 +284,6 @@ namespace ProjectGuild.Tests
         // ─── Default rulesets ────────────────────────────────
 
         [Test]
-        public void DefaultMacro_IsEmpty()
-        {
-            var ruleset = DefaultRulesets.CreateDefaultMacro();
-            Assert.AreEqual(0, ruleset.Rules.Count,
-                "Default macro ruleset should be empty — assignment handles the loop");
-        }
-
-        [Test]
         public void DefaultMicro_HasInventoryFullAndGatherHereRules()
         {
             var ruleset = DefaultRulesets.CreateDefaultMicro();
