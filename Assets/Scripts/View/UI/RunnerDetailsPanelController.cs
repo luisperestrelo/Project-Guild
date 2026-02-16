@@ -456,7 +456,7 @@ namespace ProjectGuild.View.UI
             // Show top 5 skills by level
             var skills = new List<(string name, int level)>();
             for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
-                skills.Add(((SkillType)i).ToString(), runner.Skills[i].Level);
+                skills.Add((((SkillType)i).ToString(), runner.Skills[i].Level));
 
             skills.Sort((a, b) => b.level.CompareTo(a.level));
 
