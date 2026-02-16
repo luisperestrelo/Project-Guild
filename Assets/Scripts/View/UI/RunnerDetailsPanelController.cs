@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Core;
+using ProjectGuild.Simulation.Gathering;
 
 namespace ProjectGuild.View.UI
 {
@@ -37,6 +38,26 @@ namespace ProjectGuild.View.UI
         private readonly Label _inventorySummaryLabel;
         private readonly VisualElement _inventoryItemsContainer;
         private readonly Label _skillsSummaryLabel;
+
+        // ─── Live stats elements ─────────────────────────
+        private readonly VisualElement _liveStatsContainer;
+        private VisualElement _statRowTravelSpeed;
+        private Label _statValueTravelSpeed;
+        private VisualElement _statRowEta;
+        private Label _statValueEta;
+        private VisualElement _statRowTravelXp;
+        private Label _statValueTravelXp;
+        private Label _statLabelTravelXp;
+        private VisualElement _statRowGatherSpeed;
+        private Label _statValueGatherSpeed;
+        private VisualElement _statRowGatherXp;
+        private Label _statLabelGatherXp;
+        private Label _statValueGatherXp;
+        private string _tooltipTravelSpeed = "";
+        private string _tooltipEta = "";
+        private string _tooltipTravelXp = "";
+        private string _tooltipGatherSpeed = "";
+        private string _tooltipGatherXp = "";
 
         // ─── Skills tab elements ────────────────────────
         private readonly VisualElement _skillsList;
@@ -89,6 +110,8 @@ namespace ProjectGuild.View.UI
             _taskInfoLabel = root.Q<Label>("task-info-label");
             _travelProgressContainer = root.Q("travel-progress-container");
             _travelProgressBar = root.Q<ProgressBar>("travel-progress-bar");
+            _liveStatsContainer = root.Q("live-stats-container");
+            BuildLiveStatRows();
             _inventorySummaryLabel = root.Q<Label>("inventory-summary-label");
             _inventoryItemsContainer = root.Q("inventory-items-container");
             _skillsSummaryLabel = root.Q<Label>("skills-summary-label");
@@ -292,8 +315,137 @@ namespace ProjectGuild.View.UI
                 _inventoryItemsContainer.Add(row);
             }
 
-            // Skills summary (top 3 non-level-1 skills, or "All skills level 1")
+            // Live stats (contextual based on runner state)
+            RefreshLiveStats(runner, sim, config);
+
+            // Skills summary
             _skillsSummaryLabel.text = FormatSkillsSummary(runner);
+        }
+
+        // ─── Live Stats ───────────────────────────────────
+
+        private void BuildLiveStatRows()
+        {
+            (_statRowTravelSpeed, _, _statValueTravelSpeed) = CreateStatRow("Travel Speed", "");
+            _liveStatsContainer.Add(_statRowTravelSpeed);
+            _uiManager.RegisterTooltip(_statRowTravelSpeed, () => _tooltipTravelSpeed);
+
+            (_statRowEta, _, _statValueEta) = CreateStatRow("ETA", "");
+            _liveStatsContainer.Add(_statRowEta);
+            _uiManager.RegisterTooltip(_statRowEta, () => _tooltipEta);
+
+            (_statRowTravelXp, _statLabelTravelXp, _statValueTravelXp) = CreateStatRow("Athletics XP/hr", "");
+            _liveStatsContainer.Add(_statRowTravelXp);
+            _uiManager.RegisterTooltip(_statRowTravelXp, () => _tooltipTravelXp);
+
+            (_statRowGatherSpeed, _, _statValueGatherSpeed) = CreateStatRow("Gather Time", "");
+            _liveStatsContainer.Add(_statRowGatherSpeed);
+            _uiManager.RegisterTooltip(_statRowGatherSpeed, () => _tooltipGatherSpeed);
+
+            (_statRowGatherXp, _statLabelGatherXp, _statValueGatherXp) = CreateStatRow("", "");
+            _liveStatsContainer.Add(_statRowGatherXp);
+            _uiManager.RegisterTooltip(_statRowGatherXp, () => _tooltipGatherXp);
+        }
+
+        private void RefreshLiveStats(Runner runner, GameSimulation sim, SimulationConfig config)
+        {
+            float tickRate = 1f / sim.TickDeltaTime;
+            var athSkill = runner.Skills[(int)SkillType.Athletics];
+
+            // --- Travel Speed (always shown) ---
+            float athleticsLevel = runner.GetEffectiveLevel(SkillType.Athletics, config);
+            float travelSpeed = config.BaseTravelSpeed + (athleticsLevel - 1) * config.AthleticsSpeedPerLevel;
+            _statValueTravelSpeed.text = $"{travelSpeed:F1} m/s";
+            _statRowTravelSpeed.style.display = DisplayStyle.Flex;
+
+            if (athSkill.HasPassion)
+            {
+                _tooltipTravelSpeed = $"Athletics Lv {athSkill.Level} <color=#DCB43C>(P)</color>\n" +
+                    $"Effective level: {athleticsLevel:F1}";
+            }
+            else
+            {
+                _tooltipTravelSpeed = $"Athletics Lv {athSkill.Level}";
+            }
+
+            // --- Traveling-specific stats ---
+            bool isTraveling = runner.State == RunnerState.Traveling && runner.Travel != null;
+            _statRowEta.style.display = isTraveling ? DisplayStyle.Flex : DisplayStyle.None;
+            _statRowTravelXp.style.display = isTraveling ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (isTraveling)
+            {
+                float remaining = runner.Travel.TotalDistance - runner.Travel.DistanceCovered;
+                float eta = travelSpeed > 0 ? remaining / travelSpeed : 0f;
+                _statValueEta.text = $"{eta:F1}s";
+                _tooltipEta = $"{runner.Travel.DistanceCovered:F0}m / {runner.Travel.TotalDistance:F0}m";
+
+                float athXpPerTick = athSkill.HasPassion
+                    ? config.AthleticsXpPerTick * config.PassionXpMultiplier
+                    : config.AthleticsXpPerTick;
+                float athXpPerHour = athXpPerTick * tickRate * 3600f;
+                _statValueTravelXp.text = $"{athXpPerHour:N0}";
+                _tooltipTravelXp = athSkill.HasPassion
+                    ? $"Passion: +{(config.PassionXpMultiplier - 1f) * 100f:F0}% XP"
+                    : "No passion bonus";
+            }
+
+            // --- Gathering-specific stats ---
+            bool isGathering = runner.State == RunnerState.Gathering && runner.Gathering != null;
+            GatherableConfig gatherConfig = null;
+            if (isGathering)
+            {
+                var node = sim.CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
+                if (node != null && runner.Gathering.GatherableIndex < node.Gatherables.Length)
+                    gatherConfig = node.Gatherables[runner.Gathering.GatherableIndex];
+            }
+
+            bool showGather = isGathering && gatherConfig != null;
+            _statRowGatherSpeed.style.display = showGather ? DisplayStyle.Flex : DisplayStyle.None;
+            _statRowGatherXp.style.display = showGather ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (showGather)
+            {
+                float ticksReq = runner.Gathering.TicksRequired;
+                float timePerItem = ticksReq / tickRate;
+                _statValueGatherSpeed.text = $"{timePerItem:F1}s";
+
+                float gatherEffLevel = runner.GetEffectiveLevel(gatherConfig.RequiredSkill, config);
+                var gatherSkill = runner.Skills[(int)gatherConfig.RequiredSkill];
+                string skillName = gatherConfig.RequiredSkill.ToString();
+
+                _tooltipGatherSpeed = gatherSkill.HasPassion
+                    ? $"{skillName} Lv {gatherSkill.Level} <color=#DCB43C>(P)</color>\nEffective level: {gatherEffLevel:F1}"
+                    : $"{skillName} Lv {gatherSkill.Level}";
+
+                float gatherXpPerTick = gatherSkill.HasPassion
+                    ? gatherConfig.XpPerTick * config.PassionXpMultiplier
+                    : gatherConfig.XpPerTick;
+                float gatherXpPerHour = gatherXpPerTick * tickRate * 3600f;
+                _statLabelGatherXp.text = $"{skillName} XP/hr";
+                _statValueGatherXp.text = $"{gatherXpPerHour:N0}";
+                _tooltipGatherXp = gatherSkill.HasPassion
+                    ? $"Passion: +{(config.PassionXpMultiplier - 1f) * 100f:F0}% XP"
+                    : "No passion bonus";
+            }
+        }
+
+        private static (VisualElement row, Label label, Label value) CreateStatRow(string labelText, string valueText)
+        {
+            var row = new VisualElement();
+            row.AddToClassList("live-stat-row");
+
+            var labelElem = new Label(labelText);
+            labelElem.AddToClassList("live-stat-label");
+            labelElem.pickingMode = PickingMode.Ignore;
+            row.Add(labelElem);
+
+            var valueElem = new Label(valueText);
+            valueElem.AddToClassList("live-stat-value");
+            valueElem.pickingMode = PickingMode.Ignore;
+            row.Add(valueElem);
+
+            return (row, labelElem, valueElem);
         }
 
         // ─── Inventory Tab ──────────────────────────────

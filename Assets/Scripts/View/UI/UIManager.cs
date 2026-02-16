@@ -143,8 +143,10 @@ namespace ProjectGuild.View.UI
 
             _tooltipLabel = new Label();
             _tooltipLabel.pickingMode = PickingMode.Ignore;
+            _tooltipLabel.enableRichText = true;
             _tooltipLabel.style.color = new StyleColor(new Color(0.9f, 0.9f, 0.95f));
             _tooltipLabel.style.fontSize = 12;
+            _tooltipLabel.style.whiteSpace = WhiteSpace.Normal;
             _tooltip.Add(_tooltipLabel);
 
             root.Add(_tooltip);

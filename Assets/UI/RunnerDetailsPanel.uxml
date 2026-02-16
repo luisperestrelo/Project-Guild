@@ -30,6 +30,12 @@
                 </ui:VisualElement>
             </ui:VisualElement>
 
+            <!-- Live Stats (contextual, changes based on runner state) -->
+            <ui:VisualElement name="live-stats-section" class="overview-section">
+                <ui:Label name="section-label-live-stats" class="section-label" text="Live Stats" />
+                <ui:VisualElement name="live-stats-container" class="live-stats-container" />
+            </ui:VisualElement>
+
             <!-- Inventory summary (brief, full view in Inventory tab) -->
             <ui:VisualElement name="inventory-section" class="overview-section">
                 <ui:Label name="section-label-inventory" class="section-label" text="Inventory" />

@@ -138,6 +138,36 @@
     border-radius: 2px;
 }
 
+/* ─── Live Stats ─────────────────────────────────── */
+
+.live-stats-container {
+    margin-top: 4px;
+}
+
+.live-stat-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 4px;
+    margin-bottom: 1px;
+    border-radius: 2px;
+}
+
+.live-stat-row:hover {
+    background-color: rgba(50, 50, 70, 0.4);
+}
+
+.live-stat-label {
+    font-size: 11px;
+    color: rgb(140, 140, 160);
+}
+
+.live-stat-value {
+    font-size: 11px;
+    color: rgb(220, 220, 240);
+    -unity-text-align: middle-right;
+}
+
 /* ─── Inventory ───────────────────────────────────── */
 
 .inventory-items-container {
