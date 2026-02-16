@@ -466,7 +466,7 @@ namespace ProjectGuild.View.UI
             int count = System.Math.Min(5, skills.Count);
             var top = skills.GetRange(0, count);
             return string.Join(", ", top.Select(s =>
-                s.passion ? $"{s.name} {s.level} P" : $"{s.name} {s.level}"));
+                s.passion ? $"{s.name} {s.level} <color=#DCB43C>P</color>" : $"{s.name} {s.level}"));
         }
     }
 }
