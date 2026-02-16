@@ -304,6 +304,7 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 
 **Library CRUD commands on `GameSimulation`:**
 - `CommandCreate*` / `CommandDelete*` / `CommandAssign*ToRunner` / `CommandClone*` for all three library types (task sequences, macro rulesets, micro rulesets)
+- `CommandCloneMacroRuleset(sourceId)` — deep-copies into a new library entry (standalone)
 - `CommandCloneMacroRulesetForRunner(runnerId)` — deep-copies and assigns to runner
 
 **Ruleset mutation commands:** All operate on both macro and micro libraries via `FindRulesetInAnyLibrary(id)` (GUID-based, searches both libraries):
@@ -478,27 +479,27 @@ Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` comp
 Plain C# class (not MonoBehaviour). Manages the portrait bar at the top of the screen. Clones `RunnerPortrait.uxml` templates per runner. Handles click-to-select (USS class `selected` toggle) and periodic state label refresh. Each portrait shows runner name and short state text.
 
 ### `View/UI/RunnerDetailsPanelController.cs`
-Plain C# class. Manages the bottom-right details panel showing four tabs for the selected runner: Overview (name, state, task, travel progress, inventory summary, live stats, skills summary), Inventory (28-slot grid with icons), Skills (15 skill rows with XP bars), and Automation (sub-tabs for task sequence, macro rules, micro rules — read-only summary with "Edit in Library" buttons). Equipment tab remains disabled. The Automation tab is lazy-initialized on first switch. Accepts optional `VisualTreeAsset` for the automation tab template.
+Plain C# class. Manages the bottom-right details panel showing four tabs for the selected runner: Overview (name, state, task, travel progress, inventory summary, live stats, skills summary), Inventory (28-slot grid with icons), Skills (15 skill rows with XP bars), and Automation (sub-tabs for task sequence, macro rules, micro rules — read-only summary with "Edit in Library" buttons). Equipment tab remains disabled. The Automation tab is lazy-initialized on first switch. Accepts optional `VisualTreeAsset` for the automation tab template. Overview inventory items use pooled row elements (`_inventoryItemRowCache`) — rows are reused in-place, excess rows hidden, new rows created only when needed.
 
 ### `View/UI/AutomationTabController.cs`
-Plain C# class. Controller for the runner Automation tab (read-only portal). Three sub-tabs:
+Plain C# class. Controller for the runner Automation tab (read-only portal). Uses **shape-keyed caching**: elements are built once when the data shape (step count, rule count, work step structure) is first seen, then updated in-place on subsequent ticks. Rebuild only happens when the shape changes (e.g., runner switches to a sequence with a different step count). Three sub-tabs:
 - **Task Seq**: Shows active sequence steps with current step highlighted (gold), loop status, macro suspension indicator, pending sequence, [Clear Task] / [Resume Macros] / [Edit in Library] buttons.
 - **Macro**: Shows ruleset rules as natural language sentences with enabled indicator and timing tag. "Used by N runners" label.
-- **Micro**: Shows each Work step in the current sequence with its micro ruleset and rules. "Used by N sequences" label.
+- **Micro**: Shows each Work step in the current sequence with its micro ruleset and rules. "Used by N sequences" label. Uses `MicroWorkSectionCache` class per Work step.
 
 All [Edit in Library] buttons navigate to the Automation panel via `UIManager.OpenAutomationPanelToItemFromRunner()`.
 
 ### `View/UI/AutomationPanelController.cs`
-Plain C# class. Manages the Automation overlay panel (toggle via top-left button, close with Escape). Three library tabs: Task Sequences, Macro Rulesets, Micro Rulesets. Each tab delegates to a sub-controller. Provides `OpenToItem()` and `OpenToItemFromRunner()` for navigation from the runner tab. Refreshed every tick while open.
+Plain C# class. Manages the Automation overlay panel (toggle via top-left button, close with Escape). Three library tabs: Task Sequences, Macro Rulesets, Micro Rulesets. Each tab delegates to a sub-controller. Provides `OpenToItem()` and `OpenToItemFromRunner()` for navigation from the runner tab. Purely event-driven — no tick-driven `Refresh()`. Editors refresh on open, tab switch, and user interaction only.
 
 ### `View/UI/TaskSequenceEditorController.cs`
-Plain C# class. Master-detail editor for the Task Sequence library. Left pane: searchable list with [+ New]. Right pane: name field, loop toggle, step list with node/micro dropdowns, [+ Add Step] (step type picker), shared template warning banner when used by >1 runner, [Clone] / [Delete], "Used by: runner names" footer.
+Plain C# class. Master-detail editor for the Task Sequence library. Uses **persistent elements**: editor shell from UXML (name field, loop toggle, banner, used-by label) is updated in-place via `SetValueWithoutNotify`. Steps editor uses shape-key caching (seq ID + step count) — skips rebuild when the same sequence is re-selected. List pane uses item cache (`Dictionary<string, ...>`) for CSS-only selection toggling and in-place name updates on rename. Left pane: searchable list with [+ New]. Right pane: name field, loop toggle, step list with node/micro dropdowns, [+ Add Step] (step type picker), shared template warning banner when used by >1 runner, [Clone] / [Delete], "Used by: runner names" footer.
 
 ### `View/UI/MacroRulesetEditorController.cs`
-Plain C# class. Master-detail editor for the Macro Ruleset library. Left pane: searchable list. Right pane: name field, interactive rule list (via `RuleEditorController`), [+ Add Rule], [Clone] / [Reset to Default] / [Delete], shared template banner.
+Plain C# class. Master-detail editor for the Macro Ruleset library. Uses **persistent editor shell**: banner, name field, rules header, rules container, add button, and footer are built once in `BuildEditorShell()` and updated in-place. Only the rules container rebuilds, gated by shape-key caching (ruleset ID + rule count). List pane uses item cache for CSS-only selection toggling. Left pane: searchable list. Right pane: name field, interactive rule list (via `RuleEditorController`), [+ Add Rule], [Clone] / [Reset to Default] / [Delete], shared template banner.
 
 ### `View/UI/MicroRulesetEditorController.cs`
-Plain C# class. Master-detail editor for the Micro Ruleset library. Same structure as Macro but with micro-specific action types (GatherHere, FinishTask) and no timing toggle. Shows "Used by N sequences" instead of runners.
+Plain C# class. Master-detail editor for the Micro Ruleset library. Same persistent-element architecture as Macro. Shows "Used by N sequences" instead of runners. Micro-specific action types (GatherHere, FinishTask) and no timing toggle.
 
 ### `View/UI/RuleEditorController.cs`
 Static helper class. Builds interactive rule rows with inline editing. Each row has: enable toggle, condition picker (cascading dropdowns for type → parameters), action picker (macro: Idle/WorkAt/ReturnToHub with node dropdown; micro: GatherHere/FinishTask with item picker), timing toggle (macro only), move up/down buttons, delete button. All changes go through `GameSimulation` commands. Used by both Macro and Micro editor controllers.
@@ -603,6 +604,8 @@ Uses a simple 3-node right triangle map (A, B, C) with constant speed for predic
 **Events over polling:** The view layer subscribes to events (`RunnerArrivedAtNode`) rather than checking runner state every frame. This is both more efficient and cleaner — the view only reacts when something actually happens. The `EventLogService` also subscribes to all events for the debug event log.
 
 **"Let it break":** When automation rules are misconfigured (empty ruleset, invalid index, no matching rule), the runner stops and a warning event fires. The UI warns the player. This applies project-wide.
+
+**Persistent elements with shape-keyed caching (UI Toolkit):** UI elements that display dynamic data are built once and updated in-place via `SetValueWithoutNotify()` or `.text` assignment. Elements that change structurally (step rows, rule rows, list items) are gated behind a "shape key" — a string like `"{seqId}|{stepCount}"`. If the shape key matches the cached value, the rebuild is skipped entirely. If it doesn't match, the container is `Clear()`ed and rebuilt. This prevents tick-driven destruction/recreation of interactive elements (TextFields, DropdownFields) which causes cursor focus loss and garbage generation. List panes track items by ID in a `Dictionary` and toggle selection CSS without rebuilding.
 
 **Fluent builder for definitions:** `new RunnerDefinition { Name = "Bob" }.WithSkill(SkillType.Melee, 10, passion: true)` reads like English and is hard to get wrong.
 
