@@ -453,10 +453,10 @@ namespace ProjectGuild.View.UI
 
         private static string FormatSkillsSummary(Runner runner)
         {
-            // Show top 5 skills by level
-            var skills = new List<(string name, int level)>();
+            // Show top 5 skills by level, with passion indicator
+            var skills = new List<(string name, int level, bool passion)>();
             for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
-                skills.Add((((SkillType)i).ToString(), runner.Skills[i].Level));
+                skills.Add((((SkillType)i).ToString(), runner.Skills[i].Level, runner.Skills[i].HasPassion));
 
             skills.Sort((a, b) => b.level.CompareTo(a.level));
 
@@ -465,7 +465,8 @@ namespace ProjectGuild.View.UI
 
             int count = System.Math.Min(5, skills.Count);
             var top = skills.GetRange(0, count);
-            return string.Join(", ", top.Select(s => $"{s.name} {s.level}"));
+            return string.Join(", ", top.Select(s =>
+                s.passion ? $"{s.name} {s.level} P" : $"{s.name} {s.level}"));
         }
     }
 }
