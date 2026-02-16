@@ -130,11 +130,14 @@ namespace ProjectGuild.View.UI
                 case ActionType.Idle:
                     return "Go Idle";
 
-                case ActionType.WorkAt:
-                    return $"Work at {ResolveNodeName(action.StringParam, state)}";
-
-                case ActionType.ReturnToHub:
-                    return "Return to Hub";
+                case ActionType.AssignSequence:
+                    if (state != null && !string.IsNullOrEmpty(action.StringParam))
+                    {
+                        foreach (var seq in state.TaskSequenceLibrary)
+                            if (seq.Id == action.StringParam)
+                                return $"Use {seq.Name ?? seq.Id}";
+                    }
+                    return $"Use {action.StringParam ?? "?"}";
 
                 case ActionType.GatherHere:
                     if (!string.IsNullOrEmpty(action.StringParam))

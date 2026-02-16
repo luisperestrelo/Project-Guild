@@ -309,7 +309,7 @@ namespace ProjectGuild.Tests
             {
                 Label = "Rule 2",
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence("seq-mine"),
                 Enabled = true,
             });
             Assert.AreEqual(2, original.Rules.Count);
@@ -551,7 +551,7 @@ namespace ProjectGuild.Tests
             {
                 Label = "Legacy rule",
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence("seq-mine"),
                 Enabled = true,
             });
             runner.Inventory = new Inventory(28);

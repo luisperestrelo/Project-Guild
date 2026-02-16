@@ -1006,8 +1006,8 @@ namespace ProjectGuild.View
         // ─── Add Macro Rule Form ────────────────────────────────────
 
         private static readonly string[] ConditionTypeNames = Enum.GetNames(typeof(ConditionType));
-        private static readonly string[] MacroActionNames = { "WorkAt", "ReturnToHub", "Idle" };
-        private static readonly ActionType[] MacroActionTypes = { ActionType.WorkAt, ActionType.ReturnToHub, ActionType.Idle };
+        private static readonly string[] MacroActionNames = { "AssignSequence", "Idle" };
+        private static readonly ActionType[] MacroActionTypes = { ActionType.AssignSequence, ActionType.Idle };
         private static readonly string[] OperatorNames = { ">", ">=", "<", "<=", "==", "!=" };
         private static readonly string[] SkillNames = Enum.GetNames(typeof(SkillType));
 
@@ -1093,16 +1093,16 @@ namespace ProjectGuild.View
                 _newActionType = (_newActionType + 1) % MacroActionNames.Length;
 
             var actionType = MacroActionTypes[_newActionType];
-            bool actionNeedsNode = actionType == ActionType.WorkAt;
+            bool actionNeedsSequence = actionType == ActionType.AssignSequence;
 
-            if (actionNeedsNode)
+            if (actionNeedsSequence)
             {
-                var nodes = sim.CurrentGameState.Map.Nodes;
-                if (nodes.Count > 0)
+                var seqs = sim.CurrentGameState.TaskSequenceLibrary;
+                if (seqs.Count > 0)
                 {
-                    if (_newActionNodeIndex >= nodes.Count) _newActionNodeIndex = 0;
-                    if (GUILayout.Button(nodes[_newActionNodeIndex].Name, GUILayout.Width(130f)))
-                        _newActionNodeIndex = (_newActionNodeIndex + 1) % nodes.Count;
+                    if (_newActionNodeIndex >= seqs.Count) _newActionNodeIndex = 0;
+                    if (GUILayout.Button(seqs[_newActionNodeIndex].Name ?? seqs[_newActionNodeIndex].Id, GUILayout.Width(130f)))
+                        _newActionNodeIndex = (_newActionNodeIndex + 1) % seqs.Count;
                 }
             }
 
@@ -1139,11 +1139,19 @@ namespace ProjectGuild.View
 
             // Build action
             var actionType = MacroActionTypes[_newActionType];
-            var action = new AutomationAction { Type = actionType };
+            AutomationAction action;
 
-            var nodes = sim.CurrentGameState.Map.Nodes;
-            if (nodes.Count > 0 && _newActionNodeIndex < nodes.Count)
-                action.StringParam = nodes[_newActionNodeIndex].Id;
+            if (actionType == ActionType.AssignSequence)
+            {
+                var seqs = sim.CurrentGameState.TaskSequenceLibrary;
+                string seqId = (seqs.Count > 0 && _newActionNodeIndex < seqs.Count)
+                    ? seqs[_newActionNodeIndex].Id : "";
+                action = AutomationAction.AssignSequence(seqId);
+            }
+            else
+            {
+                action = new AutomationAction { Type = actionType };
+            }
 
             // Build rule
             var rule = new Rule
@@ -1421,8 +1429,7 @@ namespace ProjectGuild.View
             return a.Type switch
             {
                 ActionType.Idle => "Idle",
-                ActionType.WorkAt => $"Work @ {a.StringParam}",
-                ActionType.ReturnToHub => "Return to Hub",
+                ActionType.AssignSequence => $"Assign: {a.StringParam}",
                 ActionType.GatherHere => a.IntParam == -1 ? "Gather Any" : $"Gather Here[{a.IntParam}]",
                 ActionType.FinishTask => "FinishTask",
                 _ => a.Type.ToString(),

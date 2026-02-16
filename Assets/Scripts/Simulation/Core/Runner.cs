@@ -91,12 +91,12 @@ namespace ProjectGuild.Simulation.Core
         public bool MacroSuspendedUntilLoop;
 
         /// <summary>
-        /// Tracks the TargetNodeId of the last completed (non-looping) sequence.
+        /// Tracks the Id of the last completed (non-looping) sequence.
         /// Used by same-assignment suppression to prevent re-assigning the same
         /// sequence that just completed (e.g., ReturnToHub when already at hub).
         /// Cleared when a different sequence is assigned.
         /// </summary>
-        public string LastCompletedSequenceTargetNodeId;
+        public string LastCompletedTaskSequenceId;
 
         /// <summary>
         /// ID reference into MacroRulesetLibrary.

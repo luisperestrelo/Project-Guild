@@ -10,7 +10,7 @@ namespace ProjectGuild.Simulation.Automation
     public class AutomationAction
     {
         public ActionType Type;
-        public string StringParam;   // nodeId for WorkAt, taskSequenceId for AssignSequence
+        public string StringParam;   // taskSequenceId for AssignSequence, itemId for GatherHere
         public int IntParam;         // gatherableIndex for GatherHere (-1 = any available, random)
 
         public AutomationAction() { }
@@ -23,14 +23,11 @@ namespace ProjectGuild.Simulation.Automation
         // ─── Macro actions (select task sequence) ───
 
         /// <summary>
-        /// Macro action: create a work loop at the target node.
-        /// What the runner does there is determined by micro rules.
+        /// Macro action: assign a library task sequence by ID.
+        /// The runner switches to the referenced sequence (or null if not found = let it break).
         /// </summary>
-        public static AutomationAction WorkAt(string nodeId)
-            => new AutomationAction { Type = ActionType.WorkAt, StringParam = nodeId };
-
-        public static AutomationAction ReturnToHub()
-            => new AutomationAction { Type = ActionType.ReturnToHub };
+        public static AutomationAction AssignSequence(string taskSequenceId)
+            => new AutomationAction { Type = ActionType.AssignSequence, StringParam = taskSequenceId };
 
         // ─── Micro actions (within-task behavior) ───
 

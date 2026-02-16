@@ -1,14 +1,16 @@
+using System.Collections.Generic;
 using ProjectGuild.Simulation.Core;
 
 namespace ProjectGuild.Simulation.Automation
 {
     /// <summary>
-    /// Factory methods for default rulesets assigned to new runners.
+    /// Factory methods for default rulesets and well-known library sequences.
     /// Well-known IDs for the default templates.
     /// </summary>
     public static class DefaultRulesets
     {
         public const string DefaultMicroId = "default-micro";
+        public const string ReturnToHubSequenceId = "return-to-hub";
 
         /// <summary>
         /// Default micro ruleset: Always → GatherAny (random resource).
@@ -44,7 +46,28 @@ namespace ProjectGuild.Simulation.Automation
         }
 
         /// <summary>
-        /// Ensure the default micro ruleset exists in the library.
+        /// Pre-created library sequence: travel to hub and deposit.
+        /// Non-looping — runner goes idle after depositing (macro re-evaluates).
+        /// Visible and editable by the player.
+        /// </summary>
+        public static TaskSequence CreateReturnToHubSequence(string hubNodeId)
+        {
+            return new TaskSequence
+            {
+                Id = ReturnToHubSequenceId,
+                Name = "Return to Hub",
+                TargetNodeId = hubNodeId,
+                Loop = false,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo, hubNodeId),
+                    new TaskStep(TaskStepType.Deposit),
+                },
+            };
+        }
+
+        /// <summary>
+        /// Ensure the default micro ruleset and ReturnToHub sequence exist in the library.
         /// Called during StartNewGame and LoadState. Idempotent — skips if already present.
         /// Macro rulesets have no default — runners start with null (no auto-switching)
         /// until the player actively sets up macro rules.
@@ -56,6 +79,14 @@ namespace ProjectGuild.Simulation.Automation
                 if (r.Id == DefaultMicroId) { hasMicro = true; break; }
 
             if (!hasMicro) state.MicroRulesetLibrary.Add(CreateDefaultMicro());
+
+            // Ensure ReturnToHub sequence exists in library
+            string hubId = state.Map?.HubNodeId ?? "hub";
+            bool hasReturnToHub = false;
+            foreach (var s in state.TaskSequenceLibrary)
+                if (s.Id == ReturnToHubSequenceId) { hasReturnToHub = true; break; }
+
+            if (!hasReturnToHub) state.TaskSequenceLibrary.Add(CreateReturnToHubSequence(hubId));
         }
     }
 }

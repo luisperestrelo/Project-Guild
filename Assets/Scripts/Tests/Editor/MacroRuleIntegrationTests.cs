@@ -73,6 +73,17 @@ namespace ProjectGuild.Tests
             return ruleset;
         }
 
+        /// <summary>Create a library task sequence for the given node and register it.</summary>
+        private string RegisterLibrarySequence(string nodeId, string name = null)
+        {
+            string hubId = "hub";
+            var seq = TaskSequence.CreateLoop(nodeId, hubId);
+            seq.Id = $"test-seq-{nodeId}";
+            seq.Name = name ?? $"Gather at {nodeId}";
+            _sim.CurrentGameState.TaskSequenceLibrary.Add(seq);
+            return seq.Id;
+        }
+
         // ─── Macro rule fires on condition ──────────────────────
 
         [Test]
@@ -80,13 +91,15 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            // Macro rule: IF BankContains(copper) >= 28 THEN WorkAt(forest)
+            var forestSeqId = RegisterLibrarySequence("forest");
+
+            // Macro rule: IF BankContains(copper) >= 28 THEN AssignSequence(forest)
             var macroRuleset = SetRunnerMacroRuleset();
             macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, _config.InventorySize) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = false, // immediate
                 Enabled = true,
             });
@@ -113,13 +126,15 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
-            // Macro rule: IF BankContains(copper) >= 28 THEN WorkAt(forest), finish trip first
+            var forestSeqId = RegisterLibrarySequence("forest");
+
+            // Macro rule: IF BankContains(copper) >= 28 THEN AssignSequence(forest), finish trip first
             var macroRuleset = SetRunnerMacroRuleset();
             macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest (deferred)",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, _config.InventorySize) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = true, // deferred
                 Enabled = true,
             });
@@ -150,6 +165,8 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
+            var forestSeqId = RegisterLibrarySequence("forest");
+
             // Add enough to bank so the rule fires immediately on deposit
             _sim.CurrentGameState.Bank.Deposit("copper_ore", _config.InventorySize);
 
@@ -158,7 +175,7 @@ namespace ProjectGuild.Tests
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, _config.InventorySize) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = true,
                 Enabled = true,
             });
@@ -182,6 +199,8 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
+            var forestSeqId = RegisterLibrarySequence("forest");
+
             // Pre-fill bank so rule fires immediately
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
@@ -190,7 +209,7 @@ namespace ProjectGuild.Tests
             {
                 Label = "Switch to forest now",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = false, // immediate
                 Enabled = true,
             });
@@ -246,6 +265,8 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
+            var forestSeqId = RegisterLibrarySequence("forest");
+
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
             var macroRuleset = SetRunnerMacroRuleset();
@@ -253,7 +274,7 @@ namespace ProjectGuild.Tests
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = false,
                 Enabled = true,
             });
@@ -269,7 +290,7 @@ namespace ProjectGuild.Tests
 
             var entry = entries[0]; // most recent macro
             Assert.AreEqual("Switch to forest", entry.RuleLabel);
-            Assert.AreEqual(ActionType.WorkAt, entry.ActionType);
+            Assert.AreEqual(ActionType.AssignSequence, entry.ActionType);
             Assert.IsFalse(entry.WasDeferred);
         }
 
@@ -278,6 +299,8 @@ namespace ProjectGuild.Tests
         {
             Setup("mine");
 
+            var forestSeqId = RegisterLibrarySequence("forest");
+
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
             var macroRuleset = SetRunnerMacroRuleset();
@@ -285,7 +308,7 @@ namespace ProjectGuild.Tests
             {
                 Label = "Deferred switch",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = true,
                 Enabled = true,
             });
@@ -313,13 +336,14 @@ namespace ProjectGuild.Tests
 
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
-            // Rule says "gather at mine" — same as current assignment
+            // Rule says "assign same mine sequence" — same as current assignment
+            var mineSeqId = RegisterLibrarySequence("mine");
             var macroRuleset = SetRunnerMacroRuleset();
             macroRuleset.Rules.Add(new Rule
             {
                 Label = "Stay at mine",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence(mineSeqId),
                 FinishCurrentSequence = false,
                 Enabled = true,
             });
@@ -327,7 +351,8 @@ namespace ProjectGuild.Tests
             int assignmentChangedCount = 0;
             _sim.Events.Subscribe<TaskSequenceChanged>(e => assignmentChangedCount++);
 
-            var assignment = TaskSequence.CreateLoop("mine", "hub");
+            // Assign the SAME library sequence so suppression kicks in
+            var assignment = _sim.CurrentGameState.TaskSequenceLibrary.Find(s => s.Id == mineSeqId);
             _sim.AssignRunner(_runner.Id, assignment);
 
             int initialCount = assignmentChangedCount;
@@ -357,13 +382,15 @@ namespace ProjectGuild.Tests
 
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
 
+            var forestSeqId = RegisterLibrarySequence("forest");
+
             // Runner 1: macro rule to switch to forest
             var macroRuleset = SetRunnerMacroRuleset();
             macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = false,
                 Enabled = true,
             });
@@ -399,12 +426,14 @@ namespace ProjectGuild.Tests
             for (int i = 0; i < 50; i++)
                 _sim.CurrentGameState.Bank.Deposit("copper_ore", 1);
 
+            var forestSeqId = RegisterLibrarySequence("forest");
+
             var macroRuleset = SetRunnerMacroRuleset("degrade-macro");
             macroRuleset.Rules.Add(new Rule
             {
                 Label = "Deferred but no sequence",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = true, // Should degrade to immediate
                 Enabled = true,
             });
@@ -492,13 +521,14 @@ namespace ProjectGuild.Tests
                 "Inventory should not be full yet");
 
             // Now add an Immediate macro rule with a condition that's already true
+            var forestSeqId = RegisterLibrarySequence("forest");
             _sim.CurrentGameState.Bank.Deposit("copper_ore", 100);
             var macroRuleset = SetRunnerMacroRuleset("interrupt-macro");
             macroRuleset.Rules.Add(new Rule
             {
                 Label = "Switch to forest now",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence(forestSeqId),
                 FinishCurrentSequence = false, // Immediate
                 Enabled = true,
             });

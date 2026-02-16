@@ -11,10 +11,7 @@ namespace ProjectGuild.Tests
             public int Value;
         }
 
-        private struct OtherEvent
-        {
-            public string Message;
-        }
+        private struct OtherEvent { }
 
         [Test]
         public void Subscribe_And_Publish_ReceivesEvent()

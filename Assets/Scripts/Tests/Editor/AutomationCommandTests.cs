@@ -77,14 +77,14 @@ namespace ProjectGuild.Tests
             {
                 Label = "Rule A",
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence("seq-mine"),
                 Enabled = true,
             });
             ruleset.Rules.Add(new Rule
             {
                 Label = "Rule B",
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 100) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence("seq-forest"),
                 Enabled = true,
             });
             return ruleset;
@@ -269,14 +269,15 @@ namespace ProjectGuild.Tests
             {
                 Label = "Updated Rule",
                 Conditions = { Condition.InventoryFull() },
-                Action = AutomationAction.ReturnToHub(),
+                Action = AutomationAction.AssignSequence("seq-return"),
                 Enabled = false,
             };
 
             _sim.CommandUpdateRule(macro.Id, 0, updated);
 
             Assert.AreEqual("Updated Rule", macro.Rules[0].Label);
-            Assert.AreEqual(ActionType.ReturnToHub, macro.Rules[0].Action.Type);
+            Assert.AreEqual(ActionType.AssignSequence, macro.Rules[0].Action.Type);
+            Assert.AreEqual("seq-return", macro.Rules[0].Action.StringParam);
             Assert.IsFalse(macro.Rules[0].Enabled);
             Assert.AreEqual("Rule B", macro.Rules[1].Label, "Other rules should be unchanged");
         }
@@ -894,26 +895,10 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void FormatAction_WorkAt_WithGameState()
-        {
-            Setup();
-            var action = AutomationAction.WorkAt("mine");
-            var result = AutomationUIHelpers.FormatAction(action, _sim.CurrentGameState);
-            Assert.AreEqual("Work at Copper Mine", result);
-        }
-
-        [Test]
         public void FormatAction_Idle()
         {
             var result = AutomationUIHelpers.FormatAction(AutomationAction.Idle(), null);
             Assert.AreEqual("Go Idle", result);
-        }
-
-        [Test]
-        public void FormatAction_ReturnToHub()
-        {
-            var result = AutomationUIHelpers.FormatAction(AutomationAction.ReturnToHub(), null);
-            Assert.AreEqual("Return to Hub", result);
         }
 
         [Test]
@@ -947,17 +932,23 @@ namespace ProjectGuild.Tests
         public void FormatRule_FullSentence()
         {
             Setup();
+            // Register a library sequence so FormatAction can resolve the name
+            var seq = TaskSequence.CreateLoop("forest", "hub");
+            seq.Id = "seq-forest-gather";
+            seq.Name = "Gather at Pine Forest";
+            _sim.CurrentGameState.TaskSequenceLibrary.Add(seq);
+
             var rule = new Rule
             {
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 200) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence("seq-forest-gather"),
                 Enabled = true,
                 FinishCurrentSequence = true,
             };
 
             var result = AutomationUIHelpers.FormatRule(rule, _sim.CurrentGameState);
 
-            Assert.AreEqual("IF Bank contains Copper Ore >= 200 THEN Work at Pine Forest", result);
+            Assert.AreEqual("IF Bank contains Copper Ore >= 200 THEN Use Gather at Pine Forest", result);
         }
 
         [Test]

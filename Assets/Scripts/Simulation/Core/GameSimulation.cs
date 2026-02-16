@@ -117,6 +117,7 @@ namespace ProjectGuild.Simulation.Core
 
             // Remove the obsolete "default-macro" entry from the library if present
             CurrentGameState.MacroRulesetLibrary.RemoveAll(r => r.Id == "default-macro");
+
         }
 
         /// <summary>
@@ -607,7 +608,7 @@ namespace ProjectGuild.Simulation.Core
             runner.TaskSequenceId = taskSequence?.Id;
             runner.TaskSequence = taskSequence; // keep legacy field in sync for now
             runner.TaskSequenceCurrentStepIndex = 0;
-            runner.LastCompletedSequenceTargetNodeId = null;
+            runner.LastCompletedTaskSequenceId = null;
             // Don't clear MacroSuspendedUntilLoop here — WorkAt() sets it before
             // calling AssignRunner, and we want it to persist through the first cycle.
 
@@ -1005,7 +1006,7 @@ namespace ProjectGuild.Simulation.Core
         {
             var completedSeq = GetRunnerTaskSequence(runner);
             string seqName = completedSeq?.Name ?? "";
-            runner.LastCompletedSequenceTargetNodeId = completedSeq?.TargetNodeId;
+            runner.LastCompletedTaskSequenceId = completedSeq?.Id;
             runner.TaskSequenceId = null;
             runner.TaskSequence = null; // legacy sync
             runner.State = RunnerState.Idle;
@@ -1063,7 +1064,7 @@ namespace ProjectGuild.Simulation.Core
             if (ruleIndex < 0) return false;
 
             var rule = macroRuleset.Rules[ruleIndex];
-            var newSeq = ActionToTaskSequence(rule.Action);
+            var newSeq = ResolveTaskSequenceFromMacroAction(rule.Action);
 
             var currentSeq = GetRunnerTaskSequence(runner);
 
@@ -1072,19 +1073,20 @@ namespace ProjectGuild.Simulation.Core
             if (newSeq == null && currentSeq == null)
                 return false;
 
+            // Same-sequence suppression: compare by ID (both are library sequences now)
             if (currentSeq != null && newSeq != null
-                && currentSeq.TargetNodeId == newSeq.TargetNodeId)
+                && currentSeq.Id == newSeq.Id)
                 return false;
 
-            // Also suppress if the sequence just completed with the same target
+            // Also suppress if the sequence just completed with the same ID
             // (e.g., ReturnToHub completed → macro fires ReturnToHub again → suppress).
             if (currentSeq == null && newSeq != null
-                && runner.LastCompletedSequenceTargetNodeId == newSeq.TargetNodeId)
+                && runner.LastCompletedTaskSequenceId == newSeq.Id)
                 return false;
 
             // Log the decision
             LogDecision(runner, ruleIndex, rule, triggerReason,
-                newSeq != null ? $"Work @ {newSeq.TargetNodeId}" : "Idle",
+                newSeq != null ? $"Assign: {newSeq.Name ?? newSeq.Id}" : "Idle",
                 rule.FinishCurrentSequence);
 
             // Deferred: store as pending, apply at sequence boundary.
@@ -1092,14 +1094,7 @@ namespace ProjectGuild.Simulation.Core
             // there's nothing to "finish" so waiting makes no sense.
             if (rule.FinishCurrentSequence && currentSeq != null)
             {
-                // Register pending in library too
-                if (newSeq != null)
-                {
-                    if (string.IsNullOrEmpty(newSeq.Id))
-                        newSeq.Id = Guid.NewGuid().ToString();
-                    if (FindTaskSequenceInLibrary(newSeq.Id) == null)
-                        CurrentGameState.TaskSequenceLibrary.Add(newSeq);
-                }
+                // Sequence already exists in library (AssignSequence references it by ID)
                 runner.PendingTaskSequenceId = newSeq?.Id;
                 runner.PendingTaskSequence = newSeq; // legacy sync
                 return false;
@@ -1111,32 +1106,17 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Map a macro rule's action to a TaskSequence.
-        /// Returns null for Idle (clear task sequence).
+        /// Resolve a macro rule's action to a TaskSequence from the library.
+        /// AssignSequence: look up by ID. Idle: return null.
+        /// Returns null for Idle (clear task sequence) or if the referenced sequence is not found (let it break).
         /// </summary>
-        private TaskSequence ActionToTaskSequence(AutomationAction action)
+        private TaskSequence ResolveTaskSequenceFromMacroAction(AutomationAction action)
         {
-            string hubId = CurrentGameState.Map?.HubNodeId ?? "hub";
-
             switch (action.Type)
             {
-                case ActionType.WorkAt:
-                    string nodeId = string.IsNullOrEmpty(action.StringParam) ? null : action.StringParam;
-                    if (nodeId == null) return null;
-                    return TaskSequence.CreateLoop(nodeId, hubId);
-
-                case ActionType.ReturnToHub:
-                    return new TaskSequence
-                    {
-                        Id = "return-to-hub",
-                        Name = "Return to Hub",
-                        TargetNodeId = hubId,
-                        Loop = false,
-                        Steps = new System.Collections.Generic.List<TaskStep>
-                        {
-                            new TaskStep(TaskStepType.TravelTo, hubId),
-                        },
-                    };
+                case ActionType.AssignSequence:
+                    if (string.IsNullOrEmpty(action.StringParam)) return null;
+                    return FindTaskSequenceInLibrary(action.StringParam);
 
                 case ActionType.Idle:
                     return null;

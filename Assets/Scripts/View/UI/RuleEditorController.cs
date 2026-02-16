@@ -454,83 +454,40 @@ namespace ProjectGuild.View.UI
 
             if (isMacro)
             {
-                // Macro actions: Idle, Work at [Node], Return to Hub
-                var typeChoices = new List<string> { "Go Idle", "Work at...", "Return to Hub" };
-                var typeValues = new List<ActionType> { ActionType.Idle, ActionType.WorkAt, ActionType.ReturnToHub };
+                // Flat dropdown: "Go Idle" + all library sequences by name
+                var choices = new List<string> { "Go Idle" };
+                var seqIds = new List<string> { null }; // null = Idle
 
-                int currentIndex = typeValues.IndexOf(action.Type);
-                if (currentIndex < 0) currentIndex = 0;
-
-                var typeDropdown = new DropdownField(typeChoices, currentIndex);
-                typeDropdown.AddToClassList("action-type-dropdown");
-
-                var paramContainer = new VisualElement();
-                paramContainer.AddToClassList("action-params");
-
-                void RebuildActionParams(ActionType actionType)
+                if (state?.TaskSequenceLibrary != null)
                 {
-                    paramContainer.Clear();
-                    if (actionType == ActionType.WorkAt)
+                    foreach (var seq in state.TaskSequenceLibrary)
                     {
-                        // Node picker
-                        var nodeChoices = new List<string>();
-                        var nodeIds = new List<string>();
-                        if (state?.Map?.Nodes != null)
-                        {
-                            foreach (var node in state.Map.Nodes)
-                            {
-                                nodeIds.Add(node.Id);
-                                nodeChoices.Add(node.Name ?? node.Id);
-                            }
-                        }
-
-                        if (nodeChoices.Count == 0)
-                        {
-                            nodeChoices.Add("(no nodes)");
-                            nodeIds.Add("");
-                        }
-
-                        int nodeIndex = nodeIds.IndexOf(action.StringParam);
-                        if (nodeIndex < 0) nodeIndex = 0;
-
-                        var nodeDropdown = new DropdownField(nodeChoices, nodeIndex);
-                        nodeDropdown.AddToClassList("action-node-dropdown");
-                        nodeDropdown.RegisterValueChangedCallback(evt =>
-                        {
-                            int idx = nodeDropdown.index;
-                            if (idx >= 0 && idx < nodeIds.Count)
-                                onUpdate(AutomationAction.WorkAt(nodeIds[idx]));
-                        });
-                        paramContainer.Add(nodeDropdown);
+                        choices.Add(seq.Name ?? seq.Id);
+                        seqIds.Add(seq.Id);
                     }
                 }
 
-                RebuildActionParams(action.Type);
+                int currentIndex = 0; // default to Go Idle
+                if (action.Type == ActionType.AssignSequence && !string.IsNullOrEmpty(action.StringParam))
+                    currentIndex = seqIds.IndexOf(action.StringParam);
+                if (currentIndex < 0) currentIndex = 0;
 
-                typeDropdown.RegisterValueChangedCallback(evt =>
+                var dropdown = new DropdownField(choices, currentIndex);
+                dropdown.AddToClassList("action-type-dropdown");
+
+                dropdown.RegisterValueChangedCallback(evt =>
                 {
-                    int idx = typeDropdown.index;
-                    if (idx >= 0 && idx < typeValues.Count)
+                    int idx = dropdown.index;
+                    if (idx >= 0 && idx < seqIds.Count)
                     {
-                        switch (typeValues[idx])
-                        {
-                            case ActionType.Idle:
-                                onUpdate(AutomationAction.Idle());
-                                break;
-                            case ActionType.WorkAt:
-                                string defaultNode = state?.Map?.Nodes?.Count > 0
-                                    ? state.Map.Nodes[0].Id : "";
-                                onUpdate(AutomationAction.WorkAt(defaultNode));
-                                break;
-                            case ActionType.ReturnToHub:
-                                onUpdate(AutomationAction.ReturnToHub());
-                                break;
-                        }
+                        if (seqIds[idx] == null)
+                            onUpdate(AutomationAction.Idle());
+                        else
+                            onUpdate(AutomationAction.AssignSequence(seqIds[idx]));
                     }
                 });
 
-                container.Add(typeDropdown);
-                container.Add(paramContainer);
+                container.Add(dropdown);
             }
             else
             {

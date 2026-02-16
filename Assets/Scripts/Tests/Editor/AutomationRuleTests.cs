@@ -55,7 +55,7 @@ namespace ProjectGuild.Tests
                     Condition.AtNode("mine"),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 10),
                 },
-                Action = AutomationAction.WorkAt("deep_mine"),
+                Action = AutomationAction.AssignSequence("deep_mine"),
             };
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -75,7 +75,7 @@ namespace ProjectGuild.Tests
                     Condition.AtNode("mine"),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 10),
                 },
-                Action = AutomationAction.WorkAt("deep_mine"),
+                Action = AutomationAction.AssignSequence("deep_mine"),
             };
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -105,14 +105,14 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence("mine"),
             });
 
             // Rule 1: Always -> TravelTo forest (should never match)
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence("forest"),
             });
 
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
@@ -129,7 +129,7 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence("mine"),
                 Enabled = false,
             });
 
@@ -137,7 +137,7 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence("forest"),
             });
 
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
@@ -186,7 +186,7 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.AtNode("mine") },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence("mine"),
             });
 
             // Rule 1: Always -> fallback
@@ -216,20 +216,20 @@ namespace ProjectGuild.Tests
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50) },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence("forest"),
             });
 
-            // Rule 1: Always -> WorkAt mine (lower priority, suppressed)
+            // Rule 1: Always -> AssignSequence mine (lower priority, suppressed)
             ruleset.Rules.Add(new Rule
             {
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.WorkAt("mine"),
+                Action = AutomationAction.AssignSequence("mine"),
             });
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
             int result = RuleEvaluator.EvaluateRuleset(ruleset, _ctx);
             Assert.AreEqual(0, result);
-            Assert.AreEqual(ActionType.WorkAt, ruleset.Rules[result].Action.Type);
+            Assert.AreEqual(ActionType.AssignSequence, ruleset.Rules[result].Action.Type);
         }
 
         [Test]
@@ -250,7 +250,7 @@ namespace ProjectGuild.Tests
                     Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 15),
                 },
-                Action = AutomationAction.WorkAt("deep_mine"),
+                Action = AutomationAction.AssignSequence("deep_mine"),
             });
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -273,7 +273,7 @@ namespace ProjectGuild.Tests
                     Condition.AtNode("mine"),
                     Condition.SkillLevel(SkillType.Mining, ComparisonOperator.GreaterOrEqual, 15),
                 },
-                Action = AutomationAction.WorkAt("deep_mine"),
+                Action = AutomationAction.AssignSequence("deep_mine"),
             });
 
             _ctx = new EvaluationContext(_runner, _gameState, _config);
@@ -353,7 +353,7 @@ namespace ProjectGuild.Tests
                 {
                     Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, 50),
                 },
-                Action = AutomationAction.WorkAt("forest"),
+                Action = AutomationAction.AssignSequence("forest"),
             });
 
             var copy = original.DeepCopy();
