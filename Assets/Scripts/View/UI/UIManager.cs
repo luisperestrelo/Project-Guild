@@ -39,25 +39,24 @@ namespace ProjectGuild.View.UI
         private VisualElement _tooltip;
         private Label _tooltipLabel;
 
+        // ─── Pointer-over-UI tracking ───────────────────
+        // Uses PointerEnter/LeaveEvent instead of manual ScreenToPanel + panel.Pick(),
+        // which had coordinate mismatch issues (blocking zone shifted relative to visual panel).
+        // Event-driven tracking uses UI Toolkit's own hit testing — no coordinate transforms needed.
+        private bool _isPointerOverDetailsPanel;
+
         public string SelectedRunnerId => _selectedRunnerId;
         public GameSimulation Simulation => _simulationRunner?.Simulation;
 
         /// <summary>
-        /// Returns true if the mouse pointer is over a UI Toolkit element that handles input
-        /// (i.e. not set to PickingMode.Ignore). Used by CameraController to block zoom-through.
+        /// Returns true if the mouse pointer is over any interactive UI panel.
+        /// Used by CameraController to block zoom/orbit when hovering over UI.
         /// </summary>
         public bool IsPointerOverUI()
         {
-            if (_uiDocument == null) return false;
-            var panel = _uiDocument.rootVisualElement?.panel;
-            if (panel == null) return false;
-
-            var mousePos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
-            var panelPos = UnityEngine.UIElements.RuntimePanelUtils.ScreenToPanel(
-                panel, new Vector2(mousePos.x, mousePos.y));
-            var picked = panel.Pick(panelPos);
-
-            return picked != null && picked.pickingMode != PickingMode.Ignore;
+            if (_isPointerOverDetailsPanel) return true;
+            if (_automationPanelController?.IsOpen == true) return true;
+            return false;
         }
 
         /// <summary>
@@ -99,6 +98,12 @@ namespace ProjectGuild.View.UI
             detailsInstance.style.flexGrow = 1;
             detailsContainer.Add(detailsInstance);
             _detailsPanelController = new RunnerDetailsPanelController(detailsInstance, this, _automationTabAsset);
+
+            // Track pointer over details panel for zoom/orbit blocking.
+            // Using PointerEnter/Leave events (UI Toolkit's own hit testing) instead of
+            // manual ScreenToPanel + panel.Pick() which had coordinate mismatch issues.
+            detailsContainer.RegisterCallback<PointerEnterEvent>(_ => _isPointerOverDetailsPanel = true);
+            detailsContainer.RegisterCallback<PointerLeaveEvent>(_ => _isPointerOverDetailsPanel = false);
 
             // Automation panel (overlay)
             if (_automationPanelAsset != null)

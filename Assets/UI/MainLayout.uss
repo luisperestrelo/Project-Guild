@@ -17,7 +17,7 @@
     bottom: 0;
     right: 0;
     width: 550px;
-    height: 770px;
+    height: 500px;
     overflow: hidden;
     background-color: rgba(15, 15, 25, 0.92);
     border-width: 1px;
