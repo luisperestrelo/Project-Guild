@@ -1,0 +1,24 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:Style src="MainLayout.uss" />
+
+    <!-- Root container: full screen, transparent, clicks pass through to 3D world -->
+    <ui:VisualElement name="root" class="root" picking-mode="Ignore">
+
+        <!-- TOP: Runner portrait bar -->
+        <ui:VisualElement name="portrait-bar-container" class="portrait-bar-container" picking-mode="Ignore">
+            <!-- Portraits inserted dynamically by RunnerPortraitBarController -->
+        </ui:VisualElement>
+
+        <!-- CENTER: empty spacer, 3D viewport shows through -->
+        <ui:VisualElement name="viewport-spacer" class="viewport-spacer" picking-mode="Ignore" />
+
+        <!-- BOTTOM ROW: details panel on the right -->
+        <ui:VisualElement name="bottom-row" class="bottom-row" picking-mode="Ignore">
+            <!-- Left spacer (future: logbook goes here) -->
+            <ui:VisualElement name="bottom-left-spacer" class="bottom-left-spacer" picking-mode="Ignore" />
+
+            <!-- Right: Runner details panel -->
+            <ui:VisualElement name="details-panel-container" class="details-panel-container" picking-mode="Ignore" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

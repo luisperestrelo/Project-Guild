@@ -457,6 +457,21 @@ Orbit camera with zoom. Uses Unity's New Input System (inline action definitions
 ### `View/Runners/RunnerVisual.cs`
 MonoBehaviour attached to each runner's 3D representation. Handles interpolated movement between positions set by VisualSyncSystem — the simulation ticks at 10/sec but the view renders at 60fps, so RunnerVisual smoothly interpolates between tick positions over one tick interval. Also creates and manages a floating name label (TextMeshPro) that billboards toward the camera.
 
+### `View/UI/UIManager.cs`
+Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates `RunnerPortraitBarController` and `RunnerDetailsPanelController` as plain C# controller objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` to refresh both controllers every tick (10/sec). Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`.
+
+### `View/UI/RunnerPortraitBarController.cs`
+Plain C# class (not MonoBehaviour). Manages the portrait bar at the top of the screen. Clones `RunnerPortrait.uxml` templates per runner. Handles click-to-select (USS class `selected` toggle) and periodic state label refresh. Each portrait shows runner name and short state text.
+
+### `View/UI/RunnerDetailsPanelController.cs`
+Plain C# class. Manages the bottom-right details panel showing the Overview tab for the selected runner: name, state+location, current task (from `GetRunnerTaskSequence`), travel progress bar, inventory summary with item aggregation, and all 15 skills with level/passion/XP progress bars. Skill rows are built programmatically once at construction. Tab headers for Inventory, Equipment, and Automation are present but disabled (future batches).
+
+### UI Assets — `Assets/UI/`
+`MainLayout.uxml/.uss` — Root layout with flexbox: portrait bar (top), viewport spacer (center), details panel container (bottom-right). All containers use `picking-mode: ignore` so mouse clicks pass through to the 3D world.
+`RunnerPortrait.uxml/.uss` — Template for one portrait, cloned per runner. Dark background, gold border on `.selected`, hover effect.
+`RunnerDetailsPanel.uxml/.uss` — Bottom-right panel with tab bar and ScrollView content. Dark theme with gold section headers.
+`PanelSettings.asset` — Scale With Screen Size, 1920x1080 reference, controls UI scaling across resolutions.
+
 ---
 
 ## Scripts — Tests

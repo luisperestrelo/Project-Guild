@@ -1,0 +1,63 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="RunnerDetailsPanel.uss" />
+    <ui:VisualElement name="details-root" class="details-root">
+
+        <!-- Tab bar -->
+        <ui:VisualElement name="tab-bar" class="tab-bar">
+            <ui:Button name="tab-overview" class="tab-button tab-active" text="Overview" />
+            <ui:Button name="tab-inventory" class="tab-button" text="Inventory" />
+            <ui:Button name="tab-skills" class="tab-button" text="Skills" />
+            <ui:Button name="tab-equipment" class="tab-button tab-disabled" text="Equipment" />
+            <ui:Button name="tab-automation" class="tab-button tab-disabled" text="Automation" />
+        </ui:VisualElement>
+
+        <!-- ─── Overview Tab ──────────────────────────────── -->
+        <ui:ScrollView name="tab-content-overview" class="tab-content">
+
+            <!-- Header: Name + State -->
+            <ui:VisualElement name="overview-header" class="overview-section">
+                <ui:Label name="runner-name-label" class="runner-name" text="Runner Name" />
+                <ui:Label name="runner-state-label" class="runner-state" text="Idle at Guild Hall" />
+            </ui:VisualElement>
+
+            <!-- Task info -->
+            <ui:VisualElement name="task-section" class="overview-section">
+                <ui:Label name="section-label-task" class="section-label" text="Current Task" />
+                <ui:Label name="task-info-label" class="info-value" text="No active task" />
+                <ui:VisualElement name="travel-progress-container" class="travel-progress-container">
+                    <ui:Label name="travel-progress-label" class="info-label" text="Travel:" />
+                    <ui:ProgressBar name="travel-progress-bar" class="travel-progress-bar" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Inventory summary (brief, full view in Inventory tab) -->
+            <ui:VisualElement name="inventory-section" class="overview-section">
+                <ui:Label name="section-label-inventory" class="section-label" text="Inventory" />
+                <ui:Label name="inventory-summary-label" class="info-value" text="0 / 28 slots" />
+                <ui:VisualElement name="inventory-items-container" class="inventory-items-container" />
+            </ui:VisualElement>
+
+            <!-- Skills summary (brief, full view in Skills tab) -->
+            <ui:VisualElement name="skills-summary-section" class="overview-section overview-section-last">
+                <ui:Label name="section-label-skills-summary" class="section-label" text="Skills" />
+                <ui:Label name="skills-summary-label" class="info-value" text="" />
+            </ui:VisualElement>
+
+        </ui:ScrollView>
+
+        <!-- ─── Inventory Tab ─────────────────────────────── -->
+        <ui:ScrollView name="tab-content-inventory" class="tab-content tab-content-hidden">
+            <ui:Label name="inventory-tab-header" class="section-label" text="Inventory" />
+            <ui:Label name="inventory-tab-summary" class="info-value" text="0 / 28 slots" />
+            <ui:VisualElement name="inventory-grid" class="inventory-grid" />
+        </ui:ScrollView>
+
+        <!-- ─── Skills Tab ────────────────────────────────── -->
+        <ui:ScrollView name="tab-content-skills" class="tab-content tab-content-hidden">
+            <ui:Label name="skills-tab-header" class="section-label" text="Skills" />
+            <!-- 15 skill rows added dynamically by RunnerDetailsPanelController -->
+            <ui:VisualElement name="skills-list" class="skills-list" />
+        </ui:ScrollView>
+
+    </ui:VisualElement>
+</ui:UXML>

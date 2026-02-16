@@ -1,0 +1,10 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="RunnerPortrait.uss" />
+    <ui:VisualElement name="portrait-root" class="portrait">
+        <!-- Name and state float at the bottom over the portrait background -->
+        <ui:VisualElement name="portrait-label-bar" class="portrait-label-bar" picking-mode="Ignore">
+            <ui:Label name="portrait-name" class="portrait-name" text="Runner" picking-mode="Ignore" />
+            <ui:Label name="portrait-state" class="portrait-state" text="Idle" picking-mode="Ignore" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

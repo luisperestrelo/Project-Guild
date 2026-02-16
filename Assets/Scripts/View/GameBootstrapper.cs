@@ -24,9 +24,11 @@ namespace ProjectGuild.View
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private VisualSyncSystem _visualSyncSystem;
         [SerializeField] private CameraController _cameraController;
+        [SerializeField] private UI.UIManager _uiManager;
 
         private InputAction _clickAction;
         private bool _clickedThisFrame;
+        private bool _debugUIEnabled = true;
 
         private void Awake()
         {
@@ -45,6 +47,8 @@ namespace ProjectGuild.View
                 _visualSyncSystem = GetComponent<VisualSyncSystem>();
             if (_cameraController == null)
                 _cameraController = FindAnyObjectByType<CameraController>();
+            if (_uiManager == null)
+                _uiManager = FindAnyObjectByType<UI.UIManager>();
 
             // Start a new game
             _simulationRunner.StartNewGame();
@@ -54,6 +58,10 @@ namespace ProjectGuild.View
 
             // Point camera at first runner
             SelectRunner(0);
+
+            // Initialize real UI (after sim + visuals are ready)
+            if (_uiManager != null)
+                _uiManager.Initialize();
         }
 
         // ─── Runner Selection + Camera ───────────────────────────────
@@ -77,6 +85,10 @@ namespace ProjectGuild.View
 
         private void Update()
         {
+            // F1 toggles debug UI
+            if (Keyboard.current.f1Key.wasPressedThisFrame)
+                _debugUIEnabled = !_debugUIEnabled;
+
             // Track click for this frame — consumed in OnGUI if it hit UI,
             // otherwise processed here for world-space runner picking.
             if (_clickAction.WasPressedThisFrame())
@@ -165,6 +177,8 @@ namespace ProjectGuild.View
 
         private void OnGUI()
         {
+            if (!_debugUIEnabled) return;
+
             var sim = _simulationRunner.Simulation;
             if (sim == null || sim.CurrentGameState.Runners.Count == 0) return;
 

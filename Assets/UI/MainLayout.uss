@@ -1,0 +1,28 @@
+.root {
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+.portrait-bar-container {
+    flex-direction: row;
+    justify-content: center;
+    height: 192px;
+    padding: 8px 8px;
+}
+
+.viewport-spacer {
+    flex-grow: 1;
+}
+
+.bottom-row {
+    flex-direction: row;
+    height: 380px;
+}
+
+.bottom-left-spacer {
+    flex-grow: 1;
+}
+
+.details-panel-container {
+    width: 420px;
+}

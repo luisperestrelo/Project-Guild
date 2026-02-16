@@ -1,0 +1,86 @@
+.portrait {
+    width: 120px;
+    height: 176px;
+    margin-right: 8px;
+    background-color: rgb(50, 50, 70);
+    background-image: url('/Assets/Art/PlaceholderPortrait.png');
+    -unity-background-scale-mode: scale-and-crop;
+    border-width: 1px;
+    border-color: rgba(100, 100, 120, 0.6);
+    border-radius: 4px;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.portrait:hover {
+    border-color: rgba(180, 180, 200, 0.8);
+    background-color: rgb(60, 60, 80);
+}
+
+.portrait.selected {
+    border-color: rgb(220, 180, 60);
+    border-width: 2px;
+    background-color: rgb(55, 50, 65);
+}
+
+/* Semi-transparent bar at the bottom for name/state readability */
+.portrait-label-bar {
+    background-color: rgba(10, 10, 20, 0.75);
+    padding: 4px 6px;
+    border-radius: 0 0 3px 3px;
+}
+
+.portrait-name {
+    font-size: 12px;
+    color: rgb(220, 220, 220);
+    -unity-text-align: middle-center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.portrait-state {
+    font-size: 11px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    /* Default color — overridden per-state in C# */
+    color: rgb(180, 180, 200);
+}
+
+/* State color classes applied by RunnerPortraitBarController */
+.state-idle {
+    color: rgb(220, 150, 50);
+}
+
+.state-traveling {
+    color: rgb(100, 180, 255);
+}
+
+.state-gathering {
+    color: rgb(100, 220, 100);
+}
+
+.state-depositing {
+    color: rgb(220, 180, 60);
+}
+
+/* ─── Node group separators ──────────────────────── */
+
+.portrait-node-separator {
+    justify-content: flex-end;
+    align-items: center;
+    margin-left: 12px;
+    margin-right: 4px;
+}
+
+.portrait-node-separator:first-child {
+    margin-left: 0;
+}
+
+.portrait-node-label {
+    font-size: 10px;
+    color: rgb(160, 160, 180);
+    -unity-text-align: middle-center;
+    margin-bottom: 4px;
+    white-space: nowrap;
+}
