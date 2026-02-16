@@ -75,11 +75,18 @@ namespace ProjectGuild.View
 
             _selectedRunnerIndex = index;
             var runner = sim.CurrentGameState.Runners[index];
-            var visual = _visualSyncSystem.GetRunnerVisual(runner.Id);
 
-            if (_cameraController != null && visual != null)
+            // Update real UI (portrait selection, details panel, camera)
+            if (_uiManager != null)
             {
-                _cameraController.SetTarget(visual);
+                _uiManager.SelectRunner(runner.Id);
+            }
+            else
+            {
+                // Fallback if UIManager not present
+                var visual = _visualSyncSystem.GetRunnerVisual(runner.Id);
+                if (_cameraController != null && visual != null)
+                    _cameraController.SetTarget(visual);
             }
         }
 
@@ -102,10 +109,32 @@ namespace ProjectGuild.View
             if (_clickedThisFrame)
             {
                 _clickedThisFrame = false;
+                // Skip if click hit IMGUI
                 if (GUIUtility.hotControl > 0) return;
+                // Skip if click hit UI Toolkit (check if pointer is over a non-ignored element)
+                if (IsPointerOverUIToolkit()) return;
 
                 TryPickRunner();
             }
+        }
+
+        private bool IsPointerOverUIToolkit()
+        {
+            if (_uiManager == null) return false;
+            var uiDoc = _uiManager.GetComponent<UnityEngine.UIElements.UIDocument>();
+            if (uiDoc == null) return false;
+            var panel = uiDoc.rootVisualElement?.panel;
+            if (panel == null) return false;
+
+            // Pick the topmost element at the mouse position
+            var mousePos = Mouse.current.position.ReadValue();
+            // Convert screen position to panel coordinates
+            var panelPos = UnityEngine.UIElements.RuntimePanelUtils.ScreenToPanel(
+                panel, new UnityEngine.Vector2(mousePos.x, mousePos.y));
+            var picked = panel.Pick(panelPos);
+
+            // If picked element exists and isn't set to Ignore, UI is blocking
+            return picked != null && picked.pickingMode != UnityEngine.UIElements.PickingMode.Ignore;
         }
 
         private void TryPickRunner()

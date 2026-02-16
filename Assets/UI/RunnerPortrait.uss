@@ -23,6 +23,10 @@
     background-color: rgb(55, 50, 65);
 }
 
+.portrait.dragging {
+    opacity: 0.35;
+}
+
 /* Semi-transparent bar at the bottom for name/state readability */
 .portrait-label-bar {
     background-color: rgba(10, 10, 20, 0.75);
@@ -73,7 +77,8 @@
     margin-right: 4px;
 }
 
-.portrait-node-separator:first-child {
+/* First separator has no left margin — applied via C# */
+.portrait-node-separator-first {
     margin-left: 0;
 }
 

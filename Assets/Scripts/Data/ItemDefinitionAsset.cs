@@ -21,6 +21,9 @@ namespace ProjectGuild.Data
         [Tooltip("Category for sorting, filtering, and UI grouping.")]
         public ItemCategory Category;
 
+        [Tooltip("Icon shown in inventory slots, tooltips, and other UI.")]
+        public Sprite Icon;
+
         [Tooltip("Whether this item stacks in inventory. Most raw materials will stack once we implement stacking.")]
         public bool Stackable = false;
 

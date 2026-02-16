@@ -223,6 +223,12 @@
     background-color: rgba(35, 40, 55, 0.9);
 }
 
+.inventory-slot-icon {
+    width: 32px;
+    height: 32px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
 .inventory-slot-label {
     font-size: 8px;
     color: rgb(180, 200, 220);

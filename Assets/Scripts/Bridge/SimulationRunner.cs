@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Data;
@@ -38,6 +39,13 @@ namespace ProjectGuild.Bridge
         /// </summary>
         public EventBus Events => Simulation?.Events;
 
+        /// <summary>
+        /// Item icons extracted from ItemDefinitionAssets during Awake.
+        /// Keyed by item ID. View layer uses this for inventory/tooltip rendering.
+        /// </summary>
+        public IReadOnlyDictionary<string, Sprite> ItemIcons => _itemIcons;
+        private readonly Dictionary<string, Sprite> _itemIcons = new();
+
         private float _tickAccumulator;
         private float _tickInterval;
 
@@ -46,6 +54,16 @@ namespace ProjectGuild.Bridge
             _tickInterval = 1f / _tickRate;
             var config = _configAsset != null ? _configAsset.ToConfig() : new SimulationConfig();
             Simulation = new GameSimulation(config, _tickRate);
+
+            // Extract item icons from assets for view-layer use
+            if (_configAsset != null)
+            {
+                foreach (var itemAsset in _configAsset.ItemDefinitions)
+                {
+                    if (itemAsset != null && itemAsset.Icon != null)
+                        _itemIcons[itemAsset.Id] = itemAsset.Icon;
+                }
+            }
         }
 
         /// <summary>

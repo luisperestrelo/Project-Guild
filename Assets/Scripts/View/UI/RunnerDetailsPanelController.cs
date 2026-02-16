@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Core;
 
@@ -46,8 +47,10 @@ namespace ProjectGuild.View.UI
         private readonly Label _inventoryTabSummary;
         private readonly VisualElement _inventoryGrid;
         private readonly List<VisualElement> _inventorySlots = new();
+        private readonly List<VisualElement> _inventorySlotIcons = new();
         private readonly List<Label> _inventorySlotLabels = new();
         private readonly List<Label> _inventorySlotQuantities = new();
+        private string[] _slotTooltips = new string[0];
 
         private string _currentRunnerId;
 
@@ -91,6 +94,7 @@ namespace ProjectGuild.View.UI
             _inventoryTabSummary = root.Q<Label>("inventory-tab-summary");
             _inventoryGrid = root.Q("inventory-grid");
             BuildInventoryGrid();
+            _slotTooltips = new string[_inventorySlots.Count];
         }
 
         private void SwitchTab(string tabName)
@@ -236,13 +240,34 @@ namespace ProjectGuild.View.UI
                     string name = itemDef?.Name ?? slot.ItemId;
 
                     _inventorySlots[i].AddToClassList("inventory-slot-filled");
-                    _inventorySlotLabels[i].text = name;
+                    _slotTooltips[i] = slot.Quantity > 1 ? $"{name} x{slot.Quantity}" : name;
+
+                    // Show icon if available, fall back to text label
+                    var iconSprite = _uiManager.GetItemIcon(slot.ItemId);
+                    if (iconSprite != null)
+                    {
+                        _inventorySlotIcons[i].style.backgroundImage = new StyleBackground(iconSprite);
+                        _inventorySlotIcons[i].style.display = DisplayStyle.Flex;
+                        _inventorySlotLabels[i].style.display = DisplayStyle.None;
+                    }
+                    else
+                    {
+                        _inventorySlotIcons[i].style.backgroundImage = StyleKeyword.None;
+                        _inventorySlotIcons[i].style.display = DisplayStyle.None;
+                        _inventorySlotLabels[i].style.display = DisplayStyle.Flex;
+                        _inventorySlotLabels[i].text = name;
+                    }
+
                     _inventorySlotQuantities[i].text = slot.Quantity > 1 ? $"x{slot.Quantity}" : "";
                     _inventorySlotQuantities[i].style.display = DisplayStyle.Flex;
                 }
                 else
                 {
                     _inventorySlots[i].RemoveFromClassList("inventory-slot-filled");
+                    _slotTooltips[i] = "";
+                    _inventorySlotIcons[i].style.backgroundImage = StyleKeyword.None;
+                    _inventorySlotIcons[i].style.display = DisplayStyle.None;
+                    _inventorySlotLabels[i].style.display = DisplayStyle.Flex;
                     _inventorySlotLabels[i].text = "";
                     _inventorySlotQuantities[i].text = "";
                 }
@@ -309,6 +334,11 @@ namespace ProjectGuild.View.UI
                 var slot = new VisualElement();
                 slot.AddToClassList("inventory-slot");
 
+                var icon = new VisualElement();
+                icon.AddToClassList("inventory-slot-icon");
+                icon.pickingMode = PickingMode.Ignore;
+                slot.Add(icon);
+
                 var label = new Label("");
                 label.AddToClassList("inventory-slot-label");
                 label.pickingMode = PickingMode.Ignore;
@@ -321,8 +351,13 @@ namespace ProjectGuild.View.UI
 
                 _inventoryGrid.Add(slot);
                 _inventorySlots.Add(slot);
+                _inventorySlotIcons.Add(icon);
                 _inventorySlotLabels.Add(label);
                 _inventorySlotQuantities.Add(quantity);
+
+                // Tooltip reads from the slot's current tooltip field (set during refresh)
+                int slotIndex = i;
+                _uiManager.RegisterTooltip(slot, () => _slotTooltips[slotIndex]);
             }
         }
 

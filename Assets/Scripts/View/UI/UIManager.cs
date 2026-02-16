@@ -32,8 +32,21 @@ namespace ProjectGuild.View.UI
         private string _selectedRunnerId;
         private bool _initialized;
 
+        // ─── Tooltip ─────────────────────────────────────
+        private VisualElement _tooltip;
+        private Label _tooltipLabel;
+
         public string SelectedRunnerId => _selectedRunnerId;
         public GameSimulation Simulation => _simulationRunner?.Simulation;
+
+        /// <summary>
+        /// Get the icon sprite for an item by its ID. Returns null if no icon is assigned.
+        /// </summary>
+        public Sprite GetItemIcon(string itemId)
+        {
+            if (_simulationRunner?.ItemIcons == null) return null;
+            return _simulationRunner.ItemIcons.TryGetValue(itemId, out var icon) ? icon : null;
+        }
 
         /// <summary>
         /// Initialize the UI after the simulation and visual world are ready.
@@ -72,6 +85,9 @@ namespace ProjectGuild.View.UI
             _simulationRunner.Events.Subscribe<SimulationTickCompleted>(OnSimulationTick);
             _simulationRunner.Events.Subscribe<RunnerCreated>(OnRunnerCreated);
 
+            // Build tooltip element (shared across all UI)
+            BuildTooltip(root);
+
             // Select first runner
             var runners = Simulation.CurrentGameState.Runners;
             if (runners.Count > 0)
@@ -104,6 +120,62 @@ namespace ProjectGuild.View.UI
         private void OnRunnerCreated(RunnerCreated evt)
         {
             _portraitBarController?.AddPortrait(evt.RunnerId);
+        }
+
+        // ─── Tooltip ─────────────────────────────────────
+
+        private void BuildTooltip(VisualElement root)
+        {
+            _tooltip = new VisualElement();
+            _tooltip.pickingMode = PickingMode.Ignore;
+            _tooltip.style.position = Position.Absolute;
+            _tooltip.style.backgroundColor = new StyleColor(new Color(0.08f, 0.08f, 0.12f, 0.95f));
+            _tooltip.style.borderTopWidth = _tooltip.style.borderBottomWidth =
+                _tooltip.style.borderLeftWidth = _tooltip.style.borderRightWidth = 1;
+            _tooltip.style.borderTopColor = _tooltip.style.borderBottomColor =
+                _tooltip.style.borderLeftColor = _tooltip.style.borderRightColor =
+                    new StyleColor(new Color(0.4f, 0.4f, 0.5f));
+            _tooltip.style.borderTopLeftRadius = _tooltip.style.borderTopRightRadius =
+                _tooltip.style.borderBottomLeftRadius = _tooltip.style.borderBottomRightRadius = 3;
+            _tooltip.style.paddingLeft = _tooltip.style.paddingRight = 8;
+            _tooltip.style.paddingTop = _tooltip.style.paddingBottom = 4;
+            _tooltip.style.display = DisplayStyle.None;
+
+            _tooltipLabel = new Label();
+            _tooltipLabel.pickingMode = PickingMode.Ignore;
+            _tooltipLabel.style.color = new StyleColor(new Color(0.9f, 0.9f, 0.95f));
+            _tooltipLabel.style.fontSize = 12;
+            _tooltip.Add(_tooltipLabel);
+
+            root.Add(_tooltip);
+        }
+
+        /// <summary>
+        /// Register an element to show a tooltip on hover. The text callback
+        /// is evaluated on each pointer enter so it stays current.
+        /// </summary>
+        public void RegisterTooltip(VisualElement element, System.Func<string> getText)
+        {
+            element.RegisterCallback<PointerEnterEvent>(evt =>
+            {
+                string text = getText();
+                if (string.IsNullOrEmpty(text)) return;
+                _tooltipLabel.text = text;
+                _tooltip.style.display = DisplayStyle.Flex;
+            });
+
+            element.RegisterCallback<PointerLeaveEvent>(evt =>
+            {
+                _tooltip.style.display = DisplayStyle.None;
+            });
+
+            element.RegisterCallback<PointerMoveEvent>(evt =>
+            {
+                if (_tooltip.style.display == DisplayStyle.None) return;
+                // Position tooltip offset from pointer (below-right)
+                _tooltip.style.left = evt.position.x + 12;
+                _tooltip.style.top = evt.position.y + 16;
+            });
         }
 
         private void OnDestroy()
