@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Core;
@@ -452,17 +453,19 @@ namespace ProjectGuild.View.UI
 
         private static string FormatSkillsSummary(Runner runner)
         {
-            var notable = new List<string>();
+            // Show top 5 skills by level
+            var skills = new List<(string name, int level)>();
             for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
-            {
-                var skill = runner.Skills[i];
-                if (skill.Level > 1)
-                    notable.Add($"{(SkillType)i} {skill.Level}");
-            }
+                skills.Add(((SkillType)i).ToString(), runner.Skills[i].Level);
 
-            if (notable.Count == 0) return "All skills level 1";
-            if (notable.Count <= 3) return string.Join(", ", notable);
-            return string.Join(", ", notable.GetRange(0, 3)) + $" (+{notable.Count - 3} more)";
+            skills.Sort((a, b) => b.level.CompareTo(a.level));
+
+            // If everything is level 1, just say so
+            if (skills[0].level <= 1) return "All skills level 1";
+
+            int count = System.Math.Min(5, skills.Count);
+            var top = skills.GetRange(0, count);
+            return string.Join(", ", top.Select(s => $"{s.name} {s.level}"));
         }
     }
 }
