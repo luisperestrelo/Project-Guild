@@ -8,27 +8,48 @@ namespace ProjectGuild.View.UI
     /// <summary>
     /// Master-detail editor for the Macro Ruleset library.
     /// Left pane: searchable list of all macro rulesets.
-    /// Right pane: editor for the selected ruleset (name, category, rules, used-by).
+    /// Right pane: editor for the selected ruleset (name, rules, used-by).
     ///
-    /// Rule editing (add/remove/reorder/edit conditions+actions) is implemented in Batch D.
-    /// This controller provides the full master-detail shell with CRUD and read-only rule display.
+    /// Uses persistent elements: the editor shell (name field, banner, footer)
+    /// is built once and updated in-place. Only the rules container rebuilds,
+    /// and only when the rule count or ruleset ID changes. The list pane tracks
+    /// items by ID and toggles selection CSS without full rebuild.
     /// </summary>
     public class MacroRulesetEditorController
     {
         private readonly UIManager _uiManager;
         private readonly VisualElement _root;
 
-        // List pane
+        // List pane (persistent UXML elements)
         private readonly Button _btnNew;
         private readonly TextField _searchField;
         private readonly ScrollView _listScroll;
 
-        // Editor pane
+        // List item cache — avoids full Clear+Rebuild on selection change
+        private readonly Dictionary<string, (VisualElement item, Label nameLabel, Label infoLabel)> _listItemCache = new();
+
+        // Editor pane (persistent UXML elements)
         private readonly Label _emptyLabel;
         private readonly VisualElement _editorContent;
 
+        // Editor shell (built once, updated in-place)
+        private VisualElement _banner;
+        private Label _bannerText;
+        private Button _cloneBannerBtn;
+        private TextField _nameField;
+        private Label _rulesHeader;
+        private VisualElement _rulesContainer;
+        private Button _addRuleBtn;
+        private VisualElement _footer;
+        private Label _usedByLabel;
+        private Button _cloneBtn;
+        private Button _resetBtn;
+        private Button _deleteBtn;
+        private bool _editorShellBuilt;
+
         private string _selectedId;
         private string _searchFilter = "";
+        private string _cachedRulesShapeKey;
 
         public MacroRulesetEditorController(VisualElement root, UIManager uiManager)
         {
@@ -45,23 +66,39 @@ namespace ProjectGuild.View.UI
             _searchField.RegisterValueChangedCallback(evt =>
             {
                 _searchFilter = evt.newValue?.ToLowerInvariant() ?? "";
-                RefreshList();
+                RebuildList();
             });
         }
 
         public void SelectItem(string id)
         {
+            var oldId = _selectedId;
             _selectedId = id;
-            RefreshList();
+
+            // Toggle selection CSS without rebuilding the list
+            if (oldId != null && _listItemCache.TryGetValue(oldId, out var oldItem))
+                oldItem.item.RemoveFromClassList("list-item-selected");
+            if (id != null && _listItemCache.TryGetValue(id, out var newItem))
+                newItem.item.AddToClassList("list-item-selected");
+
             RefreshEditor();
         }
 
         public void RefreshList()
         {
+            // Full list rebuild — only called on search filter change, CRUD, or panel open
+            RebuildList();
+        }
+
+        // ─── List Pane ──────────────────────────────
+
+        private void RebuildList()
+        {
             var sim = _uiManager.Simulation;
             if (sim == null) return;
 
             _listScroll.Clear();
+            _listItemCache.Clear();
 
             foreach (var ruleset in sim.CurrentGameState.MacroRulesetLibrary)
             {
@@ -88,18 +125,104 @@ namespace ProjectGuild.View.UI
                 item.Add(infoLabel);
 
                 string capturedId = ruleset.Id;
-                item.RegisterCallback<ClickEvent>(evt =>
-                {
-                    _selectedId = capturedId;
-                    RefreshList();
-                    RefreshEditor();
-                });
+                item.RegisterCallback<ClickEvent>(evt => SelectItem(capturedId));
 
                 _listScroll.Add(item);
+                _listItemCache[ruleset.Id] = (item, nameLabel, infoLabel);
             }
+        }
 
-            // Also refresh editor (usage counts may have changed)
-            RefreshEditor();
+        /// <summary>
+        /// Update a list item's name label in-place (e.g., during rename).
+        /// Avoids full list rebuild on every keystroke.
+        /// </summary>
+        private void UpdateListItemName(string id, string newName)
+        {
+            if (_listItemCache.TryGetValue(id, out var cached))
+                cached.nameLabel.text = newName;
+        }
+
+        // ─── Editor Pane ──────────────────────────────
+
+        private void BuildEditorShell()
+        {
+            if (_editorShellBuilt) return;
+            _editorShellBuilt = true;
+
+            // Shared template banner
+            _banner = new VisualElement();
+            _banner.AddToClassList("shared-banner");
+            _bannerText = new Label();
+            _bannerText.AddToClassList("shared-banner-text");
+            _banner.Add(_bannerText);
+            _cloneBannerBtn = new Button();
+            _cloneBannerBtn.text = "Clone to create a personal copy";
+            _cloneBannerBtn.AddToClassList("shared-banner-button");
+            _cloneBannerBtn.clicked += OnCloneBannerClicked;
+            _banner.Add(_cloneBannerBtn);
+            _editorContent.Add(_banner);
+
+            // Name field
+            var nameRow = new VisualElement();
+            nameRow.AddToClassList("editor-field-row");
+            var nameLabel = new Label("Name:");
+            nameLabel.AddToClassList("editor-field-label");
+            nameRow.Add(nameLabel);
+            _nameField = new TextField();
+            _nameField.AddToClassList("editor-text-field");
+            _nameField.RegisterValueChangedCallback(evt =>
+            {
+                if (_selectedId == null) return;
+                _uiManager.Simulation?.CommandRenameRuleset(_selectedId, evt.newValue);
+                UpdateListItemName(_selectedId, evt.newValue);
+            });
+            nameRow.Add(_nameField);
+            _editorContent.Add(nameRow);
+
+            // Rules header
+            _rulesHeader = new Label("Rules");
+            _rulesHeader.AddToClassList("editor-section-label");
+            _editorContent.Add(_rulesHeader);
+
+            // Rules container (only this part rebuilds on structure change)
+            _rulesContainer = new VisualElement();
+            _editorContent.Add(_rulesContainer);
+
+            // Add Rule button
+            _addRuleBtn = new Button(OnAddRuleClicked);
+            _addRuleBtn.text = "+ Add Rule";
+            _addRuleBtn.AddToClassList("editor-add-button");
+            _editorContent.Add(_addRuleBtn);
+
+            // Footer
+            _footer = new VisualElement();
+            _footer.AddToClassList("editor-footer");
+
+            _usedByLabel = new Label();
+            _usedByLabel.AddToClassList("editor-used-by");
+            _footer.Add(_usedByLabel);
+
+            var footerButtons = new VisualElement();
+            footerButtons.AddToClassList("editor-footer-buttons");
+
+            _cloneBtn = new Button(OnCloneClicked);
+            _cloneBtn.text = "Clone";
+            _cloneBtn.AddToClassList("editor-footer-button");
+            footerButtons.Add(_cloneBtn);
+
+            _resetBtn = new Button(OnResetClicked);
+            _resetBtn.text = "Reset to Default";
+            _resetBtn.AddToClassList("editor-footer-button");
+            footerButtons.Add(_resetBtn);
+
+            _deleteBtn = new Button(OnDeleteClicked);
+            _deleteBtn.text = "Delete";
+            _deleteBtn.AddToClassList("editor-footer-button");
+            _deleteBtn.AddToClassList("editor-delete-button");
+            footerButtons.Add(_deleteBtn);
+
+            _footer.Add(footerButtons);
+            _editorContent.Add(_footer);
         }
 
         private void RefreshEditor()
@@ -117,137 +240,71 @@ namespace ProjectGuild.View.UI
 
             _emptyLabel.style.display = DisplayStyle.None;
             _editorContent.style.display = DisplayStyle.Flex;
-            _editorContent.Clear();
+
+            // Ensure the editor shell is built
+            BuildEditorShell();
 
             var state = sim.CurrentGameState;
 
-            // Shared template banner
+            // Shared template banner (update in-place)
             int usageCount = sim.CountRunnersUsingMacroRuleset(ruleset.Id);
             if (usageCount > 1)
             {
-                var banner = new VisualElement();
-                banner.AddToClassList("shared-banner");
-                var bannerText = new Label($"Changes affect all {usageCount} runners using this template.");
-                bannerText.AddToClassList("shared-banner-text");
-                banner.Add(bannerText);
-
-                var cloneBtn = new Button(() =>
-                {
-                    var clone = ruleset.DeepCopy();
-                    clone.Name = (ruleset.Name ?? "Macro") + " (copy)";
-                    string newId = sim.CommandCreateMacroRuleset(clone);
-                    _selectedId = newId;
-                    RefreshList();
-                });
-                cloneBtn.text = "Clone to create a personal copy";
-                cloneBtn.AddToClassList("shared-banner-button");
-                banner.Add(cloneBtn);
-
-                _editorContent.Add(banner);
-            }
-
-            // Name field
-            var nameRow = new VisualElement();
-            nameRow.AddToClassList("editor-field-row");
-            var nameLabel = new Label("Name:");
-            nameLabel.AddToClassList("editor-field-label");
-            nameRow.Add(nameLabel);
-            var nameField = new TextField();
-            nameField.AddToClassList("editor-text-field");
-            nameField.SetValueWithoutNotify(ruleset.Name ?? "");
-            nameField.RegisterValueChangedCallback(evt =>
-                sim.CommandRenameRuleset(ruleset.Id, evt.newValue));
-            nameRow.Add(nameField);
-            _editorContent.Add(nameRow);
-
-            // Rules header
-            var rulesHeader = new Label("Rules");
-            rulesHeader.AddToClassList("editor-section-label");
-            _editorContent.Add(rulesHeader);
-
-            // Rules list (interactive editing)
-            if (ruleset.Rules.Count == 0)
-            {
-                var emptyRules = new Label("No rules (add rules to automate task switching)");
-                emptyRules.AddToClassList("auto-info-value");
-                _editorContent.Add(emptyRules);
+                _banner.style.display = DisplayStyle.Flex;
+                _bannerText.text = $"Changes affect all {usageCount} runners using this template.";
             }
             else
             {
-                for (int i = 0; i < ruleset.Rules.Count; i++)
+                _banner.style.display = DisplayStyle.None;
+            }
+
+            // Name field (update without triggering callback)
+            _nameField.SetValueWithoutNotify(ruleset.Name ?? "");
+
+            // Rules container — only rebuild on structural change
+            RefreshRulesContainer(ruleset, sim);
+
+            // Footer (update in-place)
+            var names = sim.GetRunnerNamesUsingMacroRuleset(ruleset.Id);
+            _usedByLabel.text = names.Count > 0
+                ? $"Used by: {string.Join(", ", names)}"
+                : "Not assigned to any runner";
+        }
+
+        private void RefreshRulesContainer(Ruleset ruleset, GameSimulation sim)
+        {
+            int ruleCount = ruleset.Rules.Count;
+            string shapeKey = $"{ruleset.Id}|{ruleCount}";
+
+            if (shapeKey == _cachedRulesShapeKey) return;
+
+            _rulesContainer.Clear();
+            _cachedRulesShapeKey = shapeKey;
+
+            if (ruleCount == 0)
+            {
+                var emptyRules = new Label("No rules (add rules to automate task switching)");
+                emptyRules.AddToClassList("auto-info-value");
+                _rulesContainer.Add(emptyRules);
+            }
+            else
+            {
+                for (int i = 0; i < ruleCount; i++)
                 {
                     var ruleRow = RuleEditorController.BuildRuleRow(
                         i, ruleset.Rules[i], ruleset.Id,
-                        isMacro: true, sim, () => RefreshEditor());
-                    _editorContent.Add(ruleRow);
+                        isMacro: true, sim, () =>
+                        {
+                            // Scoped rebuild: only rules container + footer, not the whole editor
+                            _cachedRulesShapeKey = null; // force rebuild
+                            RefreshEditor();
+                        });
+                    _rulesContainer.Add(ruleRow);
                 }
             }
-
-            // Add Rule button (placeholder text, full editing in Batch D)
-            var addRuleBtn = new Button(() =>
-            {
-                sim.CommandAddRuleToRuleset(ruleset.Id, new Rule
-                {
-                    Label = $"Rule {ruleset.Rules.Count + 1}",
-                    Conditions = { Condition.Always() },
-                    Action = AutomationAction.Idle(),
-                    Enabled = true,
-                });
-                RefreshEditor();
-            });
-            addRuleBtn.text = "+ Add Rule";
-            addRuleBtn.AddToClassList("editor-add-button");
-            _editorContent.Add(addRuleBtn);
-
-            // Footer
-            var footer = new VisualElement();
-            footer.AddToClassList("editor-footer");
-
-            var names = sim.GetRunnerNamesUsingMacroRuleset(ruleset.Id);
-            var usedByLabel = new Label(names.Count > 0
-                ? $"Used by: {string.Join(", ", names)}"
-                : "Not assigned to any runner");
-            usedByLabel.AddToClassList("editor-used-by");
-            footer.Add(usedByLabel);
-
-            var footerButtons = new VisualElement();
-            footerButtons.AddToClassList("editor-footer-buttons");
-
-            var cloneFooterBtn = new Button(() =>
-            {
-                var clone = ruleset.DeepCopy();
-                clone.Name = (ruleset.Name ?? "Macro") + " (copy)";
-                string newId = sim.CommandCreateMacroRuleset(clone);
-                _selectedId = newId;
-                RefreshList();
-            });
-            cloneFooterBtn.text = "Clone";
-            cloneFooterBtn.AddToClassList("editor-footer-button");
-            footerButtons.Add(cloneFooterBtn);
-
-            var resetBtn = new Button(() =>
-            {
-                sim.CommandResetRulesetToDefault(ruleset.Id);
-                RefreshEditor();
-            });
-            resetBtn.text = "Reset to Default";
-            resetBtn.AddToClassList("editor-footer-button");
-            footerButtons.Add(resetBtn);
-
-            var deleteBtn = new Button(() =>
-            {
-                sim.CommandDeleteMacroRuleset(ruleset.Id);
-                _selectedId = null;
-                RefreshList();
-            });
-            deleteBtn.text = "Delete";
-            deleteBtn.AddToClassList("editor-footer-button");
-            deleteBtn.AddToClassList("editor-delete-button");
-            footerButtons.Add(deleteBtn);
-
-            footer.Add(footerButtons);
-            _editorContent.Add(footer);
         }
+
+        // ─── Button Handlers ────────────────────────────
 
         private void OnNewClicked()
         {
@@ -261,7 +318,71 @@ namespace ProjectGuild.View.UI
             };
             string id = sim.CommandCreateMacroRuleset(ruleset);
             _selectedId = id;
-            RefreshList();
+            _cachedRulesShapeKey = null;
+            RebuildList();
+            RefreshEditor();
+        }
+
+        private void OnAddRuleClicked()
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null || _selectedId == null) return;
+
+            var ruleset = sim.FindMacroRulesetInLibrary(_selectedId);
+            if (ruleset == null) return;
+
+            sim.CommandAddRuleToRuleset(_selectedId, new Rule
+            {
+                Label = $"Rule {ruleset.Rules.Count + 1}",
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.Idle(),
+                Enabled = true,
+            });
+            _cachedRulesShapeKey = null;
+            RefreshEditor();
+            RebuildList(); // update rule count in list
+        }
+
+        private void OnCloneBannerClicked()
+        {
+            OnCloneClicked();
+        }
+
+        private void OnCloneClicked()
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null || _selectedId == null) return;
+
+            string newId = sim.CommandCloneMacroRuleset(_selectedId);
+            if (newId != null)
+            {
+                _selectedId = newId;
+                _cachedRulesShapeKey = null;
+                RebuildList();
+                RefreshEditor();
+            }
+        }
+
+        private void OnResetClicked()
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null || _selectedId == null) return;
+
+            sim.CommandResetRulesetToDefault(_selectedId);
+            _cachedRulesShapeKey = null;
+            RefreshEditor();
+        }
+
+        private void OnDeleteClicked()
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null || _selectedId == null) return;
+
+            sim.CommandDeleteMacroRuleset(_selectedId);
+            _selectedId = null;
+            _cachedRulesShapeKey = null;
+            RebuildList();
+            RefreshEditor();
         }
     }
 }

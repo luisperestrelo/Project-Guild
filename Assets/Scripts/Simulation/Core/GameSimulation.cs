@@ -1332,6 +1332,17 @@ namespace ProjectGuild.Simulation.Core
             return clone.Id;
         }
 
+        /// <summary>Deep-copy a macro ruleset into a new library entry. Returns new Id.</summary>
+        public string CommandCloneMacroRuleset(string sourceRulesetId)
+        {
+            var source = FindMacroRulesetInLibrary(sourceRulesetId);
+            if (source == null) return null;
+            var clone = source.DeepCopy();
+            clone.Name = (source.Name ?? "Macro") + " (copy)";
+            CurrentGameState.MacroRulesetLibrary.Add(clone);
+            return clone.Id;
+        }
+
         /// <summary>Deep-copy a micro ruleset into a new library entry. Returns new Id.</summary>
         public string CommandCloneMicroRuleset(string sourceRulesetId)
         {

@@ -165,7 +165,6 @@ namespace ProjectGuild.View.UI
         {
             _portraitBarController?.Refresh();
             _detailsPanelController?.Refresh();
-            _automationPanelController?.Refresh();
         }
 
         private void OnRunnerCreated(RunnerCreated evt)

@@ -43,6 +43,7 @@ namespace ProjectGuild.View.UI
         private readonly ProgressBar _travelProgressBar;
         private readonly Label _inventorySummaryLabel;
         private readonly VisualElement _inventoryItemsContainer;
+        private readonly List<(VisualElement row, Label name, Label count)> _inventoryItemRowCache = new();
         private readonly Label _skillsSummaryLabel;
 
         // ─── Live stats elements ─────────────────────────
@@ -345,27 +346,44 @@ namespace ProjectGuild.View.UI
             int maxSlots = runner.Inventory.MaxSlots;
             _inventorySummaryLabel.text = $"{usedSlots} / {maxSlots} slots";
 
-            // Inventory items (brief list)
-            _inventoryItemsContainer.Clear();
+            // Inventory items (brief list) — pooled rows, updated in-place
             var counts = AggregateInventory(runner, sim);
+            int itemIndex = 0;
             foreach (var kvp in counts)
             {
-                var row = new VisualElement();
-                row.AddToClassList("inventory-item-row");
-                row.pickingMode = PickingMode.Ignore;
+                if (itemIndex < _inventoryItemRowCache.Count)
+                {
+                    // Reuse existing row
+                    var cached = _inventoryItemRowCache[itemIndex];
+                    cached.name.text = kvp.Key;
+                    cached.count.text = $"x{kvp.Value}";
+                    cached.row.style.display = DisplayStyle.Flex;
+                }
+                else
+                {
+                    // Create new row
+                    var row = new VisualElement();
+                    row.AddToClassList("inventory-item-row");
+                    row.pickingMode = PickingMode.Ignore;
 
-                var nameLabel = new Label(kvp.Key);
-                nameLabel.AddToClassList("inventory-item-name");
-                nameLabel.pickingMode = PickingMode.Ignore;
-                row.Add(nameLabel);
+                    var nameLabel = new Label(kvp.Key);
+                    nameLabel.AddToClassList("inventory-item-name");
+                    nameLabel.pickingMode = PickingMode.Ignore;
+                    row.Add(nameLabel);
 
-                var countLabel = new Label($"x{kvp.Value}");
-                countLabel.AddToClassList("inventory-item-count");
-                countLabel.pickingMode = PickingMode.Ignore;
-                row.Add(countLabel);
+                    var countLabel = new Label($"x{kvp.Value}");
+                    countLabel.AddToClassList("inventory-item-count");
+                    countLabel.pickingMode = PickingMode.Ignore;
+                    row.Add(countLabel);
 
-                _inventoryItemsContainer.Add(row);
+                    _inventoryItemsContainer.Add(row);
+                    _inventoryItemRowCache.Add((row, nameLabel, countLabel));
+                }
+                itemIndex++;
             }
+            // Hide excess cached rows
+            for (int i = itemIndex; i < _inventoryItemRowCache.Count; i++)
+                _inventoryItemRowCache[i].row.style.display = DisplayStyle.None;
 
             // Live stats (contextual based on runner state)
             RefreshLiveStats(runner, sim, config);

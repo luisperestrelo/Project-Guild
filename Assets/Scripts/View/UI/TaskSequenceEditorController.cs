@@ -10,7 +10,10 @@ namespace ProjectGuild.View.UI
     /// Left pane: searchable list of all task sequences.
     /// Right pane: full editor for the selected sequence (name, loop, steps, used-by).
     ///
-    /// All mutations go through GameSimulation commands.
+    /// Uses persistent elements: editor shell from UXML (name, loop, banner, used-by)
+    /// is updated in-place via SetValueWithoutNotify. Steps editor rebuilds only on
+    /// structural change (add/remove step). List uses item cache for CSS-only selection
+    /// toggling and in-place name updates.
     /// </summary>
     public class TaskSequenceEditorController
     {
@@ -22,7 +25,10 @@ namespace ProjectGuild.View.UI
         private readonly TextField _searchField;
         private readonly ScrollView _listScroll;
 
-        // Editor pane
+        // List item cache — avoids full Clear+Rebuild on selection change
+        private readonly Dictionary<string, (VisualElement item, Label nameLabel, Label infoLabel)> _listItemCache = new();
+
+        // Editor pane (persistent UXML elements)
         private readonly Label _emptyLabel;
         private readonly VisualElement _editorContent;
         private readonly VisualElement _sharedBanner;
@@ -38,6 +44,7 @@ namespace ProjectGuild.View.UI
 
         private string _selectedId;
         private string _searchFilter = "";
+        private string _cachedStepsShapeKey;
 
         public TaskSequenceEditorController(VisualElement root, UIManager uiManager)
         {
@@ -53,7 +60,7 @@ namespace ProjectGuild.View.UI
             _searchField.RegisterValueChangedCallback(evt =>
             {
                 _searchFilter = evt.newValue?.ToLowerInvariant() ?? "";
-                RefreshList();
+                RebuildList();
             });
 
             // Editor pane
@@ -75,7 +82,8 @@ namespace ProjectGuild.View.UI
             {
                 if (_selectedId == null) return;
                 _uiManager.Simulation?.CommandRenameTaskSequence(_selectedId, evt.newValue);
-                RefreshList(); // update name in list
+                // Update list item name in-place — no full list rebuild
+                UpdateListItemName(_selectedId, evt.newValue);
             });
             _loopToggle.RegisterValueChangedCallback(evt =>
             {
@@ -90,17 +98,33 @@ namespace ProjectGuild.View.UI
 
         public void SelectItem(string id)
         {
+            var oldId = _selectedId;
             _selectedId = id;
-            RefreshList();
+
+            // Toggle selection CSS without rebuilding the list
+            if (oldId != null && _listItemCache.TryGetValue(oldId, out var oldItem))
+                oldItem.item.RemoveFromClassList("list-item-selected");
+            if (id != null && _listItemCache.TryGetValue(id, out var newItem))
+                newItem.item.AddToClassList("list-item-selected");
+
             RefreshEditor();
         }
 
         public void RefreshList()
         {
+            // Full list rebuild — only called on search filter change, CRUD, or panel open
+            RebuildList();
+        }
+
+        // ─── List Pane ──────────────────────────────
+
+        private void RebuildList()
+        {
             var sim = _uiManager.Simulation;
             if (sim == null) return;
 
             _listScroll.Clear();
+            _listItemCache.Clear();
 
             foreach (var seq in sim.CurrentGameState.TaskSequenceLibrary)
             {
@@ -127,16 +151,24 @@ namespace ProjectGuild.View.UI
                 item.Add(infoLabel);
 
                 string capturedId = seq.Id;
-                item.RegisterCallback<ClickEvent>(evt =>
-                {
-                    _selectedId = capturedId;
-                    RefreshList();
-                    RefreshEditor();
-                });
+                item.RegisterCallback<ClickEvent>(evt => SelectItem(capturedId));
 
                 _listScroll.Add(item);
+                _listItemCache[seq.Id] = (item, nameLabel, infoLabel);
             }
         }
+
+        /// <summary>
+        /// Update a list item's name label in-place (e.g., during rename).
+        /// Avoids full list rebuild on every keystroke.
+        /// </summary>
+        private void UpdateListItemName(string id, string newName)
+        {
+            if (_listItemCache.TryGetValue(id, out var cached))
+                cached.nameLabel.text = newName;
+        }
+
+        // ─── Editor Pane ──────────────────────────────
 
         private void RefreshEditor()
         {
@@ -182,7 +214,12 @@ namespace ProjectGuild.View.UI
 
         private void RebuildStepsEditor(TaskSequence seq, GameSimulation sim)
         {
+            int stepCount = seq.Steps?.Count ?? 0;
+            string shapeKey = $"{seq.Id}|{stepCount}";
+            if (shapeKey == _cachedStepsShapeKey) return;
+
             _stepsEditor.Clear();
+            _cachedStepsShapeKey = shapeKey;
             if (seq.Steps == null) return;
 
             var state = sim.CurrentGameState;
@@ -214,7 +251,8 @@ namespace ProjectGuild.View.UI
                         var nodeDropdown = CreateNodeDropdown(step.TargetNodeId, state, newNodeId =>
                         {
                             sim.CommandSetStepTargetNode(seq.Id, stepIndex, newNodeId);
-                            RefreshEditor();
+                            // No RefreshEditor — dropdown already shows the new value,
+                            // sim command updated the data.
                         });
                         nodeDropdown.AddToClassList("editor-step-dropdown");
                         row.Add(nodeDropdown);
@@ -224,7 +262,7 @@ namespace ProjectGuild.View.UI
                         var microDropdown = CreateMicroDropdown(step.MicroRulesetId, sim, newMicroId =>
                         {
                             sim.CommandSetWorkStepMicroRuleset(seq.Id, stepIndex, newMicroId);
-                            RefreshEditor();
+                            // No RefreshEditor — dropdown already shows the new value.
                         });
                         microDropdown.AddToClassList("editor-step-dropdown");
                         row.Add(microDropdown);
@@ -243,7 +281,7 @@ namespace ProjectGuild.View.UI
                 {
                     sim.CommandRemoveStepFromTaskSequence(seq.Id, stepIndex);
                     RefreshEditor();
-                    RefreshList();
+                    RebuildList(); // step count may affect list info
                 });
                 deleteBtn.text = "\u00d7";
                 deleteBtn.AddToClassList("editor-step-delete");
@@ -326,7 +364,7 @@ namespace ProjectGuild.View.UI
             };
             string id = sim.CommandCreateTaskSequence(seq);
             _selectedId = id;
-            RefreshList();
+            RebuildList();
             RefreshEditor();
         }
 
@@ -362,7 +400,7 @@ namespace ProjectGuild.View.UI
                     sim.CommandAddStepToTaskSequence(_selectedId, newStep);
                     picker.RemoveFromHierarchy();
                     RefreshEditor();
-                    RefreshList();
+                    RebuildList();
                 });
                 btn.text = label;
                 btn.AddToClassList("step-type-picker-button");
@@ -408,7 +446,7 @@ namespace ProjectGuild.View.UI
 
             string newId = sim.CommandCreateTaskSequence(clone);
             _selectedId = newId;
-            RefreshList();
+            RebuildList();
             RefreshEditor();
         }
 
@@ -419,7 +457,7 @@ namespace ProjectGuild.View.UI
 
             sim.CommandDeleteTaskSequence(_selectedId);
             _selectedId = null;
-            RefreshList();
+            RebuildList();
             RefreshEditor();
         }
 

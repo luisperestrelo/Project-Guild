@@ -118,35 +118,11 @@ namespace ProjectGuild.View.UI
         }
 
         /// <summary>
-        /// Open the panel to a specific item, but prompt if shared.
-        /// If the item is used by multiple runners, shows a prompt:
-        /// "Edit for all N runners, or create a copy for [runner name]?"
+        /// Open the panel to a specific item from a runner context.
+        /// The editor's shared banner handles the "affects N runners" warning.
         /// </summary>
         public void OpenToItemFromRunner(string tabType, string itemId, string runnerId)
         {
-            var sim = _uiManager.Simulation;
-            if (sim == null)
-            {
-                OpenToItem(tabType, itemId);
-                return;
-            }
-
-            int usageCount = 0;
-            switch (tabType)
-            {
-                case "taskseq":
-                    usageCount = sim.CountRunnersUsingTaskSequence(itemId);
-                    break;
-                case "macro":
-                    usageCount = sim.CountRunnersUsingMacroRuleset(itemId);
-                    break;
-                case "micro":
-                    usageCount = sim.CountSequencesUsingMicroRuleset(itemId);
-                    break;
-            }
-
-            // If shared (multiple users), the shared banner in the editor handles the warning.
-            // Just open directly — the editor will show the "Changes affect N runners" banner.
             OpenToItem(tabType, itemId);
         }
 
@@ -189,15 +165,7 @@ namespace ProjectGuild.View.UI
                 tab.RemoveFromClassList("panel-tab-active");
         }
 
-        /// <summary>
-        /// Refresh is intentionally a no-op on tick. The panel editors rebuild themselves
-        /// in response to user actions (button clicks, dropdown changes), not on a timer.
-        /// Tick-driven rebuilds would destroy interactive elements (dropdowns, text fields)
-        /// 10 times per second, making the UI unusable.
-        /// </summary>
-        public void Refresh()
-        {
-            // No-op. Editors self-refresh on user interaction.
-        }
+        // No tick-driven Refresh(). The panel is purely event-driven:
+        // refreshes on open, tab switch, and user interaction only.
     }
 }

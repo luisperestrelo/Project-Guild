@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Core;
@@ -9,11 +10,12 @@ namespace ProjectGuild.View.UI
     /// Shows what task sequence, macro rules, and micro rules are active
     /// for the selected runner. Three sub-tabs: Task Seq, Macro, Micro.
     ///
-    /// This is the "portal" — clicking [Edit in Library] will open the
-    /// Automation panel (implemented in Batch C).
+    /// This is the "portal" — clicking [Edit in Library] opens the
+    /// global Automation panel.
     ///
-    /// Plain C# class, not MonoBehaviour. Refreshes via Refresh() called
-    /// each tick by RunnerDetailsPanelController.
+    /// Uses shape-keyed caching: elements are built once when the data shape
+    /// (step count, rule count, etc.) is first seen, then updated in-place on
+    /// subsequent ticks. Rebuild only happens when the shape changes.
     /// </summary>
     public class AutomationTabController
     {
@@ -29,7 +31,7 @@ namespace ProjectGuild.View.UI
         private readonly ScrollView _contentMicro;
         private string _activeSubTab = "taskseq";
 
-        // ─── Task Sequence sub-tab ──────────────────────
+        // ─── Task Sequence sub-tab (persistent UXML elements) ──────
         private readonly Label _taskSeqNameLabel;
         private readonly Label _taskSeqUsageLabel;
         private readonly Label _taskSeqLoopValue;
@@ -41,15 +43,27 @@ namespace ProjectGuild.View.UI
         private readonly Button _btnResumeMacros;
         private readonly Button _btnEditTaskSeq;
 
-        // ─── Macro sub-tab ──────────────────────────────
+        // ─── Task Sequence cached step rows ──────
+        private string _cachedTaskSeqShapeKey;
+        private readonly List<(VisualElement row, Label indicator, Label index, Label text)> _stepRowCache = new();
+
+        // ─── Macro sub-tab (persistent UXML elements) ──────
         private readonly Label _macroNameLabel;
         private readonly Label _macroUsageLabel;
         private readonly VisualElement _macroRulesContainer;
         private readonly Button _btnEditMacro;
 
-        // ─── Micro sub-tab ──────────────────────────────
+        // ─── Macro cached rule rows ──────
+        private string _cachedMacroShapeKey;
+        private readonly List<(VisualElement row, Label index, Label enabled, Label text, Label timing)> _macroRuleRowCache = new();
+
+        // ─── Micro sub-tab (persistent UXML elements) ──────
         private readonly Label _microNoTaskLabel;
         private readonly VisualElement _microStepsContainer;
+
+        // ─── Micro cached sections ──────
+        private string _cachedMicroShapeKey;
+        private readonly List<MicroWorkSectionCache> _microSectionCache = new();
 
         private string _currentRunnerId;
 
@@ -103,6 +117,10 @@ namespace ProjectGuild.View.UI
         public void ShowRunner(string runnerId)
         {
             _currentRunnerId = runnerId;
+            // Force rebuild on runner change
+            _cachedTaskSeqShapeKey = null;
+            _cachedMacroShapeKey = null;
+            _cachedMicroShapeKey = null;
             Refresh();
         }
 
@@ -163,16 +181,22 @@ namespace ProjectGuild.View.UI
                 _taskSeqNameLabel.text = "No active task";
                 _taskSeqUsageLabel.text = "";
                 _taskSeqLoopValue.text = "-";
-                _stepsContainer.Clear();
                 _suspensionLabel.style.display = DisplayStyle.None;
                 _pendingSection.style.display = DisplayStyle.None;
                 _btnClearTask.style.display = DisplayStyle.None;
                 _btnResumeMacros.style.display = DisplayStyle.None;
                 _btnEditTaskSeq.style.display = DisplayStyle.None;
+
+                if (_cachedTaskSeqShapeKey != null)
+                {
+                    _stepsContainer.Clear();
+                    _stepRowCache.Clear();
+                    _cachedTaskSeqShapeKey = null;
+                }
                 return;
             }
 
-            // Header
+            // Header (always update in-place)
             _taskSeqNameLabel.text = seq.Name ?? seq.Id ?? "Task Sequence";
             int usageCount = sim.CountRunnersUsingTaskSequence(seq.Id);
             _taskSeqUsageLabel.text = usageCount > 1
@@ -192,41 +216,59 @@ namespace ProjectGuild.View.UI
                 _suspensionLabel.style.display = DisplayStyle.None;
             }
 
-            // Step list
-            _stepsContainer.Clear();
-            if (seq.Steps != null)
-            {
-                for (int i = 0; i < seq.Steps.Count; i++)
-                {
-                    var step = seq.Steps[i];
-                    bool isCurrent = (i == runner.TaskSequenceCurrentStepIndex);
+            // Step list — shape-keyed rebuild
+            int stepCount = seq.Steps?.Count ?? 0;
+            string shapeKey = $"{seq.Id}|{stepCount}";
 
+            if (shapeKey != _cachedTaskSeqShapeKey)
+            {
+                // Shape changed — rebuild step rows
+                _stepsContainer.Clear();
+                _stepRowCache.Clear();
+                _cachedTaskSeqShapeKey = shapeKey;
+
+                for (int i = 0; i < stepCount; i++)
+                {
                     var row = new VisualElement();
                     row.AddToClassList("auto-step-row");
-                    if (isCurrent) row.AddToClassList("auto-step-current");
 
-                    // Current step indicator
-                    var indicator = new Label(isCurrent ? "\u25b6" : "");
+                    var indicator = new Label();
                     indicator.AddToClassList("auto-step-indicator");
                     indicator.pickingMode = PickingMode.Ignore;
                     row.Add(indicator);
 
-                    // Step index
                     var indexLabel = new Label($"{i + 1}.");
                     indexLabel.AddToClassList("auto-step-index");
                     indexLabel.pickingMode = PickingMode.Ignore;
                     row.Add(indexLabel);
 
-                    // Step description
-                    string stepText = AutomationUIHelpers.FormatStep(step, state,
-                        microId => sim.FindMicroRulesetInLibrary(microId)?.Name);
-                    var stepLabel = new Label(stepText);
+                    var stepLabel = new Label();
                     stepLabel.AddToClassList("auto-step-label");
                     stepLabel.pickingMode = PickingMode.Ignore;
                     row.Add(stepLabel);
 
                     _stepsContainer.Add(row);
+                    _stepRowCache.Add((row, indicator, indexLabel, stepLabel));
                 }
+            }
+
+            // Update step row values in-place
+            for (int i = 0; i < _stepRowCache.Count && i < stepCount; i++)
+            {
+                var step = seq.Steps[i];
+                bool isCurrent = (i == runner.TaskSequenceCurrentStepIndex);
+                var cached = _stepRowCache[i];
+
+                // Current step indicator and CSS class
+                cached.indicator.text = isCurrent ? "\u25b6" : "";
+                if (isCurrent)
+                    cached.row.AddToClassList("auto-step-current");
+                else
+                    cached.row.RemoveFromClassList("auto-step-current");
+
+                // Step description
+                cached.text.text = AutomationUIHelpers.FormatStep(step, state,
+                    microId => sim.FindMicroRulesetInLibrary(microId)?.Name);
             }
 
             // Pending sequence indicator
@@ -259,36 +301,91 @@ namespace ProjectGuild.View.UI
             {
                 _macroNameLabel.text = "No macro ruleset";
                 _macroUsageLabel.text = "";
-                _macroRulesContainer.Clear();
                 _btnEditMacro.style.display = DisplayStyle.None;
+
+                if (_cachedMacroShapeKey != null)
+                {
+                    _macroRulesContainer.Clear();
+                    _macroRuleRowCache.Clear();
+                    _cachedMacroShapeKey = null;
+                }
                 return;
             }
 
-            // Header
+            // Header (always update in-place)
             _macroNameLabel.text = ruleset.Name ?? ruleset.Id ?? "Macro Ruleset";
             int usageCount = sim.CountRunnersUsingMacroRuleset(ruleset.Id);
             _macroUsageLabel.text = usageCount > 1
                 ? $"Used by {usageCount} runners"
                 : "Used by this runner only";
 
-            // Rule list
-            _macroRulesContainer.Clear();
-            if (ruleset.Rules.Count == 0)
-            {
-                var emptyLabel = new Label("No rules (runner will not switch tasks automatically)");
-                emptyLabel.AddToClassList("auto-info-value");
-                _macroRulesContainer.Add(emptyLabel);
-            }
-            else
-            {
-                // Item name resolver for natural language formatting
-                AutomationUIHelpers.ItemNameResolver itemResolver = CreateItemResolver(sim);
+            // Rule list — shape-keyed rebuild
+            int ruleCount = ruleset.Rules.Count;
+            string shapeKey = $"{ruleset.Id}|{ruleCount}";
 
-                for (int i = 0; i < ruleset.Rules.Count; i++)
+            if (shapeKey != _cachedMacroShapeKey)
+            {
+                _macroRulesContainer.Clear();
+                _macroRuleRowCache.Clear();
+                _cachedMacroShapeKey = shapeKey;
+
+                if (ruleCount == 0)
+                {
+                    var emptyLabel = new Label("No rules (runner will not switch tasks automatically)");
+                    emptyLabel.AddToClassList("auto-info-value");
+                    _macroRulesContainer.Add(emptyLabel);
+                }
+                else
+                {
+                    for (int i = 0; i < ruleCount; i++)
+                    {
+                        var row = new VisualElement();
+                        row.AddToClassList("auto-rule-row");
+
+                        var indexLabel = new Label();
+                        indexLabel.AddToClassList("auto-rule-index");
+                        indexLabel.pickingMode = PickingMode.Ignore;
+                        row.Add(indexLabel);
+
+                        var enabledLabel = new Label();
+                        enabledLabel.AddToClassList("auto-rule-enabled-indicator");
+                        enabledLabel.pickingMode = PickingMode.Ignore;
+                        row.Add(enabledLabel);
+
+                        var textLabel = new Label();
+                        textLabel.AddToClassList("auto-rule-text");
+                        textLabel.pickingMode = PickingMode.Ignore;
+                        row.Add(textLabel);
+
+                        var timingLabel = new Label();
+                        timingLabel.AddToClassList("auto-rule-timing");
+                        timingLabel.pickingMode = PickingMode.Ignore;
+                        row.Add(timingLabel);
+
+                        _macroRulesContainer.Add(row);
+                        _macroRuleRowCache.Add((row, indexLabel, enabledLabel, textLabel, timingLabel));
+                    }
+                }
+            }
+
+            // Update rule row values in-place
+            if (ruleCount > 0)
+            {
+                AutomationUIHelpers.ItemNameResolver itemResolver = CreateItemResolver(sim);
+                for (int i = 0; i < _macroRuleRowCache.Count && i < ruleCount; i++)
                 {
                     var rule = ruleset.Rules[i];
-                    var row = CreateRuleRow(i, rule, state, isMacro: true, itemResolver);
-                    _macroRulesContainer.Add(row);
+                    var cached = _macroRuleRowCache[i];
+
+                    cached.index.text = $"{i + 1}.";
+                    cached.enabled.text = rule.Enabled ? "\u2713" : "\u2717";
+                    cached.text.text = AutomationUIHelpers.FormatRule(rule, state, itemResolver);
+                    cached.timing.text = $"[{AutomationUIHelpers.FormatTimingTag(rule)}]";
+
+                    if (rule.Enabled)
+                        cached.row.RemoveFromClassList("auto-rule-disabled");
+                    else
+                        cached.row.AddToClassList("auto-rule-disabled");
                 }
             }
 
@@ -302,40 +399,135 @@ namespace ProjectGuild.View.UI
             var state = sim.CurrentGameState;
             var seq = sim.GetRunnerTaskSequence(runner);
 
-            _microStepsContainer.Clear();
-
             if (seq == null || seq.Steps == null)
             {
                 _microNoTaskLabel.style.display = DisplayStyle.Flex;
+                if (_cachedMicroShapeKey != null)
+                {
+                    _microStepsContainer.Clear();
+                    _microSectionCache.Clear();
+                    _cachedMicroShapeKey = null;
+                }
                 return;
             }
 
             _microNoTaskLabel.style.display = DisplayStyle.None;
 
-            // Show each Work step with its micro ruleset
+            // Build shape key from Work step structure
+            string shapeKey = BuildMicroShapeKey(seq, sim);
+
+            if (shapeKey != _cachedMicroShapeKey)
+            {
+                // Shape changed — rebuild micro sections
+                _microStepsContainer.Clear();
+                _microSectionCache.Clear();
+                _cachedMicroShapeKey = shapeKey;
+
+                for (int i = 0; i < seq.Steps.Count; i++)
+                {
+                    var step = seq.Steps[i];
+                    if (step.Type != TaskStepType.Work) continue;
+
+                    var sectionCache = new MicroWorkSectionCache();
+
+                    var section = new VisualElement();
+                    section.AddToClassList("micro-work-section");
+                    sectionCache.section = section;
+
+                    // Work step header
+                    sectionCache.headerLabel = new Label();
+                    sectionCache.headerLabel.AddToClassList("micro-work-header");
+                    section.Add(sectionCache.headerLabel);
+
+                    // Micro ruleset info
+                    sectionCache.infoLabel = new Label();
+                    sectionCache.infoLabel.AddToClassList("micro-work-ruleset-info");
+                    section.Add(sectionCache.infoLabel);
+
+                    // Rule rows (built based on current micro ruleset)
+                    var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                    int ruleCount = microRuleset?.Rules.Count ?? 0;
+
+                    if (ruleCount == 0)
+                    {
+                        var emptyLabel = new Label();
+                        emptyLabel.AddToClassList("auto-info-value");
+                        section.Add(emptyLabel);
+                        sectionCache.emptyLabel = emptyLabel;
+                    }
+                    else
+                    {
+                        for (int r = 0; r < ruleCount; r++)
+                        {
+                            var row = new VisualElement();
+                            row.AddToClassList("auto-rule-row");
+
+                            var indexLabel = new Label();
+                            indexLabel.AddToClassList("auto-rule-index");
+                            indexLabel.pickingMode = PickingMode.Ignore;
+                            row.Add(indexLabel);
+
+                            var enabledLabel = new Label();
+                            enabledLabel.AddToClassList("auto-rule-enabled-indicator");
+                            enabledLabel.pickingMode = PickingMode.Ignore;
+                            row.Add(enabledLabel);
+
+                            var textLabel = new Label();
+                            textLabel.AddToClassList("auto-rule-text");
+                            textLabel.pickingMode = PickingMode.Ignore;
+                            row.Add(textLabel);
+
+                            section.Add(row);
+                            sectionCache.ruleRows.Add((row, indexLabel, enabledLabel, textLabel));
+                        }
+                    }
+
+                    // Edit in Library button
+                    string capturedMicroId = step.MicroRulesetId;
+                    var editBtn = new Button(() =>
+                    {
+                        if (!string.IsNullOrEmpty(capturedMicroId))
+                            _uiManager.OpenAutomationPanelToItemFromRunner("micro", capturedMicroId, _currentRunnerId);
+                    });
+                    editBtn.text = "Edit in Library";
+                    editBtn.AddToClassList("auto-action-button");
+                    editBtn.AddToClassList("auto-edit-button");
+                    editBtn.SetEnabled(!string.IsNullOrEmpty(capturedMicroId));
+                    section.Add(editBtn);
+                    sectionCache.editButton = editBtn;
+                    sectionCache.stepIndex = i;
+
+                    _microStepsContainer.Add(section);
+                    _microSectionCache.Add(sectionCache);
+                }
+
+                // If no Work steps found
+                if (_microSectionCache.Count == 0)
+                {
+                    var noWorkLabel = new Label("No Work steps in current task sequence");
+                    noWorkLabel.AddToClassList("auto-info-value");
+                    _microStepsContainer.Add(noWorkLabel);
+                }
+            }
+
+            // Update micro section values in-place
             AutomationUIHelpers.ItemNameResolver itemResolver = CreateItemResolver(sim);
 
-            for (int i = 0; i < seq.Steps.Count; i++)
+            foreach (var sectionCache in _microSectionCache)
             {
+                int i = sectionCache.stepIndex;
+                if (i >= seq.Steps.Count) continue;
+
                 var step = seq.Steps[i];
-                if (step.Type != TaskStepType.Work) continue;
 
-                var section = new VisualElement();
-                section.AddToClassList("micro-work-section");
-
-                // Work step header (e.g., "Work at Copper Mine")
-                string stepDesc = AutomationUIHelpers.FormatStep(step, state, null);
+                // Header
                 string nodeContext = "";
-                // Find the TravelTo step that precedes this Work step to show the node
                 if (i > 0 && seq.Steps[i - 1].Type == TaskStepType.TravelTo)
                 {
                     string nodeId = seq.Steps[i - 1].TargetNodeId;
                     nodeContext = $" at {AutomationUIHelpers.ResolveNodeName(nodeId, state)}";
                 }
-
-                var headerLabel = new Label($"Work{nodeContext}");
-                headerLabel.AddToClassList("micro-work-header");
-                section.Add(headerLabel);
+                sectionCache.headerLabel.text = $"Work{nodeContext}";
 
                 // Micro ruleset info
                 var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
@@ -345,99 +537,74 @@ namespace ProjectGuild.View.UI
                     string usageText = seqCount > 1
                         ? $"\"{microRuleset.Name}\" (Used by {seqCount} sequences)"
                         : $"\"{microRuleset.Name}\"";
-                    var infoLabel = new Label(usageText);
-                    infoLabel.AddToClassList("micro-work-ruleset-info");
-                    section.Add(infoLabel);
+                    sectionCache.infoLabel.text = usageText;
+                    sectionCache.infoLabel.style.display = DisplayStyle.Flex;
 
-                    // Rule list
-                    for (int r = 0; r < microRuleset.Rules.Count; r++)
+                    // Update rule rows
+                    for (int r = 0; r < sectionCache.ruleRows.Count && r < microRuleset.Rules.Count; r++)
                     {
                         var rule = microRuleset.Rules[r];
-                        var ruleRow = CreateRuleRow(r, rule, state, isMacro: false, itemResolver);
-                        section.Add(ruleRow);
+                        var cached = sectionCache.ruleRows[r];
+
+                        cached.index.text = $"{r + 1}.";
+                        cached.enabled.text = rule.Enabled ? "\u2713" : "\u2717";
+                        cached.text.text = AutomationUIHelpers.FormatRule(rule, state, itemResolver);
+
+                        if (rule.Enabled)
+                            cached.row.RemoveFromClassList("auto-rule-disabled");
+                        else
+                            cached.row.AddToClassList("auto-rule-disabled");
                     }
 
-                    if (microRuleset.Rules.Count == 0)
+                    if (sectionCache.emptyLabel != null)
                     {
-                        var emptyLabel = new Label("No rules (runner will get stuck)");
-                        emptyLabel.AddToClassList("auto-info-value");
-                        section.Add(emptyLabel);
+                        sectionCache.emptyLabel.text = microRuleset.Rules.Count == 0
+                            ? "No rules (runner will get stuck)" : "";
+                        sectionCache.emptyLabel.style.display = microRuleset.Rules.Count == 0
+                            ? DisplayStyle.Flex : DisplayStyle.None;
                     }
                 }
                 else
                 {
-                    var missingLabel = new Label(string.IsNullOrEmpty(step.MicroRulesetId)
+                    sectionCache.infoLabel.text = string.IsNullOrEmpty(step.MicroRulesetId)
                         ? "No micro ruleset assigned (runner will get stuck)"
-                        : $"Missing micro ruleset: {step.MicroRulesetId}");
-                    missingLabel.AddToClassList("auto-info-value");
-                    section.Add(missingLabel);
+                        : $"Missing micro ruleset: {step.MicroRulesetId}";
+                    sectionCache.infoLabel.style.display = DisplayStyle.Flex;
                 }
-
-                // Edit in Library button
-                string capturedMicroId = step.MicroRulesetId;
-                var editBtn = new Button(() =>
-                {
-                    if (!string.IsNullOrEmpty(capturedMicroId))
-                        _uiManager.OpenAutomationPanelToItemFromRunner("micro", capturedMicroId, _currentRunnerId);
-                });
-                editBtn.text = "Edit in Library";
-                editBtn.AddToClassList("auto-action-button");
-                editBtn.AddToClassList("auto-edit-button");
-                editBtn.SetEnabled(!string.IsNullOrEmpty(capturedMicroId));
-                section.Add(editBtn);
-
-                _microStepsContainer.Add(section);
             }
+        }
 
-            // If no Work steps found
-            if (_microStepsContainer.childCount == 0)
+        private static string BuildMicroShapeKey(TaskSequence seq, GameSimulation sim)
+        {
+            // Shape = seq ID + work step indices + micro IDs + rule counts
+            var parts = new List<string> { seq.Id ?? "" };
+            for (int i = 0; i < seq.Steps.Count; i++)
             {
-                var noWorkLabel = new Label("No Work steps in current task sequence");
-                noWorkLabel.AddToClassList("auto-info-value");
-                _microStepsContainer.Add(noWorkLabel);
+                var step = seq.Steps[i];
+                if (step.Type != TaskStepType.Work) continue;
+
+                string microId = step.MicroRulesetId ?? "";
+                var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                int ruleCount = microRuleset?.Rules.Count ?? 0;
+                parts.Add($"{i}:{microId}:{ruleCount}");
             }
+            return string.Join("|", parts);
+        }
+
+        // ─── Micro Section Cache ─────────────────────────
+
+        private class MicroWorkSectionCache
+        {
+            public VisualElement section;
+            public Label headerLabel;
+            public Label infoLabel;
+            public Label emptyLabel;
+            public Button editButton;
+            public int stepIndex;
+            public readonly List<(VisualElement row, Label index, Label enabled, Label text)> ruleRows = new();
         }
 
         // ─── Shared Helpers ─────────────────────────────
-
-        private VisualElement CreateRuleRow(int index, Rule rule, GameState state,
-            bool isMacro, AutomationUIHelpers.ItemNameResolver itemResolver)
-        {
-            var row = new VisualElement();
-            row.AddToClassList("auto-rule-row");
-            if (!rule.Enabled) row.AddToClassList("auto-rule-disabled");
-
-            // Index
-            var indexLabel = new Label($"{index + 1}.");
-            indexLabel.AddToClassList("auto-rule-index");
-            indexLabel.pickingMode = PickingMode.Ignore;
-            row.Add(indexLabel);
-
-            // Enabled indicator
-            var enabledLabel = new Label(rule.Enabled ? "\u2713" : "\u2717");
-            enabledLabel.AddToClassList("auto-rule-enabled-indicator");
-            enabledLabel.pickingMode = PickingMode.Ignore;
-            row.Add(enabledLabel);
-
-            // Rule text
-            string ruleText = AutomationUIHelpers.FormatRule(rule, state, itemResolver);
-            var textLabel = new Label(ruleText);
-            textLabel.AddToClassList("auto-rule-text");
-            textLabel.pickingMode = PickingMode.Ignore;
-            row.Add(textLabel);
-
-            // Timing tag (macro only)
-            if (isMacro)
-            {
-                string timing = AutomationUIHelpers.FormatTimingTag(rule);
-                var timingLabel = new Label($"[{timing}]");
-                timingLabel.AddToClassList("auto-rule-timing");
-                timingLabel.pickingMode = PickingMode.Ignore;
-                row.Add(timingLabel);
-            }
-
-            return row;
-        }
 
         private static AutomationUIHelpers.ItemNameResolver CreateItemResolver(GameSimulation sim)
         {
