@@ -34,6 +34,7 @@ namespace ProjectGuild.View.UI
         private readonly Label _stateLabel;
         private readonly Label _taskInfoLabel;
         private readonly VisualElement _travelProgressContainer;
+        private readonly Label _progressLabel;
         private readonly ProgressBar _travelProgressBar;
         private readonly Label _inventorySummaryLabel;
         private readonly VisualElement _inventoryItemsContainer;
@@ -109,6 +110,7 @@ namespace ProjectGuild.View.UI
             _stateLabel = root.Q<Label>("runner-state-label");
             _taskInfoLabel = root.Q<Label>("task-info-label");
             _travelProgressContainer = root.Q("travel-progress-container");
+            _progressLabel = root.Q<Label>("travel-progress-label");
             _travelProgressBar = root.Q<ProgressBar>("travel-progress-bar");
             _liveStatsContainer = root.Q("live-stats-container");
             BuildLiveStatRows();
@@ -279,13 +281,23 @@ namespace ProjectGuild.View.UI
                 _taskInfoLabel.text = "No active task";
             }
 
-            // Travel progress
+            // Travel / Deposit progress (mutually exclusive states, shared bar)
             bool isTraveling = runner.State == RunnerState.Traveling && runner.Travel != null;
-            _travelProgressContainer.style.display = isTraveling ? DisplayStyle.Flex : DisplayStyle.None;
+            bool isDepositing = runner.State == RunnerState.Depositing && runner.Depositing != null;
+            _travelProgressContainer.style.display = (isTraveling || isDepositing) ? DisplayStyle.Flex : DisplayStyle.None;
             if (isTraveling)
             {
+                _progressLabel.text = "Travel:";
                 _travelProgressBar.value = runner.Travel.Progress * 100f;
                 _travelProgressBar.title = $"{runner.Travel.Progress:P0}";
+            }
+            else if (isDepositing)
+            {
+                _progressLabel.text = "Depositing:";
+                int total = config.DepositDurationTicks;
+                float progress = total > 0 ? 1f - (float)runner.Depositing.TicksRemaining / total : 1f;
+                _travelProgressBar.value = progress * 100f;
+                _travelProgressBar.title = $"{progress:P0}";
             }
 
             // Inventory summary
