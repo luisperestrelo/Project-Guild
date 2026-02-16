@@ -290,6 +290,7 @@ namespace ProjectGuild.View.UI
                 _progressLabel.text = "Travel:";
                 _travelProgressBar.value = runner.Travel.Progress * 100f;
                 _travelProgressBar.title = $"{runner.Travel.Progress:P0}";
+                _travelProgressBar.RemoveFromClassList("depositing");
             }
             else if (isDepositing)
             {
@@ -298,6 +299,7 @@ namespace ProjectGuild.View.UI
                 float progress = total > 0 ? 1f - (float)runner.Depositing.TicksRemaining / total : 1f;
                 _travelProgressBar.value = progress * 100f;
                 _travelProgressBar.title = $"{progress:P0}";
+                _travelProgressBar.AddToClassList("depositing");
             }
 
             // Inventory summary

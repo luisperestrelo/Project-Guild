@@ -138,6 +138,10 @@
     border-radius: 2px;
 }
 
+.travel-progress-bar.depositing .unity-progress-bar__progress {
+    background-color: rgb(200, 170, 55);
+}
+
 /* ─── Live Stats ─────────────────────────────────── */
 
 .live-stats-container {
