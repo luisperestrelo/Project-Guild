@@ -86,16 +86,16 @@ namespace ProjectGuild.Tests
         // ─── Default micro rule ─────────────────────────────────
 
         [Test]
-        public void DefaultMicro_GathersIndex0()
+        public void DefaultMicro_GathersValidResource()
         {
-            Setup("mine");
+            Setup("mine"); // mine has 2 gatherables (copper, tin)
 
             var assignment = TaskSequence.CreateLoop("mine", "hub");
             _sim.AssignRunner(_runner.Id, assignment);
 
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
-            Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
-                "Default micro rule (Always → GatherHere(0)) should select index 0");
+            Assert.That(_runner.Gathering.GatherableIndex, Is.GreaterThanOrEqualTo(0).And.LessThan(2),
+                "Default micro rule (Always → GatherAny) should select a valid gatherable index");
         }
 
         // ─── Custom micro rule selects specific resource ──────
@@ -603,6 +603,137 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(GatheringFailureReason.NotEnoughSkill, failed.Value.Reason);
             Assert.AreEqual(50, failed.Value.RequiredLevel);
             Assert.AreEqual(1, failed.Value.CurrentLevel);
+        }
+
+        // ─── GatherAny tests ──────────────────────────────────────
+
+        [Test]
+        public void GatherAny_ProducesVariedResources()
+        {
+            Setup("mine"); // mine has copper + tin
+
+            // Use GatherAny in the micro ruleset (no FinishTask — gather until we track enough items)
+            var microRuleset = CreateAndRegisterMicroRuleset("gather-any-micro");
+            microRuleset.Rules.Add(new Rule
+            {
+                Label = "Gather anything",
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherAny(),
+                Enabled = true,
+            });
+
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "gather-any-micro");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+
+            // Track gathered items via events
+            int copperGathered = 0;
+            int tinGathered = 0;
+            _sim.Events.Subscribe<ItemGathered>(e =>
+            {
+                if (e.ItemId == "copper_ore") copperGathered++;
+                else if (e.ItemId == "tin_ore") tinGathered++;
+            });
+
+            // Tick until we've gathered at least 20 items total (enough for statistical confidence)
+            TickUntil(() => copperGathered + tinGathered >= 20, 50000);
+
+            Assert.GreaterOrEqual(copperGathered + tinGathered, 20,
+                "Should have gathered at least 20 items");
+            Assert.Greater(copperGathered, 0, "GatherAny should produce at least some copper");
+            Assert.Greater(tinGathered, 0, "GatherAny should produce at least some tin");
+        }
+
+        [Test]
+        public void GatherAny_StableMidGather()
+        {
+            Setup("mine");
+
+            var microRuleset = CreateAndRegisterMicroRuleset("gather-any-stable");
+            microRuleset.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherAny(),
+                Enabled = true,
+            });
+
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(assignment, "gather-any-stable");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            int initialIndex = _runner.Gathering.GatherableIndex;
+
+            // Tick a few times (not enough to produce an item) — index should stay the same
+            for (int i = 0; i < 3; i++)
+            {
+                _sim.Tick();
+                if (_runner.State != RunnerState.Gathering) break;
+                Assert.AreEqual(initialIndex, _runner.Gathering.GatherableIndex,
+                    $"GatherAny should not switch resources mid-gather (tick {i + 1})");
+            }
+        }
+
+        [Test]
+        public void GatherAny_EmptyNode_LetItBreak()
+        {
+            // Create a node with no gatherables
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("empty", "Empty Field"); // no gatherables
+            map.AddEdge("hub", "empty", 8f);
+            map.Initialize();
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, 1),
+            };
+
+            _sim.StartNewGame(defs, map, "empty");
+            _runner = _sim.CurrentGameState.Runners[0];
+
+            GatheringFailed? failed = null;
+            _sim.Events.Subscribe<GatheringFailed>(e => failed = e);
+
+            var microRuleset = CreateAndRegisterMicroRuleset("gather-any-empty");
+            microRuleset.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherAny(),
+                Enabled = true,
+            });
+
+            var assignment = TaskSequence.CreateLoop("empty", "hub");
+            SetWorkStepMicroRuleset(assignment, "gather-any-empty");
+            _sim.AssignRunner(_runner.Id, assignment);
+
+            // Should fail because node has no gatherables
+            Assert.IsNotNull(failed, "GatheringFailed should fire when node has no gatherables");
+        }
+
+        [Test]
+        public void DefaultMicro_UsesGatherAny()
+        {
+            var defaultMicro = DefaultRulesets.CreateDefaultMicro();
+            Assert.AreEqual(2, defaultMicro.Rules.Count);
+
+            var gatherRule = defaultMicro.Rules[1]; // second rule: Always → Gather
+            Assert.AreEqual(ActionType.GatherHere, gatherRule.Action.Type);
+            Assert.AreEqual(-1, gatherRule.Action.IntParam,
+                "Default micro should use GatherAny (IntParam = -1)");
         }
     }
 }

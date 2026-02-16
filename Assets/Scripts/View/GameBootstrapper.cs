@@ -111,8 +111,9 @@ namespace ProjectGuild.View
                 _clickedThisFrame = false;
                 // Skip if click hit IMGUI
                 if (GUIUtility.hotControl > 0) return;
-                // Skip if click hit UI Toolkit (check if pointer is over a non-ignored element)
-                if (IsPointerOverUIToolkit()) return;
+                // Skip if click hit UI Toolkit (uses event-driven pointer tracking, not the
+                // broken ScreenToPanel + panel.Pick() approach that had coordinate mismatch)
+                if (_uiManager != null && _uiManager.IsPointerOverUI()) return;
 
                 TryPickRunner();
             }
@@ -1422,7 +1423,7 @@ namespace ProjectGuild.View
                 ActionType.Idle => "Idle",
                 ActionType.WorkAt => $"Work @ {a.StringParam}",
                 ActionType.ReturnToHub => "Return to Hub",
-                ActionType.GatherHere => $"Gather Here[{a.IntParam}]",
+                ActionType.GatherHere => a.IntParam == -1 ? "Gather Any" : $"Gather Here[{a.IntParam}]",
                 ActionType.FinishTask => "FinishTask",
                 _ => a.Type.ToString(),
             };

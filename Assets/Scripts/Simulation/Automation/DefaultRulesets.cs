@@ -11,8 +11,8 @@ namespace ProjectGuild.Simulation.Automation
         public const string DefaultMicroId = "default-micro";
 
         /// <summary>
-        /// Default micro ruleset: Always → GatherHere(0).
-        /// This is the "mine copper" / "spam fireball" equivalent.
+        /// Default micro ruleset: Always → GatherAny (random resource).
+        /// This is the "mine whatever's here" equivalent.
         /// Visible, editable, communicates what the pawn does within a task.
         /// </summary>
         public static Ruleset CreateDefaultMicro()
@@ -34,9 +34,9 @@ namespace ProjectGuild.Simulation.Automation
 
             ruleset.Rules.Add(new Rule
             {
-                Label = "Gather resource",
+                Label = "Gather any resource",
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.GatherHere(0),
+                Action = AutomationAction.GatherAny(),
                 Enabled = true,
             });
 

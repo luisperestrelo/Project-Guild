@@ -139,6 +139,8 @@ namespace ProjectGuild.View.UI
                 case ActionType.GatherHere:
                     if (!string.IsNullOrEmpty(action.StringParam))
                         return $"Gather {ResolveItemName(action.StringParam, itemResolver)}";
+                    if (action.IntParam == -1)
+                        return "Gather Any";
                     return $"Gather Here ({action.IntParam})";
 
                 case ActionType.FinishTask:

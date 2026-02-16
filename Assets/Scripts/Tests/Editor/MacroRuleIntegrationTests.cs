@@ -465,8 +465,10 @@ namespace ProjectGuild.Tests
                 _runner.Id, DecisionLayer.Micro);
             Assert.Greater(microEntries.Count, 0, "Micro decisions should be logged");
             Assert.AreEqual(DecisionLayer.Micro, microEntries[0].Layer);
-            Assert.IsTrue(microEntries[0].ActionDetail.Contains("GatherHere"),
-                "Micro decision should show GatherHere action");
+            Assert.IsTrue(
+                microEntries[0].ActionDetail.Contains("GatherHere")
+                || microEntries[0].ActionDetail.Contains("GatherAny"),
+                "Micro decision should show GatherHere or GatherAny action");
         }
 
         // ─── Macro rules fire every tick (mid-gather interrupt) ───

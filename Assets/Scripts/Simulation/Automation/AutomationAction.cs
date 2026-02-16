@@ -10,8 +10,8 @@ namespace ProjectGuild.Simulation.Automation
     public class AutomationAction
     {
         public ActionType Type;
-        public string StringParam;   // nodeId for WorkAt
-        public int IntParam;         // gatherableIndex for GatherHere
+        public string StringParam;   // nodeId for WorkAt, taskSequenceId for AssignSequence
+        public int IntParam;         // gatherableIndex for GatherHere (-1 = any available, random)
 
         public AutomationAction() { }
 
@@ -36,9 +36,18 @@ namespace ProjectGuild.Simulation.Automation
 
         /// <summary>
         /// Micro action: gather the resource at the given index at the current node.
+        /// Use IntParam = -1 for "any available" (random selection, see GatherAny()).
         /// </summary>
         public static AutomationAction GatherHere(int gatherableIndex = 0)
             => new AutomationAction { Type = ActionType.GatherHere, IntParam = gatherableIndex };
+
+        /// <summary>
+        /// Micro action: gather any available resource at the current node (random per item).
+        /// Equivalent to GatherHere(-1). The runner picks a random gatherable each time
+        /// a new item is started, producing a mix of resources over a full inventory.
+        /// </summary>
+        public static AutomationAction GatherAny()
+            => new AutomationAction { Type = ActionType.GatherHere, IntParam = -1 };
 
         public static AutomationAction FinishTask()
             => new AutomationAction { Type = ActionType.FinishTask };

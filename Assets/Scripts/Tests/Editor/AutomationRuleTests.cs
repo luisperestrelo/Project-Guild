@@ -293,8 +293,8 @@ namespace ProjectGuild.Tests
                 "First rule should be InventoryFull → FinishTask");
             Assert.AreEqual(ActionType.GatherHere, ruleset.Rules[1].Action.Type,
                 "Second rule should be Always → GatherHere");
-            Assert.AreEqual(0, ruleset.Rules[1].Action.IntParam,
-                "Default gather rule should target index 0");
+            Assert.AreEqual(-1, ruleset.Rules[1].Action.IntParam,
+                "Default gather rule should use GatherAny (IntParam = -1)");
         }
 
         [Test]

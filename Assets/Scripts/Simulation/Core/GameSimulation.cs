@@ -26,6 +26,7 @@ namespace ProjectGuild.Simulation.Core
         public ItemRegistry ItemRegistry { get; private set; }
         public EventLogService EventLog { get; private set; }
 
+        private readonly System.Random _random = new();
 
 
         /// <summary>
@@ -484,9 +485,11 @@ namespace ProjectGuild.Simulation.Core
             runner.Gathering.TicksRequired = ticksRequired;
             runner.Gathering.TickAccumulator += 1f;
 
+            bool itemJustProduced = false;
             if (runner.Gathering.TickAccumulator >= ticksRequired)
             {
                 runner.Gathering.TickAccumulator -= ticksRequired;
+                itemJustProduced = true;
 
                 var itemDef = ItemRegistry.Get(gatherableConfig.ProducedItemId);
                 bool added = runner.Inventory.TryAdd(itemDef, 1);
@@ -511,7 +514,8 @@ namespace ProjectGuild.Simulation.Core
             // Re-evaluate micro rules every tick — may switch resources, FinishTask,
             // or handle InventoryFull (the default micro ruleset has IF InventoryFull → FinishTask).
             // Runs every tick, not just after item production, so condition changes are caught immediately.
-            ReevaluateMicroDuringGathering(runner, node);
+            // itemJustProduced tells GatherAny whether to re-roll (true) or keep current (false).
+            ReevaluateMicroDuringGathering(runner, node, itemJustProduced);
         }
 
         // ─── Macro Layer: Task Sequence + Step Logic ───────────────────
@@ -774,7 +778,8 @@ namespace ProjectGuild.Simulation.Core
         ///
         /// Null or empty micro ruleset = no valid rule matched = runner is stuck (let it break).
         /// </summary>
-        private int EvaluateMicroRules(Runner runner, World.WorldNode node)
+        private int EvaluateMicroRules(Runner runner, World.WorldNode node,
+            bool itemJustProduced = false)
         {
             // Resolve micro ruleset: prefer Work step's MicroRulesetId → library lookup,
             // fall back to runner.MicroRuleset for old save compatibility.
@@ -808,11 +813,13 @@ namespace ProjectGuild.Simulation.Core
 
                 if (action.Type == ActionType.GatherHere)
                 {
-                    int index = ResolveGatherHereIndex(action, node);
+                    int index = ResolveGatherHereIndex(action, node, runner, itemJustProduced);
                     if (index >= 0 && index < node.Gatherables.Length)
                     {
+                        string actionLabel = action.IntParam == -1
+                            ? $"GatherAny→{index}" : $"GatherHere({index})";
                         LogDecision(runner, ruleIndex, rule, "MicroEval",
-                            $"GatherHere({index})", false, DecisionLayer.Micro);
+                            actionLabel, false, DecisionLayer.Micro);
                         return index;
                     }
                 }
@@ -829,11 +836,14 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Resolve GatherHere action to a gatherable index at the given node.
-        /// Two modes:
+        /// Three modes:
         ///   - StringParam set (e.g., "iron_ore") → find gatherable producing that item. -1 if not found.
-        ///   - StringParam null → use IntParam as positional index (existing behavior).
+        ///   - IntParam == -1 (GatherAny) → random selection, stable mid-gather.
+        ///     Only re-rolls when starting a new item (itemJustProduced=true or Gathering==null).
+        ///   - IntParam >= 0 → use as positional index directly.
         /// </summary>
-        private int ResolveGatherHereIndex(AutomationAction action, World.WorldNode node)
+        private int ResolveGatherHereIndex(AutomationAction action, World.WorldNode node,
+            Runner runner, bool itemJustProduced)
         {
             if (!string.IsNullOrEmpty(action.StringParam))
             {
@@ -846,6 +856,23 @@ namespace ProjectGuild.Simulation.Core
                 return -1; // item not available at this node — let it break
             }
 
+            // GatherAny: random per item, stable mid-gather
+            if (action.IntParam == -1)
+            {
+                if (node.Gatherables.Length == 0) return -1;
+
+                // Mid-gather and no item just produced → keep current resource
+                if (runner.Gathering != null && !itemJustProduced
+                    && runner.Gathering.GatherableIndex >= 0
+                    && runner.Gathering.GatherableIndex < node.Gatherables.Length)
+                {
+                    return runner.Gathering.GatherableIndex;
+                }
+
+                // Fresh pick: Work step entry (Gathering==null) or item just produced
+                return _random.Next(node.Gatherables.Length);
+            }
+
             // Positional index (default behavior)
             return action.IntParam;
         }
@@ -855,11 +882,12 @@ namespace ProjectGuild.Simulation.Core
         /// If the result changes resource index, restart gathering with the new resource.
         /// If FinishTask, stop gathering and advance the macro step.
         /// </summary>
-        private void ReevaluateMicroDuringGathering(Runner runner, World.WorldNode node)
+        private void ReevaluateMicroDuringGathering(Runner runner, World.WorldNode node,
+            bool itemJustProduced = false)
         {
             if (GetRunnerTaskSequence(runner) == null) return;
 
-            int newIndex = EvaluateMicroRules(runner, node);
+            int newIndex = EvaluateMicroRules(runner, node, itemJustProduced);
 
             // FinishTask — micro says "done gathering"
             if (newIndex == MicroResultFinishTask)
