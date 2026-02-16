@@ -142,6 +142,11 @@ namespace ProjectGuild.View
                 obj.transform.localScale = new Vector3(0.5f, 1f, 0.5f);
             }
 
+            // Put runners on their own physics layer for selective raycasting
+            int runnerLayer = LayerMask.NameToLayer("Runners");
+            if (runnerLayer >= 0)
+                SetLayerRecursive(obj, runnerLayer);
+
             var visual = obj.AddComponent<RunnerVisual>();
             Vector3 startPos = GetRunnerWorldPosition(runner);
             visual.Initialize(runner.Id, runner.Name, startPos);
@@ -243,6 +248,13 @@ namespace ProjectGuild.View
             var runner = Sim.FindRunner(evt.RunnerId);
             if (runner != null)
                 CreateRunnerVisual(runner);
+        }
+
+        private static void SetLayerRecursive(GameObject obj, int layer)
+        {
+            obj.layer = layer;
+            foreach (Transform child in obj.transform)
+                SetLayerRecursive(child.gameObject, layer);
         }
 
         private void OnDestroy()

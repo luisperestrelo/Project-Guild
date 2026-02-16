@@ -28,12 +28,16 @@ namespace ProjectGuild.View
 
         private InputAction _clickAction;
         private bool _clickedThisFrame;
+        private int _runnerLayerMask;
         private bool _debugUIEnabled = true;
 
         private void Awake()
         {
             _clickAction = new InputAction("Click", InputActionType.Button,
                 binding: "<Mouse>/leftButton");
+
+            int runnerLayer = LayerMask.NameToLayer("Runners");
+            _runnerLayerMask = runnerLayer >= 0 ? (1 << runnerLayer) : ~0; // fallback to all layers if not configured
         }
 
         private void OnEnable() => _clickAction.Enable();
@@ -109,33 +113,12 @@ namespace ProjectGuild.View
             if (_clickedThisFrame)
             {
                 _clickedThisFrame = false;
-                // Skip if click hit IMGUI
+
                 if (GUIUtility.hotControl > 0) return;
-                // Skip if click hit UI Toolkit (uses event-driven pointer tracking, not the
-                // broken ScreenToPanel + panel.Pick() approach that had coordinate mismatch)
                 if (_uiManager != null && _uiManager.IsPointerOverUI()) return;
 
                 TryPickRunner();
             }
-        }
-
-        private bool IsPointerOverUIToolkit()
-        {
-            if (_uiManager == null) return false;
-            var uiDoc = _uiManager.GetComponent<UnityEngine.UIElements.UIDocument>();
-            if (uiDoc == null) return false;
-            var panel = uiDoc.rootVisualElement?.panel;
-            if (panel == null) return false;
-
-            // Pick the topmost element at the mouse position
-            var mousePos = Mouse.current.position.ReadValue();
-            // Convert screen position to panel coordinates
-            var panelPos = UnityEngine.UIElements.RuntimePanelUtils.ScreenToPanel(
-                panel, new UnityEngine.Vector2(mousePos.x, mousePos.y));
-            var picked = panel.Pick(panelPos);
-
-            // If picked element exists and isn't set to Ignore, UI is blocking
-            return picked != null && picked.pickingMode != UnityEngine.UIElements.PickingMode.Ignore;
         }
 
         private void TryPickRunner()
@@ -144,11 +127,11 @@ namespace ProjectGuild.View
             if (sim == null || Camera.main == null) return;
 
             Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
-            if (!Physics.Raycast(ray, out RaycastHit hit, 200f)) return;
+            if (!Physics.Raycast(ray, out RaycastHit hit, 200f, _runnerLayerMask))
+                return;
 
             var visual = hit.collider.GetComponentInParent<RunnerVisual>();
             if (visual == null) return;
-
             // Find the runner index by ID
             for (int i = 0; i < sim.CurrentGameState.Runners.Count; i++)
             {
