@@ -117,6 +117,10 @@ namespace ProjectGuild.View.UI
                 var runner = sim.FindRunner(kvp.Key);
                 if (runner == null) continue;
 
+                var nameLabel = kvp.Value.Q<Label>("portrait-name");
+                if (nameLabel != null)
+                    nameLabel.text = runner.Name;
+
                 var stateLabel = kvp.Value.Q<Label>("portrait-state");
                 if (stateLabel != null)
                 {

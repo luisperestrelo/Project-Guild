@@ -52,6 +52,10 @@ namespace ProjectGuild.View.UI
         private readonly List<Label> _inventorySlotQuantities = new();
         private string[] _slotTooltips = new string[0];
 
+        // ─── Rename state ─────────────────────────────────
+        private TextField _renameField;
+        private bool _isRenaming;
+
         private string _currentRunnerId;
 
         public RunnerDetailsPanelController(VisualElement root, UIManager uiManager)
@@ -75,6 +79,11 @@ namespace ProjectGuild.View.UI
 
             // ─── Overview elements ──────────────────────
             _nameLabel = root.Q<Label>("runner-name-label");
+            _nameLabel.RegisterCallback<ClickEvent>(evt =>
+            {
+                if (evt.clickCount == 2)
+                    BeginRename();
+            });
             _stateLabel = root.Q<Label>("runner-state-label");
             _taskInfoLabel = root.Q<Label>("task-info-label");
             _travelProgressContainer = root.Q("travel-progress-container");
@@ -124,8 +133,71 @@ namespace ProjectGuild.View.UI
 
         public void ShowRunner(string runnerId)
         {
+            if (_isRenaming) CancelRename();
             _currentRunnerId = runnerId;
             Refresh();
+        }
+
+        // ─── Rename ──────────────────────────────────────
+
+        private void BeginRename()
+        {
+            if (_isRenaming || _currentRunnerId == null) return;
+            _isRenaming = true;
+
+            // Create a text field in place of the name label
+            _renameField = new TextField();
+            _renameField.AddToClassList("runner-name-rename");
+            _renameField.value = _nameLabel.text;
+            _nameLabel.style.display = DisplayStyle.None;
+
+            // Insert the text field where the name label is
+            _nameLabel.parent.Insert(_nameLabel.parent.IndexOf(_nameLabel) + 1, _renameField);
+
+            // Focus and select all text
+            _renameField.schedule.Execute(() =>
+            {
+                _renameField.Q("unity-text-input").Focus();
+                _renameField.SelectAll();
+            });
+
+            // Confirm on Enter
+            _renameField.RegisterCallback<KeyDownEvent>(evt =>
+            {
+                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    CommitRename();
+                else if (evt.keyCode == KeyCode.Escape)
+                    CancelRename();
+            });
+
+            // Confirm on focus loss
+            _renameField.RegisterCallback<FocusOutEvent>(evt => CommitRename());
+        }
+
+        private void CommitRename()
+        {
+            if (!_isRenaming) return;
+            _isRenaming = false;
+
+            string newName = _renameField?.value?.Trim();
+            if (!string.IsNullOrEmpty(newName) && _currentRunnerId != null)
+                _uiManager.Simulation?.CommandRenameRunner(_currentRunnerId, newName);
+
+            CleanupRenameField();
+        }
+
+        private void CancelRename()
+        {
+            if (!_isRenaming) return;
+            _isRenaming = false;
+            CleanupRenameField();
+        }
+
+        private void CleanupRenameField()
+        {
+            _renameField?.RemoveFromHierarchy();
+            _renameField = null;
+            _nameLabel.style.display = DisplayStyle.Flex;
         }
 
         public void Refresh()
@@ -160,7 +232,8 @@ namespace ProjectGuild.View.UI
 
         private void RefreshOverviewHeader(Runner runner, GameSimulation sim)
         {
-            _nameLabel.text = runner.Name;
+            if (!_isRenaming)
+                _nameLabel.text = runner.Name;
             var node = sim.CurrentGameState.Map.GetNode(runner.CurrentNodeId);
             string nodeName = node?.Name ?? runner.CurrentNodeId ?? "Unknown";
             _stateLabel.text = $"{runner.State} at {nodeName}";

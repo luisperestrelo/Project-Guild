@@ -1200,6 +1200,15 @@ namespace ProjectGuild.Simulation.Core
         public Ruleset GetRunnerMacroRuleset(Runner runner) =>
             FindMacroRulesetInLibrary(runner.MacroRulesetId) ?? runner.MacroRuleset;
 
+        // ─── Runner Commands ──────────────────────────────────────────
+
+        public void CommandRenameRunner(string runnerId, string newName)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+            runner.Name = newName?.Trim() ?? "";
+        }
+
         // ─── Library CRUD Commands ──────────────────────────────────
 
         /// <summary>Register a task sequence in the library. Returns its Id.</summary>
