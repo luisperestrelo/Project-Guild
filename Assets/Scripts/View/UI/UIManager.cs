@@ -53,6 +53,7 @@ namespace ProjectGuild.View.UI
         // which had coordinate mismatch issues (blocking zone shifted relative to visual panel).
         // Event-driven tracking uses UI Toolkit's own hit testing — no coordinate transforms needed.
         private bool _isPointerOverDetailsPanel;
+        private bool _isPointerOverPortraitBar;
 
         // ─── Node-click confirmation popup ────────────────
         private VisualElement _nodeClickPopup;
@@ -69,6 +70,7 @@ namespace ProjectGuild.View.UI
         public bool IsPointerOverUI()
         {
             if (_isPointerOverDetailsPanel) return true;
+            if (_isPointerOverPortraitBar) return true;
             if (_automationPanelController?.IsOpen == true) return true;
             if (_bankPanelController?.IsOpen == true) return true;
             return false;
@@ -105,6 +107,10 @@ namespace ProjectGuild.View.UI
             var portraitContainer = root.Q("portrait-bar-container");
             _portraitBarController = new RunnerPortraitBarController(
                 portraitContainer, _runnerPortraitAsset, this);
+
+            // Track pointer over portrait bar for click-through blocking
+            portraitContainer.RegisterCallback<PointerEnterEvent>(_ => _isPointerOverPortraitBar = true);
+            portraitContainer.RegisterCallback<PointerLeaveEvent>(_ => _isPointerOverPortraitBar = false);
 
             // Details panel — instantiate the template into the container
             var detailsContainer = root.Q("details-panel-container");

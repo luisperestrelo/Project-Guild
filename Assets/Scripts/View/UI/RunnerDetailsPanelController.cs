@@ -67,8 +67,9 @@ namespace ProjectGuild.View.UI
         private string _tooltipGatherXp = "";
 
         // ─── Skill XP bars (live stats) ───────────────────
-        private float[] _lastKnownSkillXp;
-        private float[] _skillXpLastChangeTime;
+        // Per-runner tracking so switching runners preserves XP bar visibility
+        private readonly Dictionary<string, float[]> _perRunnerSkillXp = new();
+        private readonly Dictionary<string, float[]> _perRunnerSkillXpChangeTime = new();
         private readonly List<(VisualElement row, Label label, ProgressBar bar)> _xpBarPool = new();
 
         // ─── Skills tab elements ────────────────────────
@@ -201,7 +202,6 @@ namespace ProjectGuild.View.UI
         {
             if (_isRenaming) CancelRename();
             _currentRunnerId = runnerId;
-            ResetSkillXpTracking();
             _automationTabController?.ShowRunner(runnerId);
             Refresh();
         }
@@ -537,38 +537,35 @@ namespace ProjectGuild.View.UI
             }
         }
 
-        private void ResetSkillXpTracking()
-        {
-            _lastKnownSkillXp = null;
-            _skillXpLastChangeTime = null;
-        }
-
         private void RefreshSkillXpBars(Runner runner)
         {
             int skillCount = SkillTypeExtensions.SkillCount;
             float now = Time.time;
+            string runnerId = runner.Id;
 
-            // Initialize tracking arrays on first call for this runner
-            if (_lastKnownSkillXp == null || _lastKnownSkillXp.Length != skillCount)
+            // Get or create per-runner tracking arrays
+            if (!_perRunnerSkillXp.TryGetValue(runnerId, out var lastKnownXp))
             {
-                _lastKnownSkillXp = new float[skillCount];
-                _skillXpLastChangeTime = new float[skillCount];
+                lastKnownXp = new float[skillCount];
+                var changeTimes = new float[skillCount];
                 for (int i = 0; i < skillCount; i++)
                 {
-                    // Use total XP (level * xpForLevel + current xp) for change detection
-                    _lastKnownSkillXp[i] = runner.Skills[i].Level * 10000f + runner.Skills[i].Xp;
-                    _skillXpLastChangeTime[i] = 0f; // won't show until XP actually changes
+                    lastKnownXp[i] = runner.Skills[i].Level * 10000f + runner.Skills[i].Xp;
+                    changeTimes[i] = 0f;
                 }
+                _perRunnerSkillXp[runnerId] = lastKnownXp;
+                _perRunnerSkillXpChangeTime[runnerId] = changeTimes;
             }
+            var lastChangeTime = _perRunnerSkillXpChangeTime[runnerId];
 
             // Detect XP changes
             for (int i = 0; i < skillCount; i++)
             {
                 float currentXpSignature = runner.Skills[i].Level * 10000f + runner.Skills[i].Xp;
-                if (currentXpSignature != _lastKnownSkillXp[i])
+                if (currentXpSignature != lastKnownXp[i])
                 {
-                    _lastKnownSkillXp[i] = currentXpSignature;
-                    _skillXpLastChangeTime[i] = now;
+                    lastKnownXp[i] = currentXpSignature;
+                    lastChangeTime[i] = now;
                 }
             }
 
@@ -584,8 +581,8 @@ namespace ProjectGuild.View.UI
             var eligible = new List<(int skillIndex, float lastChange)>();
             for (int i = 0; i < skillCount; i++)
             {
-                if (_skillXpLastChangeTime[i] > 0f && (now - _skillXpLastChangeTime[i]) < window)
-                    eligible.Add((i, _skillXpLastChangeTime[i]));
+                if (lastChangeTime[i] > 0f && (now - lastChangeTime[i]) < window)
+                    eligible.Add((i, lastChangeTime[i]));
             }
             eligible.Sort((a, b) => b.lastChange.CompareTo(a.lastChange));
 
