@@ -157,7 +157,7 @@ namespace ProjectGuild.View.UI
         // ─── Step Formatting ─────────────────────────────────────────
 
         /// <summary>Format a task step as readable text.</summary>
-        public static string FormatStep(TaskStep step, GameState state, System.Func<string, string> microNameResolver = null)
+        public static string FormatStep(TaskStep step, GameState state)
         {
             if (step == null) return "";
 
@@ -167,12 +167,7 @@ namespace ProjectGuild.View.UI
                     return $"Travel to {ResolveNodeName(step.TargetNodeId, state)}";
 
                 case TaskStepType.Work:
-                    string microName = null;
-                    if (!string.IsNullOrEmpty(step.MicroRulesetId))
-                        microName = microNameResolver?.Invoke(step.MicroRulesetId);
-                    return microName != null
-                        ? $"Work ({microName})"
-                        : "Work";
+                    return "Work";
 
                 case TaskStepType.Deposit:
                     return "Deposit";

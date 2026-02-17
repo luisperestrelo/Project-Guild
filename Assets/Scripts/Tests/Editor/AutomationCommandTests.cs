@@ -993,12 +993,11 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void FormatStep_Work_WithMicroName()
+        public void FormatStep_Work()
         {
             var step = new TaskStep(TaskStepType.Work, microRulesetId: "my-micro");
-            var result = AutomationUIHelpers.FormatStep(step, null,
-                id => id == "my-micro" ? "Default Gather" : null);
-            Assert.AreEqual("Work (Default Gather)", result);
+            var result = AutomationUIHelpers.FormatStep(step, null);
+            Assert.AreEqual("Work", result);
         }
 
         [Test]

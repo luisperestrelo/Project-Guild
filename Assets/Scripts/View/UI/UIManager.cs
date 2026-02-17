@@ -205,6 +205,7 @@ namespace ProjectGuild.View.UI
         {
             _portraitBarController?.Refresh();
             _detailsPanelController?.Refresh();
+            _resourceBarController?.Refresh();
         }
 
         private void OnRunnerCreated(RunnerCreated evt)
@@ -287,10 +288,41 @@ namespace ProjectGuild.View.UI
             element.RegisterCallback<PointerMoveEvent>(evt =>
             {
                 if (_tooltip.style.display == DisplayStyle.None) return;
-                // Position tooltip offset from pointer (below-right)
-                _tooltip.style.left = evt.position.x + 12;
-                _tooltip.style.top = evt.position.y + 16;
+                PositionTooltip(evt.position.x, evt.position.y);
             });
+        }
+
+        private void PositionTooltip(float pointerX, float pointerY)
+        {
+            float tooltipWidth = _tooltip.resolvedStyle.width;
+            float tooltipHeight = _tooltip.resolvedStyle.height;
+
+            // If tooltip hasn't been laid out yet, use default offset
+            if (float.IsNaN(tooltipWidth)) tooltipWidth = 0;
+            if (float.IsNaN(tooltipHeight)) tooltipHeight = 0;
+
+            var panelRoot = _tooltip.panel?.visualTree;
+            float panelWidth = panelRoot?.resolvedStyle.width ?? 1920;
+            float panelHeight = panelRoot?.resolvedStyle.height ?? 1080;
+
+            // Default: below-right of cursor
+            float x = pointerX + 12;
+            float y = pointerY + 16;
+
+            // Flip left if overflowing right edge
+            if (x + tooltipWidth > panelWidth)
+                x = pointerX - tooltipWidth - 4;
+
+            // Flip above if overflowing bottom edge
+            if (y + tooltipHeight > panelHeight)
+                y = pointerY - tooltipHeight - 4;
+
+            // Final clamp to prevent going off-screen
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+
+            _tooltip.style.left = x;
+            _tooltip.style.top = y;
         }
 
         // ─── Node-Click Confirmation Popup ──────────────

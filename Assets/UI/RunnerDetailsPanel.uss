@@ -203,29 +203,6 @@
     color: rgb(180, 180, 200);
 }
 
-/* ─── Inventory ───────────────────────────────────── */
-
-.inventory-items-container {
-    margin-top: 4px;
-}
-
-.inventory-item-row {
-    flex-direction: row;
-    margin-left: 8px;
-    margin-bottom: 1px;
-}
-
-.inventory-item-name {
-    font-size: 10px;
-    color: rgb(180, 200, 220);
-}
-
-.inventory-item-count {
-    font-size: 10px;
-    color: rgb(140, 160, 180);
-    margin-left: 4px;
-}
-
 /* ─── Skills ──────────────────────────────────────── */
 
 .skills-list {
@@ -246,7 +223,7 @@
 }
 
 .skill-level {
-    width: 28px;
+    width: 36px;
     font-size: 11px;
     color: rgb(220, 220, 240);
     -unity-text-align: middle-right;

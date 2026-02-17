@@ -42,5 +42,25 @@ namespace ProjectGuild.Simulation.Core
 
         public static bool IsProduction(this SkillType skill) =>
             skill >= SkillType.Engineering && skill <= SkillType.Cooking;
+
+        public static string GetDescription(this SkillType skill) => skill switch
+        {
+            SkillType.Melee => "Effectiveness with melee weapons.",
+            SkillType.Ranged => "Effectiveness with bows, crossbows, and thrown weapons.",
+            SkillType.Defence => "Reduces incoming damage.",
+            SkillType.Hitpoints => "Maximum health.",
+            SkillType.Magic => "Effectiveness with offensive spells.",
+            SkillType.Restoration => "Primarily healing magic, but principles of life-force can also be used to harm. Uses mana.",
+            SkillType.Execution => "Proficiency at raid mechanics. Higher execution means fewer avoidable hits.",
+            SkillType.Mining => "Extracting ore and stone.",
+            SkillType.Woodcutting => "Harvesting timber.",
+            SkillType.Fishing => "Catching fish.",
+            SkillType.Foraging => "Gathering herbs, vegetables, and spices.",
+            SkillType.Engineering => "Crafting gear, tools, and structures.",
+            SkillType.PotionMaking => "Brewing potions and alchemical consumables.",
+            SkillType.Cooking => "Preparing stat-boosting meals.",
+            SkillType.Athletics => "Movement speed.",
+            _ => "",
+        };
     }
 }

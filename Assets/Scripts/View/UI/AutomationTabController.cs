@@ -46,7 +46,7 @@ namespace ProjectGuild.View.UI
 
         // ─── Task Sequence cached step rows ──────
         private string _cachedTaskSeqShapeKey;
-        private readonly List<(VisualElement row, Label indicator, Label index, Label text)> _stepRowCache = new();
+        private readonly List<(VisualElement row, Label indicator, Label index, Label text, Label microLink)> _stepRowCache = new();
 
         // ─── Task Sequence assign dropdown state ──────
         private readonly List<string> _taskSeqChoiceIds = new();
@@ -250,6 +250,7 @@ namespace ProjectGuild.View.UI
 
                 for (int i = 0; i < stepCount; i++)
                 {
+                    var step = seq.Steps[i];
                     var row = new VisualElement();
                     row.AddToClassList("auto-step-row");
 
@@ -268,8 +269,28 @@ namespace ProjectGuild.View.UI
                     stepLabel.pickingMode = PickingMode.Ignore;
                     row.Add(stepLabel);
 
+                    // For Work steps, add a clickable micro ruleset link
+                    Label microLink = null;
+                    if (step.Type == TaskStepType.Work)
+                    {
+                        var arrow = new Label("\u2192"); // →
+                        arrow.AddToClassList("auto-step-arrow");
+                        arrow.pickingMode = PickingMode.Ignore;
+                        row.Add(arrow);
+
+                        microLink = new Label();
+                        microLink.AddToClassList("auto-step-micro-link");
+                        string capturedMicroId = step.MicroRulesetId;
+                        microLink.RegisterCallback<ClickEvent>(evt =>
+                        {
+                            if (evt.clickCount == 2 && !string.IsNullOrEmpty(capturedMicroId))
+                                _uiManager.OpenAutomationPanelToItemFromRunner("micro", capturedMicroId, _currentRunnerId);
+                        });
+                        row.Add(microLink);
+                    }
+
                     _stepsContainer.Add(row);
-                    _stepRowCache.Add((row, indicator, indexLabel, stepLabel));
+                    _stepRowCache.Add((row, indicator, indexLabel, stepLabel, microLink));
                 }
             }
 
@@ -288,8 +309,14 @@ namespace ProjectGuild.View.UI
                     cached.row.RemoveFromClassList("auto-step-current");
 
                 // Step description
-                cached.text.text = AutomationUIHelpers.FormatStep(step, state,
-                    microId => sim.FindMicroRulesetInLibrary(microId)?.Name);
+                cached.text.text = AutomationUIHelpers.FormatStep(step, state);
+
+                // Micro ruleset link for Work steps
+                if (cached.microLink != null && step.Type == TaskStepType.Work)
+                {
+                    var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                    cached.microLink.text = microRuleset?.Name ?? step.MicroRulesetId ?? "None";
+                }
             }
 
             // Pending sequence indicator

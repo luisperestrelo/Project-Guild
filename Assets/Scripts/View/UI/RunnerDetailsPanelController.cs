@@ -41,13 +41,12 @@ namespace ProjectGuild.View.UI
         private readonly VisualElement _travelProgressContainer;
         private readonly Label _progressLabel;
         private readonly ProgressBar _travelProgressBar;
-        private readonly Label _inventorySummaryLabel;
-        private readonly VisualElement _inventoryItemsContainer;
-        private readonly List<(VisualElement row, Label name, Label count)> _inventoryItemRowCache = new();
         private readonly Label _skillsSummaryLabel;
 
         // ─── Live stats elements ─────────────────────────
         private readonly VisualElement _liveStatsContainer;
+        private VisualElement _statRowInventory;
+        private Label _statValueInventory;
         private VisualElement _statRowTravelSpeed;
         private Label _statValueTravelSpeed;
         private VisualElement _statRowEta;
@@ -77,6 +76,8 @@ namespace ProjectGuild.View.UI
         private readonly Label[] _skillLevelLabels;
         private readonly Label[] _skillPassionLabels;
         private readonly ProgressBar[] _skillProgressBars;
+        private readonly string[] _skillRowTooltips;
+        private readonly string[] _passionTooltips;
 
         // ─── Inventory tab elements ─────────────────────
         private readonly Label _inventoryTabSummary;
@@ -134,8 +135,6 @@ namespace ProjectGuild.View.UI
             _travelProgressBar = root.Q<ProgressBar>("travel-progress-bar");
             _liveStatsContainer = root.Q("live-stats-container");
             BuildLiveStatRows();
-            _inventorySummaryLabel = root.Q<Label>("inventory-summary-label");
-            _inventoryItemsContainer = root.Q("inventory-items-container");
             _skillsSummaryLabel = root.Q<Label>("skills-summary-label");
 
             // ─── Skills tab ─────────────────────────────
@@ -143,6 +142,8 @@ namespace ProjectGuild.View.UI
             _skillLevelLabels = new Label[SkillTypeExtensions.SkillCount];
             _skillPassionLabels = new Label[SkillTypeExtensions.SkillCount];
             _skillProgressBars = new ProgressBar[SkillTypeExtensions.SkillCount];
+            _skillRowTooltips = new string[SkillTypeExtensions.SkillCount];
+            _passionTooltips = new string[SkillTypeExtensions.SkillCount];
             BuildSkillRows();
 
             // ─── Inventory tab ──────────────────────────
@@ -318,8 +319,11 @@ namespace ProjectGuild.View.UI
             {
                 string seqName = taskSeq.Name ?? taskSeq.TargetNodeId ?? "Task";
                 int stepCount = taskSeq.Steps?.Count ?? 0;
-                int currentStep = runner.TaskSequenceCurrentStepIndex + 1;
-                _taskInfoLabel.text = $"{seqName} (step {currentStep}/{stepCount})";
+                int currentStepIdx = runner.TaskSequenceCurrentStepIndex;
+                string stepDesc = "...";
+                if (taskSeq.Steps != null && currentStepIdx >= 0 && currentStepIdx < stepCount)
+                    stepDesc = FormatStepDescription(taskSeq.Steps[currentStepIdx], sim);
+                _taskInfoLabel.text = $"{seqName}\n{stepDesc} ({currentStepIdx + 1}/{stepCount})";
             }
             else
             {
@@ -347,50 +351,6 @@ namespace ProjectGuild.View.UI
                 _travelProgressBar.AddToClassList("depositing");
             }
 
-            // Inventory summary
-            int usedSlots = runner.Inventory.Slots.Count;
-            int maxSlots = runner.Inventory.MaxSlots;
-            _inventorySummaryLabel.text = $"{usedSlots} / {maxSlots} slots";
-
-            // Inventory items (brief list) — pooled rows, updated in-place
-            var counts = AggregateInventory(runner, sim);
-            int itemIndex = 0;
-            foreach (var kvp in counts)
-            {
-                if (itemIndex < _inventoryItemRowCache.Count)
-                {
-                    // Reuse existing row
-                    var cached = _inventoryItemRowCache[itemIndex];
-                    cached.name.text = kvp.Key;
-                    cached.count.text = $"x{kvp.Value}";
-                    cached.row.style.display = DisplayStyle.Flex;
-                }
-                else
-                {
-                    // Create new row
-                    var row = new VisualElement();
-                    row.AddToClassList("inventory-item-row");
-                    row.pickingMode = PickingMode.Ignore;
-
-                    var nameLabel = new Label(kvp.Key);
-                    nameLabel.AddToClassList("inventory-item-name");
-                    nameLabel.pickingMode = PickingMode.Ignore;
-                    row.Add(nameLabel);
-
-                    var countLabel = new Label($"x{kvp.Value}");
-                    countLabel.AddToClassList("inventory-item-count");
-                    countLabel.pickingMode = PickingMode.Ignore;
-                    row.Add(countLabel);
-
-                    _inventoryItemsContainer.Add(row);
-                    _inventoryItemRowCache.Add((row, nameLabel, countLabel));
-                }
-                itemIndex++;
-            }
-            // Hide excess cached rows
-            for (int i = itemIndex; i < _inventoryItemRowCache.Count; i++)
-                _inventoryItemRowCache[i].row.style.display = DisplayStyle.None;
-
             // Live stats (contextual based on runner state)
             RefreshLiveStats(runner, sim, config);
 
@@ -402,6 +362,9 @@ namespace ProjectGuild.View.UI
 
         private void BuildLiveStatRows()
         {
+            (_statRowInventory, _, _statValueInventory) = CreateStatRow("Inventory", "");
+            _liveStatsContainer.Add(_statRowInventory);
+
             (_statRowTravelSpeed, _, _statValueTravelSpeed) = CreateStatRow("Travel Speed", "");
             _liveStatsContainer.Add(_statRowTravelSpeed);
             _uiManager.RegisterTooltip(_statRowTravelSpeed, () => _tooltipTravelSpeed);
@@ -429,6 +392,12 @@ namespace ProjectGuild.View.UI
 
         private void RefreshLiveStats(Runner runner, GameSimulation sim, SimulationConfig config)
         {
+            // --- Inventory slots (always shown) ---
+            int usedSlots = runner.Inventory.Slots.Count;
+            int maxSlots = runner.Inventory.MaxSlots;
+            _statValueInventory.text = $"{usedSlots} / {maxSlots}";
+            _statRowInventory.style.display = DisplayStyle.Flex;
+
             float tickRate = 1f / sim.TickDeltaTime;
             var athSkill = runner.Skills[(int)SkillType.Athletics];
 
@@ -681,14 +650,42 @@ namespace ProjectGuild.View.UI
 
         private void RefreshSkillsTab(Runner runner, SimulationConfig config)
         {
+            float passionEffMult = config.PassionEffectivenessMultiplier;
+            float passionXpMult = config.PassionXpMultiplier;
+
             for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
             {
                 var skill = runner.Skills[i];
-                _skillLevelLabels[i].text = skill.Level.ToString();
-                _skillPassionLabels[i].text = skill.HasPassion ? "P" : "";
-                _skillProgressBars[i].value = skill.GetLevelProgress(config) * 100f;
+                var skillType = (SkillType)i;
+                string skillName = skillType.ToString();
+                string desc = skillType.GetDescription();
+                float progress = skill.GetLevelProgress(config) * 100f;
+                _skillProgressBars[i].value = progress;
+
+                string xpLine = $"XP: {skill.Xp:F0} / {skill.GetXpToNextLevel(config):F0} ({progress:F0}%)";
+
+                if (skill.HasPassion)
+                {
+                    float effectiveLevel = skill.GetEffectiveLevel(config);
+                    _skillLevelLabels[i].text = $"<color=#7CCD7C>{effectiveLevel:F1}</color>";
+                    _skillPassionLabels[i].text = "P";
+
+                    _skillRowTooltips[i] = $"<b>{skillName}</b> — {desc}\n" +
+                        $"Base Lv {skill.Level}, Effective Lv {effectiveLevel:F1}\n{xpLine}";
+                    _passionTooltips[i] = $"Passion increases XP gains by {(passionXpMult - 1f) * 100f:F0}% " +
+                        $"and effective level by {(passionEffMult - 1f) * 100f:F0}%.";
+                }
+                else
+                {
+                    _skillLevelLabels[i].text = skill.Level.ToString();
+                    _skillPassionLabels[i].text = "";
+
+                    _skillRowTooltips[i] = $"<b>{skillName}</b> — {desc}\nLv {skill.Level}\n{xpLine}";
+                    _passionTooltips[i] = "";
+                }
             }
         }
+
 
         // ─── Build helpers ──────────────────────────────
 
@@ -700,14 +697,16 @@ namespace ProjectGuild.View.UI
 
                 var row = new VisualElement();
                 row.AddToClassList("skill-row");
-                row.pickingMode = PickingMode.Ignore;
 
                 var nameLabel = new Label(skillType.ToString());
                 nameLabel.AddToClassList("skill-name");
+                nameLabel.pickingMode = PickingMode.Ignore;
                 row.Add(nameLabel);
 
                 var levelLabel = new Label("1");
                 levelLabel.AddToClassList("skill-level");
+                levelLabel.enableRichText = true;
+                levelLabel.pickingMode = PickingMode.Ignore;
                 row.Add(levelLabel);
                 _skillLevelLabels[i] = levelLabel;
 
@@ -724,6 +723,15 @@ namespace ProjectGuild.View.UI
                 _skillProgressBars[i] = progressBar;
 
                 _skillsList.Add(row);
+
+                // Tooltip on skill row (updated during refresh)
+                int idx = i;
+                _skillRowTooltips[i] = "";
+                _uiManager.RegisterTooltip(row, () => _skillRowTooltips[idx]);
+
+                // Tooltip on passion P (updated during refresh)
+                _passionTooltips[i] = "";
+                _uiManager.RegisterTooltip(passionLabel, () => _passionTooltips[idx]);
             }
         }
 
@@ -766,28 +774,37 @@ namespace ProjectGuild.View.UI
 
         // ─── Utility ────────────────────────────────────
 
-        private static Dictionary<string, int> AggregateInventory(Runner runner, GameSimulation sim)
+        private static string FormatStepDescription(Simulation.Automation.TaskStep step, GameSimulation sim)
         {
-            var result = new Dictionary<string, int>();
-            foreach (var slot in runner.Inventory.Slots)
+            switch (step.Type)
             {
-                var itemDef = sim.ItemRegistry?.Get(slot.ItemId);
-                string name = itemDef?.Name ?? slot.ItemId;
-                if (!result.ContainsKey(name))
-                    result[name] = 0;
-                result[name] += slot.Quantity;
+                case Simulation.Automation.TaskStepType.TravelTo:
+                    var node = sim.CurrentGameState.Map.GetNode(step.TargetNodeId);
+                    string nodeName = node?.Name ?? step.TargetNodeId ?? "?";
+                    return $"Traveling to {nodeName}";
+                case Simulation.Automation.TaskStepType.Work:
+                    return "Working";
+                case Simulation.Automation.TaskStepType.Deposit:
+                    return "Depositing";
+                default:
+                    return step.Type.ToString();
             }
-            return result;
         }
 
-        private static string FormatSkillsSummary(Runner runner)
+        private string FormatSkillsSummary(Runner runner)
         {
-            // Show top 5 skills by level, with passion indicator
-            var skills = new List<(string name, int level, bool passion)>();
-            for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
-                skills.Add((((SkillType)i).ToString(), runner.Skills[i].Level, runner.Skills[i].HasPassion));
+            var config = _uiManager.Simulation?.Config;
 
-            skills.Sort((a, b) => b.level.CompareTo(a.level));
+            // Show top 5 skills by effective level, with passion indicator
+            var skills = new List<(string name, int level, float effectiveLevel, bool passion)>();
+            for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
+            {
+                var skill = runner.Skills[i];
+                float eff = config != null ? skill.GetEffectiveLevel(config) : skill.Level;
+                skills.Add((((SkillType)i).ToString(), skill.Level, eff, skill.HasPassion));
+            }
+
+            skills.Sort((a, b) => b.effectiveLevel.CompareTo(a.effectiveLevel));
 
             // If everything is level 1, just say so
             if (skills[0].level <= 1) return "All skills level 1";
@@ -795,7 +812,9 @@ namespace ProjectGuild.View.UI
             int count = System.Math.Min(5, skills.Count);
             var top = skills.GetRange(0, count);
             return string.Join(", ", top.Select(s =>
-                s.passion ? $"{s.name} {s.level} <color=#DCB43C>P</color>" : $"{s.name} {s.level}"));
+                s.passion
+                    ? $"{s.name} <color=#7CCD7C>{s.effectiveLevel:F1}</color> <color=#DCB43C>P</color>"
+                    : $"{s.name} {s.level}"));
         }
     }
 }

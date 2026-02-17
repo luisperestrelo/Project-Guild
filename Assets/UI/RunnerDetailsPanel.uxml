@@ -36,16 +36,9 @@
                 <ui:VisualElement name="live-stats-container" class="live-stats-container" />
             </ui:VisualElement>
 
-            <!-- Inventory summary (brief, full view in Inventory tab) -->
-            <ui:VisualElement name="inventory-section" class="overview-section">
-                <ui:Label name="section-label-inventory" class="section-label" text="Inventory" />
-                <ui:Label name="inventory-summary-label" class="info-value" text="0 / 28 slots" />
-                <ui:VisualElement name="inventory-items-container" class="inventory-items-container" />
-            </ui:VisualElement>
-
             <!-- Skills summary (brief, full view in Skills tab) -->
             <ui:VisualElement name="skills-summary-section" class="overview-section overview-section-last">
-                <ui:Label name="section-label-skills-summary" class="section-label" text="Skills" />
+                <ui:Label name="section-label-skills-summary" class="section-label" text="Top Skills" />
                 <ui:Label name="skills-summary-label" class="info-value" text="" />
             </ui:VisualElement>
 
