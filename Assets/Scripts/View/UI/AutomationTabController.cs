@@ -208,12 +208,12 @@ namespace ProjectGuild.View.UI
                 _btnResumeMacros.style.display = DisplayStyle.None;
                 _btnEditTaskSeq.style.display = DisplayStyle.None;
 
-                if (_cachedTaskSeqShapeKey != null)
+                if (_stepRowCache.Count > 0)
                 {
                     _stepsContainer.Clear();
                     _stepRowCache.Clear();
-                    _cachedTaskSeqShapeKey = null;
                 }
+                _cachedTaskSeqShapeKey = null;
                 return;
             }
 
@@ -354,12 +354,12 @@ namespace ProjectGuild.View.UI
                 _macroUsageLabel.text = "";
                 _btnEditMacro.style.display = DisplayStyle.None;
 
-                if (_cachedMacroShapeKey != null)
+                if (_macroRuleRowCache.Count > 0)
                 {
                     _macroRulesContainer.Clear();
                     _macroRuleRowCache.Clear();
-                    _cachedMacroShapeKey = null;
                 }
+                _cachedMacroShapeKey = null;
                 return;
             }
 
@@ -453,12 +453,12 @@ namespace ProjectGuild.View.UI
             if (seq == null || seq.Steps == null)
             {
                 _microNoTaskLabel.style.display = DisplayStyle.Flex;
-                if (_cachedMicroShapeKey != null)
+                if (_microSectionCache.Count > 0)
                 {
                     _microStepsContainer.Clear();
                     _microSectionCache.Clear();
-                    _cachedMicroShapeKey = null;
                 }
+                _cachedMicroShapeKey = null;
                 return;
             }
 
