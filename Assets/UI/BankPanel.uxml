@@ -1,0 +1,26 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="BankPanel.uss" />
+    <ui:VisualElement name="bank-panel-root" class="bank-panel-root">
+        <!-- Title bar -->
+        <ui:VisualElement name="bank-title-bar" class="bank-title-bar">
+            <ui:Label text="Guild Bank" class="bank-title" />
+            <ui:Button name="btn-close-bank" class="bank-close-button" text="X" />
+        </ui:VisualElement>
+
+        <!-- Filter bar: search + category tabs -->
+        <ui:VisualElement name="bank-filter-bar" class="bank-filter-bar">
+            <ui:TextField name="bank-search-field" class="bank-search-field" />
+            <ui:VisualElement name="bank-category-tabs" class="bank-category-tabs" />
+        </ui:VisualElement>
+
+        <!-- Scrollable item grid -->
+        <ui:ScrollView name="bank-item-scroll" class="bank-item-scroll">
+            <ui:VisualElement name="bank-item-grid" class="bank-item-grid" />
+        </ui:ScrollView>
+
+        <!-- Footer -->
+        <ui:VisualElement name="bank-footer" class="bank-footer">
+            <ui:Label name="bank-total-label" class="bank-total-label" text="0 items" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

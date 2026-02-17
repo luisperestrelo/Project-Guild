@@ -1,5 +1,8 @@
+using System.Linq;
 using NUnit.Framework;
+using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Core;
+using ProjectGuild.Simulation.World;
 
 namespace ProjectGuild.Tests
 {
@@ -238,6 +241,125 @@ namespace ProjectGuild.Tests
 
             Assert.IsNotNull(sim.CurrentGameState.Map);
             Assert.IsNotNull(sim.CurrentGameState.Map.GetNode("hub"));
+        }
+
+        // ─── FindMatchingGatherLoop / Sequence Reuse ──────────────────
+
+        private static GameSimulation CreateSimWithMap()
+        {
+            var sim = new GameSimulation(tickRate: 10f);
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Guild Hall");
+            map.AddNode("mine", "Copper Mine", 10f, 0f);
+            map.AddNode("forest", "Pine Forest", 0f, 10f);
+            map.AddEdge("hub", "mine", 10f);
+            map.AddEdge("hub", "forest", 10f);
+            map.Initialize();
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Alpha" }
+                    .WithSkill(SkillType.Mining, 1),
+            };
+            sim.StartNewGame(defs, map, "hub");
+            return sim;
+        }
+
+        [Test]
+        public void FindMatchingGatherLoop_ReturnsNullWhenLibraryEmpty()
+        {
+            var sim = CreateSimWithMap();
+
+            var result = sim.FindMatchingGatherLoop("mine", "hub");
+
+            Assert.IsNull(result);
+        }
+
+        [Test]
+        public void FindMatchingGatherLoop_MatchesStandardLoop()
+        {
+            var sim = CreateSimWithMap();
+            var loop = TaskSequence.CreateLoop("mine", "hub");
+            sim.CurrentGameState.TaskSequenceLibrary.Add(loop);
+
+            var result = sim.FindMatchingGatherLoop("mine", "hub");
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(loop.Id, result.Id);
+        }
+
+        [Test]
+        public void FindMatchingGatherLoop_NoMatchDifferentNode()
+        {
+            var sim = CreateSimWithMap();
+            var loop = TaskSequence.CreateLoop("mine", "hub");
+            sim.CurrentGameState.TaskSequenceLibrary.Add(loop);
+
+            var result = sim.FindMatchingGatherLoop("forest", "hub");
+
+            Assert.IsNull(result);
+        }
+
+        [Test]
+        public void FindMatchingGatherLoop_NoMatchDifferentMicro()
+        {
+            var sim = CreateSimWithMap();
+            var loop = TaskSequence.CreateLoop("mine", "hub", microRulesetId: "custom-micro");
+            sim.CurrentGameState.TaskSequenceLibrary.Add(loop);
+
+            var result = sim.FindMatchingGatherLoop("mine", "hub");
+
+            Assert.IsNull(result);
+        }
+
+        [Test]
+        public void FindMatchingGatherLoop_NoMatchNonLooping()
+        {
+            var sim = CreateSimWithMap();
+            var loop = TaskSequence.CreateLoop("mine", "hub");
+            loop.Loop = false;
+            sim.CurrentGameState.TaskSequenceLibrary.Add(loop);
+
+            var result = sim.FindMatchingGatherLoop("mine", "hub");
+
+            Assert.IsNull(result);
+        }
+
+        [Test]
+        public void CommandWorkAtSuspendMacros_ReusesExistingSequence()
+        {
+            var sim = CreateSimWithMap();
+            var runner = sim.CurrentGameState.Runners[0];
+
+            // First Work At creates a new sequence
+            sim.CommandWorkAtSuspendMacrosForOneCycle(runner.Id, "mine");
+            int libraryCountAfterFirst = sim.CurrentGameState.TaskSequenceLibrary.Count;
+            string firstSeqId = runner.TaskSequenceId;
+
+            // Second Work At at same node should reuse
+            sim.CommandWorkAtSuspendMacrosForOneCycle(runner.Id, "mine");
+            int libraryCountAfterSecond = sim.CurrentGameState.TaskSequenceLibrary.Count;
+
+            Assert.AreEqual(libraryCountAfterFirst, libraryCountAfterSecond);
+            Assert.AreEqual(firstSeqId, runner.TaskSequenceId);
+        }
+
+        [Test]
+        public void CommandWorkAtSuspendMacros_DifferentNode_CreatesNewSequence()
+        {
+            var sim = CreateSimWithMap();
+            var runner = sim.CurrentGameState.Runners[0];
+
+            sim.CommandWorkAtSuspendMacrosForOneCycle(runner.Id, "mine");
+            int libraryCountAfterFirst = sim.CurrentGameState.TaskSequenceLibrary.Count;
+            string firstSeqId = runner.TaskSequenceId;
+
+            sim.CommandWorkAtSuspendMacrosForOneCycle(runner.Id, "forest");
+            int libraryCountAfterSecond = sim.CurrentGameState.TaskSequenceLibrary.Count;
+
+            Assert.AreEqual(libraryCountAfterFirst + 1, libraryCountAfterSecond);
+            Assert.AreNotEqual(firstSeqId, runner.TaskSequenceId);
         }
     }
 }

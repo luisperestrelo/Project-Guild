@@ -68,6 +68,20 @@
     color: rgb(220, 180, 60);
 }
 
+/* ─── Warning badge ─────────────────────────────── */
+
+.portrait-warning-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background-color: rgb(200, 60, 60);
+    border-width: 1px;
+    border-color: rgb(240, 100, 100);
+}
+
 /* ─── Node group separators ──────────────────────── */
 
 .portrait-node-separator {

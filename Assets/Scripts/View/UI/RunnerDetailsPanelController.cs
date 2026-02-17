@@ -66,6 +66,11 @@ namespace ProjectGuild.View.UI
         private string _tooltipGatherSpeed = "";
         private string _tooltipGatherXp = "";
 
+        // ─── Skill XP bars (live stats) ───────────────────
+        private float[] _lastKnownSkillXp;
+        private float[] _skillXpLastChangeTime;
+        private readonly List<(VisualElement row, Label label, ProgressBar bar)> _xpBarPool = new();
+
         // ─── Skills tab elements ────────────────────────
         private readonly VisualElement _skillsList;
         private readonly Label[] _skillLevelLabels;
@@ -196,6 +201,7 @@ namespace ProjectGuild.View.UI
         {
             if (_isRenaming) CancelRename();
             _currentRunnerId = runnerId;
+            ResetSkillXpTracking();
             _automationTabController?.ShowRunner(runnerId);
             Refresh();
         }
@@ -415,6 +421,10 @@ namespace ProjectGuild.View.UI
             (_statRowGatherXp, _statLabelGatherXp, _statValueGatherXp) = CreateStatRow("", "");
             _liveStatsContainer.Add(_statRowGatherXp);
             _uiManager.RegisterTooltip(_statRowGatherXp, () => _tooltipGatherXp);
+
+            // Pre-create XP bar pool (max bars determined at runtime from config,
+            // but we create a reasonable default here — pool grows if needed)
+            BuildXpBarPool(4);
         }
 
         private void RefreshLiveStats(Runner runner, GameSimulation sim, SimulationConfig config)
@@ -498,6 +508,106 @@ namespace ProjectGuild.View.UI
                     ? $"Passion: +{(config.PassionXpMultiplier - 1f) * 100f:F0}% XP"
                     : "No passion bonus";
             }
+
+            // Skill XP progress bars
+            RefreshSkillXpBars(runner);
+        }
+
+        // ─── Skill XP Bars ──────────────────────────────
+
+        private void BuildXpBarPool(int count)
+        {
+            for (int i = _xpBarPool.Count; i < count; i++)
+            {
+                var row = new VisualElement();
+                row.AddToClassList("live-stat-xp-row");
+                row.style.display = DisplayStyle.None;
+
+                var label = new Label();
+                label.AddToClassList("live-stat-xp-label");
+                label.pickingMode = PickingMode.Ignore;
+                row.Add(label);
+
+                var bar = new ProgressBar();
+                bar.AddToClassList("live-stat-xp-bar");
+                row.Add(bar);
+
+                _liveStatsContainer.Add(row);
+                _xpBarPool.Add((row, label, bar));
+            }
+        }
+
+        private void ResetSkillXpTracking()
+        {
+            _lastKnownSkillXp = null;
+            _skillXpLastChangeTime = null;
+        }
+
+        private void RefreshSkillXpBars(Runner runner)
+        {
+            int skillCount = SkillTypeExtensions.SkillCount;
+            float now = Time.time;
+
+            // Initialize tracking arrays on first call for this runner
+            if (_lastKnownSkillXp == null || _lastKnownSkillXp.Length != skillCount)
+            {
+                _lastKnownSkillXp = new float[skillCount];
+                _skillXpLastChangeTime = new float[skillCount];
+                for (int i = 0; i < skillCount; i++)
+                {
+                    // Use total XP (level * xpForLevel + current xp) for change detection
+                    _lastKnownSkillXp[i] = runner.Skills[i].Level * 10000f + runner.Skills[i].Xp;
+                    _skillXpLastChangeTime[i] = 0f; // won't show until XP actually changes
+                }
+            }
+
+            // Detect XP changes
+            for (int i = 0; i < skillCount; i++)
+            {
+                float currentXpSignature = runner.Skills[i].Level * 10000f + runner.Skills[i].Xp;
+                if (currentXpSignature != _lastKnownSkillXp[i])
+                {
+                    _lastKnownSkillXp[i] = currentXpSignature;
+                    _skillXpLastChangeTime[i] = now;
+                }
+            }
+
+            // Collect skills with recent XP changes, sorted by most recent
+            float window = _uiManager.LiveStatsXpDisplayWindowSeconds;
+            int maxBars = _uiManager.LiveStatsMaxSkillXpBars;
+
+            // Ensure pool is large enough
+            if (_xpBarPool.Count < maxBars)
+                BuildXpBarPool(maxBars);
+
+            // Gather eligible skills as (skillIndex, lastChangeTime)
+            var eligible = new List<(int skillIndex, float lastChange)>();
+            for (int i = 0; i < skillCount; i++)
+            {
+                if (_skillXpLastChangeTime[i] > 0f && (now - _skillXpLastChangeTime[i]) < window)
+                    eligible.Add((i, _skillXpLastChangeTime[i]));
+            }
+            eligible.Sort((a, b) => b.lastChange.CompareTo(a.lastChange));
+
+            int barCount = System.Math.Min(eligible.Count, maxBars);
+            for (int i = 0; i < barCount; i++)
+            {
+                int si = eligible[i].skillIndex;
+                var skill = runner.Skills[si];
+                string skillName = ((SkillType)si).ToString();
+                string passionMark = skill.HasPassion ? " <color=#DCB43C>P</color>" : "";
+                float progress = skill.GetLevelProgress(_uiManager.Simulation.Config) * 100f;
+
+                var (row, label, bar) = _xpBarPool[i];
+                label.text = $"{skillName} Lv {skill.Level}{passionMark}";
+                bar.value = progress;
+                bar.title = $"{progress:F0}%";
+                row.style.display = DisplayStyle.Flex;
+            }
+
+            // Hide unused bars
+            for (int i = barCount; i < _xpBarPool.Count; i++)
+                _xpBarPool[i].row.style.display = DisplayStyle.None;
         }
 
         private static (VisualElement row, Label label, Label value) CreateStatRow(string labelText, string valueText)

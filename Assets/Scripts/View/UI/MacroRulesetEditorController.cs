@@ -42,6 +42,7 @@ namespace ProjectGuild.View.UI
         private Button _addRuleBtn;
         private VisualElement _footer;
         private Label _usedByLabel;
+        private Button _assignToBtn;
         private Button _cloneBtn;
         private Button _resetBtn;
         private Button _deleteBtn;
@@ -205,6 +206,11 @@ namespace ProjectGuild.View.UI
             var footerButtons = new VisualElement();
             footerButtons.AddToClassList("editor-footer-buttons");
 
+            _assignToBtn = new Button(OnAssignToClicked);
+            _assignToBtn.text = "Assign To...";
+            _assignToBtn.AddToClassList("editor-footer-button");
+            footerButtons.Add(_assignToBtn);
+
             _cloneBtn = new Button(OnCloneClicked);
             _cloneBtn.text = "Clone";
             _cloneBtn.AddToClassList("editor-footer-button");
@@ -341,6 +347,49 @@ namespace ProjectGuild.View.UI
             _cachedRulesShapeKey = null;
             RefreshEditor();
             RebuildList(); // update rule count in list
+        }
+
+        private void OnAssignToClicked()
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null || _selectedId == null) return;
+
+            // Remove any existing popup first
+            var existingPopup = _assignToBtn.parent?.Q("assign-popup");
+            if (existingPopup != null) { existingPopup.RemoveFromHierarchy(); return; }
+
+            var popup = new VisualElement();
+            popup.name = "assign-popup";
+            popup.AddToClassList("assign-popup");
+
+            var header = new Label("Assign to runner:");
+            header.AddToClassList("assign-popup-header");
+            popup.Add(header);
+
+            foreach (var runner in sim.CurrentGameState.Runners)
+            {
+                string capturedRunnerId = runner.Id;
+                bool alreadyAssigned = runner.MacroRulesetId == _selectedId;
+                var btn = new Button(() =>
+                {
+                    sim.CommandAssignMacroRulesetToRunner(capturedRunnerId, _selectedId);
+                    popup.RemoveFromHierarchy();
+                    RefreshEditor();
+                    RebuildList();
+                });
+                btn.text = alreadyAssigned ? $"{runner.Name} (current)" : runner.Name;
+                btn.SetEnabled(!alreadyAssigned);
+                btn.AddToClassList("assign-popup-runner");
+                popup.Add(btn);
+            }
+
+            var cancelBtn = new Button(() => popup.RemoveFromHierarchy());
+            cancelBtn.text = "Cancel";
+            cancelBtn.AddToClassList("assign-popup-cancel");
+            popup.Add(cancelBtn);
+
+            int idx = _assignToBtn.parent.IndexOf(_assignToBtn);
+            _assignToBtn.parent.Insert(idx + 1, popup);
         }
 
         private void OnCloneBannerClicked()

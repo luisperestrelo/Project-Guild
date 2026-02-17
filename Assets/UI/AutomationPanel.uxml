@@ -56,6 +56,7 @@
                         <ui:VisualElement class="editor-footer">
                             <ui:Label name="taskseq-used-by-label" class="editor-used-by" text="" />
                             <ui:VisualElement class="editor-footer-buttons">
+                                <ui:Button name="btn-assign-to-taskseq" class="editor-footer-button" text="Assign To..." />
                                 <ui:Button name="btn-clone-taskseq" class="editor-footer-button" text="Clone" />
                                 <ui:Button name="btn-delete-taskseq" class="editor-footer-button editor-delete-button" text="Delete" />
                             </ui:VisualElement>

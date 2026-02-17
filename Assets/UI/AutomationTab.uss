@@ -261,3 +261,23 @@
 .auto-edit-button:hover {
     border-color: rgba(220, 180, 60, 0.6);
 }
+
+/* ─── Assign dropdown ────────────────────────────── */
+
+.auto-assign-dropdown {
+    flex-grow: 1;
+    font-size: 11px;
+    background-color: rgba(25, 25, 40, 0.7);
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 2px;
+    height: 22px;
+    color: rgb(200, 200, 215);
+}
+
+.auto-assign-dropdown:hover {
+    border-color: rgba(100, 100, 120, 0.7);
+}
+
+.auto-assign-dropdown:focus {
+    border-color: rgba(220, 180, 60, 0.6);
+}

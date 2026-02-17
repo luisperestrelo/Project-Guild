@@ -86,6 +86,18 @@ namespace ProjectGuild.View.UI
             portraitRoot.RegisterCallback<PointerCaptureOutEvent>(evt =>
                 OnPointerCaptureOut());
 
+            // Warning badge tooltip
+            var warningBadge = instance.Q("portrait-warning-badge");
+            if (warningBadge != null)
+            {
+                string capturedId = runnerId;
+                _uiManager.RegisterTooltip(warningBadge, () =>
+                {
+                    var r = _uiManager.Simulation?.FindRunner(capturedId);
+                    return r?.ActiveWarning;
+                });
+            }
+
             _portraits[runnerId] = instance;
             _runnerSortOrder.Add(runnerId);
 
@@ -126,6 +138,14 @@ namespace ProjectGuild.View.UI
                 {
                     stateLabel.text = FormatShortState(runner);
                     ApplyStateClass(stateLabel, runner.State);
+                }
+
+                var warningBadge = kvp.Value.Q("portrait-warning-badge");
+                if (warningBadge != null)
+                {
+                    bool hasWarning = runner.ActiveWarning != null;
+                    warningBadge.style.display = hasWarning ? DisplayStyle.Flex : DisplayStyle.None;
+                    warningBadge.pickingMode = hasWarning ? PickingMode.Position : PickingMode.Ignore;
                 }
             }
 

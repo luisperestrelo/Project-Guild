@@ -255,7 +255,7 @@ namespace ProjectGuild.Tests
             // Manually move to Deposit step (index 3) — AssignRunner resets to 0
             _runner.TaskSequenceCurrentStepIndex = 3;
             _runner.State = RunnerState.Idle;
-            _sim.Tick(); // AdvanceMacroStep sees Deposit step
+            _sim.Tick(); // ExecuteCurrentStep sees Deposit step
 
             Assert.AreEqual(RunnerState.Depositing, _runner.State);
             Assert.IsNotNull(_runner.Depositing);

@@ -90,6 +90,21 @@ namespace ProjectGuild.Data
         [Tooltip("Number of inventory slots per runner (OSRS-style: 28)")]
         public int InventorySize = 28;
 
+        [Header("Deposit")]
+        [Tooltip("How many ticks the deposit step takes. At 10 ticks/sec, 10 = 1 second.")]
+        public int DepositDurationTicks = 10;
+
+        [Header("Automation")]
+        [Tooltip("Safety-net interval (ticks) for re-evaluating automation rules. Catches external state changes like BankContains. 10 = once per second.")]
+        public int AutomationPeriodicCheckInterval = 10;
+
+        [Tooltip("Maximum entries in the decision log ring buffer.")]
+        public int DecisionLogMaxEntries = 2000;
+
+        [Header("Dev Tools")]
+        [Tooltip("Maximum entries in the event log ring buffer. The event log is for debugging, not player-facing.")]
+        public int EventLogMaxEntries = 500;
+
         [Header("Death (Overworld Only)")]
         [Tooltip("Minimum respawn time in seconds, even if the runner dies right next to hub")]
         public float DeathRespawnBaseTime = 10f;
@@ -127,6 +142,10 @@ namespace ProjectGuild.Data
                 HyperbolicSpeedPerLevel = HyperbolicSpeedPerLevel,
                 ItemDefinitions = itemDefs,
                 InventorySize = InventorySize,
+                DepositDurationTicks = DepositDurationTicks,
+                AutomationPeriodicCheckInterval = AutomationPeriodicCheckInterval,
+                DecisionLogMaxEntries = DecisionLogMaxEntries,
+                EventLogMaxEntries = EventLogMaxEntries,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
                 DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,
             };

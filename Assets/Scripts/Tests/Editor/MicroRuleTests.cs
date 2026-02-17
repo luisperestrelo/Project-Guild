@@ -735,5 +735,185 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(-1, gatherRule.Action.IntParam,
                 "Default micro should use GatherAny (IntParam = -1)");
         }
+
+        // ─── GatherAny + MinLevel interaction ────────────────────
+
+        [Test]
+        public void GatherAny_OnlyPicksEligibleGatherables()
+        {
+            // Node has copper (no MinLevel) and gold (MinLevel 50). Runner has Mining 1.
+            // GatherAny should only ever pick copper — "any" means "any I'm capable of."
+            var hardGatherable = new Simulation.Gathering.GatherableConfig("gold_ore", SkillType.Mining, 40f, 0.5f, 50);
+
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                    new ItemDefinition("gold_ore", "Gold Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, 1),
+            };
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("mixed", "Mixed Mine", 0f, 0f, CopperGatherable, hardGatherable);
+            map.AddEdge("hub", "mixed", 8f);
+            map.Initialize();
+
+            _sim.StartNewGame(defs, map, "mixed");
+            _runner = _sim.CurrentGameState.Runners[0];
+
+            var seq = TaskSequence.CreateLoop("mixed", "hub");
+            _sim.AssignRunner(_runner.Id, seq, "Test");
+
+            // Should start gathering immediately (already at node)
+            Assert.AreEqual(RunnerState.Gathering, _runner.State, "Runner should be gathering");
+            Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
+                "GatherAny should pick copper (index 0), not gold (index 1) which requires level 50");
+
+            // Tick through several items to verify it never switches to gold
+            for (int i = 0; i < 500; i++) _sim.Tick();
+
+            if (_runner.State == RunnerState.Gathering)
+            {
+                Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
+                    "After multiple items, GatherAny should still be on copper, never gold");
+            }
+        }
+
+        [Test]
+        public void GatherAny_AllAboveMinLevel_RunnerGetsStuck()
+        {
+            // Node has ONLY gold (MinLevel 50). Runner has Mining 1.
+            // GatherAny should find no eligible gatherables → NoMatch → stuck.
+            var hardGatherable = new Simulation.Gathering.GatherableConfig("gold_ore", SkillType.Mining, 40f, 0.5f, 50);
+
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("gold_ore", "Gold Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, 1),
+            };
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("hard", "Hard Mine", 0f, 0f, hardGatherable);
+            map.AddEdge("hub", "hard", 8f);
+            map.Initialize();
+
+            _sim.StartNewGame(defs, map, "hard");
+            _runner = _sim.CurrentGameState.Runners[0];
+
+            GatheringFailed? failed = null;
+            _sim.Events.Subscribe<GatheringFailed>(e => failed = e);
+
+            var seq = TaskSequence.CreateLoop("hard", "hub");
+            _sim.AssignRunner(_runner.Id, seq, "Test");
+
+            // Tick to reach Work step
+            for (int i = 0; i < 10; i++) _sim.Tick();
+
+            // Runner should be stuck — either GatheringFailed (NotEnoughSkill) or NoMicroRuleMatched
+            Assert.AreNotEqual(RunnerState.Gathering, _runner.State,
+                "Runner should NOT be gathering gold with Mining level 1");
+        }
+
+        [Test]
+        public void MidGatherResourceSwitch_ChecksMinLevel()
+        {
+            // Explicit GatherHere targeting gold (index 1, MinLevel 50) mid-gather should fail.
+            var hardGatherable = new Simulation.Gathering.GatherableConfig("gold_ore", SkillType.Mining, 40f, 0.5f, 50);
+
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                    new ItemDefinition("gold_ore", "Gold Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, 1),
+            };
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("mixed", "Mixed Mine", 0f, 0f, CopperGatherable, hardGatherable);
+            map.AddEdge("hub", "mixed", 8f);
+            map.Initialize();
+
+            _sim.StartNewGame(defs, map, "mixed");
+            _runner = _sim.CurrentGameState.Runners[0];
+
+            // Create micro ruleset that targets gold explicitly (index 1)
+            var microRuleset = new Ruleset
+            {
+                Id = "gold-only",
+                Name = "Gold Only",
+                Category = RulesetCategory.Gathering,
+            };
+            microRuleset.Rules.Add(new Rule
+            {
+                Label = "Gather Gold",
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherHere(1),
+            });
+            _sim.CurrentGameState.MicroRulesetLibrary.Add(microRuleset);
+
+            // Start with default micro (GatherAny → picks copper)
+            var seq = TaskSequence.CreateLoop("mixed", "hub");
+            _sim.AssignRunner(_runner.Id, seq, "Test");
+
+            // Tick until gathering
+            int ticks = 0;
+            while (_runner.State != RunnerState.Gathering && ticks < 50)
+            {
+                _sim.Tick();
+                ticks++;
+            }
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            Assert.AreEqual(0, _runner.Gathering.GatherableIndex, "Should start on copper");
+
+            // Now swap the Work step's micro ruleset to gold-only mid-gather
+            var activeSeq = _sim.CurrentGameState.TaskSequenceLibrary
+                .Find(s => s.Id == _runner.TaskSequenceId);
+            foreach (var step in activeSeq.Steps)
+            {
+                if (step.Type == TaskStepType.Work)
+                    step.MicroRulesetId = "gold-only";
+            }
+
+            GatheringFailed? failed = null;
+            _sim.Events.Subscribe<GatheringFailed>(e => failed = e);
+
+            // Tick — micro re-evaluation should try to switch to gold, fail MinLevel check
+            for (int i = 0; i < 100; i++) _sim.Tick();
+
+            // Runner should have been stopped by the MinLevel check
+            Assert.IsNotNull(failed, "GatheringFailed should fire when mid-gather switch hits MinLevel");
+            Assert.AreEqual(GatheringFailureReason.NotEnoughSkill, failed.Value.Reason);
+        }
     }
 }

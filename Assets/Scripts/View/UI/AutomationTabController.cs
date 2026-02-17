@@ -42,16 +42,26 @@ namespace ProjectGuild.View.UI
         private readonly Button _btnClearTask;
         private readonly Button _btnResumeMacros;
         private readonly Button _btnEditTaskSeq;
+        private readonly DropdownField _taskSeqAssignDropdown;
 
         // ─── Task Sequence cached step rows ──────
         private string _cachedTaskSeqShapeKey;
         private readonly List<(VisualElement row, Label indicator, Label index, Label text)> _stepRowCache = new();
+
+        // ─── Task Sequence assign dropdown state ──────
+        private readonly List<string> _taskSeqChoiceIds = new();
+        private bool _taskSeqAssignSuppressCallback;
 
         // ─── Macro sub-tab (persistent UXML elements) ──────
         private readonly Label _macroNameLabel;
         private readonly Label _macroUsageLabel;
         private readonly VisualElement _macroRulesContainer;
         private readonly Button _btnEditMacro;
+        private readonly DropdownField _macroAssignDropdown;
+
+        // ─── Macro assign dropdown state ──────
+        private readonly List<string> _macroChoiceIds = new();
+        private bool _macroAssignSuppressCallback;
 
         // ─── Macro cached rule rows ──────
         private string _cachedMacroShapeKey;
@@ -102,12 +112,20 @@ namespace ProjectGuild.View.UI
             _btnResumeMacros.clicked += OnResumeMacrosClicked;
             _btnEditTaskSeq.clicked += OnEditTaskSeqClicked;
 
+            // Task Sequence assign dropdown
+            _taskSeqAssignDropdown = root.Q<DropdownField>("taskseq-assign-dropdown");
+            _taskSeqAssignDropdown.RegisterValueChangedCallback(OnTaskSeqAssignChanged);
+
             // Macro elements
             _macroNameLabel = root.Q<Label>("macro-name-label");
             _macroUsageLabel = root.Q<Label>("macro-usage-label");
             _macroRulesContainer = root.Q("macro-rules-container");
             _btnEditMacro = root.Q<Button>("btn-edit-macro");
             _btnEditMacro.clicked += OnEditMacroClicked;
+
+            // Macro assign dropdown
+            _macroAssignDropdown = root.Q<DropdownField>("macro-assign-dropdown");
+            _macroAssignDropdown.RegisterValueChangedCallback(OnMacroAssignChanged);
 
             // Micro elements
             _microNoTaskLabel = root.Q<Label>("micro-no-task-label");
@@ -175,6 +193,9 @@ namespace ProjectGuild.View.UI
         {
             var state = sim.CurrentGameState;
             var seq = sim.GetRunnerTaskSequence(runner);
+
+            // Assign dropdown — always populated (this is how the player assigns one)
+            PopulateTaskSeqAssignDropdown(runner, sim);
 
             if (seq == null)
             {
@@ -296,6 +317,9 @@ namespace ProjectGuild.View.UI
         {
             var state = sim.CurrentGameState;
             var ruleset = sim.GetRunnerMacroRuleset(runner);
+
+            // Assign dropdown — always populated
+            PopulateMacroAssignDropdown(runner, sim);
 
             if (ruleset == null)
             {
@@ -602,6 +626,82 @@ namespace ProjectGuild.View.UI
             public Button editButton;
             public int stepIndex;
             public readonly List<(VisualElement row, Label index, Label enabled, Label text)> ruleRows = new();
+        }
+
+        // ─── Assign Dropdown Helpers ──────────────────────
+
+        private void PopulateTaskSeqAssignDropdown(Runner runner, GameSimulation sim)
+        {
+            var choices = new List<string> { "(None)" };
+            _taskSeqChoiceIds.Clear();
+            _taskSeqChoiceIds.Add(null);
+
+            foreach (var seq in sim.CurrentGameState.TaskSequenceLibrary)
+            {
+                choices.Add(seq.Name ?? seq.Id ?? "Unnamed");
+                _taskSeqChoiceIds.Add(seq.Id);
+            }
+            _taskSeqAssignDropdown.choices = choices;
+
+            // Set current value without triggering callback
+            int currentIdx = runner.TaskSequenceId != null
+                ? _taskSeqChoiceIds.IndexOf(runner.TaskSequenceId)
+                : 0;
+            if (currentIdx < 0) currentIdx = 0;
+            _taskSeqAssignSuppressCallback = true;
+            _taskSeqAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
+            _taskSeqAssignSuppressCallback = false;
+        }
+
+        private void PopulateMacroAssignDropdown(Runner runner, GameSimulation sim)
+        {
+            var choices = new List<string> { "(None)" };
+            _macroChoiceIds.Clear();
+            _macroChoiceIds.Add(null);
+
+            foreach (var ruleset in sim.CurrentGameState.MacroRulesetLibrary)
+            {
+                choices.Add(ruleset.Name ?? ruleset.Id ?? "Unnamed");
+                _macroChoiceIds.Add(ruleset.Id);
+            }
+            _macroAssignDropdown.choices = choices;
+
+            int currentIdx = runner.MacroRulesetId != null
+                ? _macroChoiceIds.IndexOf(runner.MacroRulesetId)
+                : 0;
+            if (currentIdx < 0) currentIdx = 0;
+            _macroAssignSuppressCallback = true;
+            _macroAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
+            _macroAssignSuppressCallback = false;
+        }
+
+        private void OnTaskSeqAssignChanged(ChangeEvent<string> evt)
+        {
+            if (_taskSeqAssignSuppressCallback || _currentRunnerId == null) return;
+            int idx = _taskSeqAssignDropdown.index;
+            if (idx < 0 || idx >= _taskSeqChoiceIds.Count) return;
+
+            string seqId = _taskSeqChoiceIds[idx];
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            if (seqId == null)
+                sim.ClearTaskSequence(_currentRunnerId);
+            else
+                sim.CommandAssignTaskSequenceToRunner(_currentRunnerId, seqId);
+        }
+
+        private void OnMacroAssignChanged(ChangeEvent<string> evt)
+        {
+            if (_macroAssignSuppressCallback || _currentRunnerId == null) return;
+            int idx = _macroAssignDropdown.index;
+            if (idx < 0 || idx >= _macroChoiceIds.Count) return;
+
+            string rulesetId = _macroChoiceIds[idx];
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            sim.CommandAssignMacroRulesetToRunner(_currentRunnerId, rulesetId);
         }
 
         // ─── Shared Helpers ─────────────────────────────

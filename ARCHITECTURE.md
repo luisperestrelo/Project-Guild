@@ -52,19 +52,19 @@ GameSimulation.Tick()                  ← Simulation layer (pure C#)
     │  For each runner:
     │    ├─ Non-Idle? → EvaluateMacroRules("Tick") every tick
     │    │    └─ If Immediate rule fires → AssignRunner, skip rest of tick
-    │    ├─ Idle? → AdvanceMacroStep()
+    │    ├─ Idle? → ExecuteCurrentStep()
     │    │    ├─ EvaluateMacroRules (StepAdvance trigger)
     │    │    └─ Execute current step (TravelTo / Work / Deposit)
     │    │         └─ Work step → EvaluateMicroRules
     │    │              ├─ GatherHere(idx) → StartGathering
-    │    │              ├─ FinishTask → advance past Work, AdvanceMacroStep
+    │    │              ├─ FinishTask → advance past Work, ExecuteCurrentStep
     │    │              └─ NoMatch → Publish(NoMicroRuleMatched), stay idle
     │    ├─ Traveling? → TickTravel()
     │    │    ├─ Award Athletics XP (every tick)
     │    │    │    └─ Level up? → Publish(RunnerSkillLeveledUp)
     │    │    └─ Arrived? → set Idle, Publish(RunnerArrivedAtNode)
     │    │         ├─ EvaluateMacroRules (ArrivedAtNode trigger)
-    │    │         └─ AdvanceMacroStep (next step in task sequence)
+    │    │         └─ ExecuteCurrentStep (next step in task sequence)
     │    ├─ Gathering? → TickGathering()
     │    │    ├─ Award skill XP (every tick, decoupled from item production)
     │    │    │    └─ Level up? → Publish(RunnerSkillLeveledUp)
@@ -73,7 +73,7 @@ GameSimulation.Tick()                  ← Simulation layer (pure C#)
     │    │         └─ Inventory full? → Publish(InventoryFull)
     │    │    └─ ReevaluateMicroDuringGathering (every tick, not just after items)
     │    │         ├─ GatherHere(idx) → continue gathering (or switch resource)
-    │    │         ├─ FinishTask → advance past Work, AdvanceMacroStep
+    │    │         ├─ FinishTask → advance past Work, ExecuteCurrentStep
     │    │         │    (default micro: IF InventoryFull → FinishTask)
     │    │         └─ NoMatch → Publish(NoMicroRuleMatched), stay stuck
     │    └─ Depositing? → TickDepositing()
@@ -81,7 +81,7 @@ GameSimulation.Tick()                  ← Simulation layer (pure C#)
     │              ├─ Non-looping? → HandleSequenceCompleted (idle + macro re-eval)
     │              ├─ ApplyPendingTaskSequence (deferred macro rule)
     │              ├─ EvaluateMacroRules (DepositCompleted trigger)
-    │              └─ AdvanceMacroStep (wraps to TravelTo step)
+    │              └─ ExecuteCurrentStep (wraps to TravelTo step)
     │  Publish(SimulationTickCompleted)
     │
     ▼
@@ -118,8 +118,10 @@ Back to Tick() (continues processing)
 | `GatherableConfigAsset.cs` | Data | The field guide. SO wrapper for gatherable configs |
 | `WorldNodeAsset.cs` | Data | The pin. SO wrapper for a world node |
 | `WorldMapAsset.cs` | Data | The atlas. SO wrapper for the full world map |
-| `GameBootstrapper.cs` | View | The director. Wires everything up, debug UI |
+| `GameBootstrapper.cs` | View | The director. Wires everything up, debug UI, node-click |
 | `VisualSyncSystem.cs` | View | The cameraman. Keeps 3D visuals in sync with sim |
+| `NodeMarker.cs` | View | Tags node GameObjects for click-to-select raycasting |
+| `BankMarker.cs` | View | Tags the bank GameObject for click-to-open raycasting |
 
 ### The Conveyor Belt (Spiral of Death Protection)
 
@@ -159,6 +161,7 @@ Key field groups:
 - **Automation**: `DecisionLogMaxEntries` (default 2000), `EventLogMaxEntries` (default 500)
 - **Items**: `ItemDefinitions[]` (populated from SOs at load time)
 - **Inventory**: `InventorySize` (default 28)
+- **Live Stats UI**: `LiveStatsXpDisplayWindowSeconds` (5.0f, how long XP bars stay visible), `LiveStatsMaxSkillXpBars` (4, max simultaneous bars)
 - **Death**: `DeathRespawnBaseTime`, `DeathRespawnTravelMultiplier`
 
 ### `Simulation/Core/SkillType.cs`
@@ -186,6 +189,8 @@ The core data class for a runner. Identity (ID, name), current state (Idle/Trave
 **`TravelState`** — tracks from/to nodes, total distance, distance covered, and a `Progress` property (0.0-1.0). Also has optional `StartWorldX`/`StartWorldZ` float fields — when set, the view layer uses these as the travel start position instead of the FromNode's position. Used by the redirect system to prevent visual snapping when a runner changes destination mid-travel. Null means "use the FromNode position as usual."
 
 **`GatheringState`** — tracks the node being gathered, a `GatherableIndex` (which gatherable in the node's array), a tick accumulator, the pre-calculated ticks required per item, and a `GatheringSubState` enum (`Gathering`, `TravelingToBank`, `TravelingToNode`). The sub-state and gatherable index persist across the auto-return deposit loop so the runner knows what it was doing and which resource it was working on.
+
+**`ActiveWarning`** — human-readable string, null when runner is operating normally. Set when the runner gets stuck: `GatheringFailed` (NoGatherablesAtNode, NotEnoughSkill) or `NoMicroRuleMatched` (empty ruleset, no rule matched). Cleared at every productive state transition: `AssignRunner`, `StartGathering`, `StartTravel` (all 3 sites), `ExecuteDepositStep`. The portrait warning badge reads this field — red dot visible when non-null, tooltip shows the message.
 
 ### `Simulation/Core/RunnerFactory.cs`
 Creates runners via three strategies:
@@ -228,7 +233,7 @@ The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistr
 
 `StartNewGame()` has two overloads: one taking explicit `RunnerDefinition[]` and an optional `WorldMap` for full control, one using default placeholders for quick testing. During startup: creates or accepts the world map, and populates the `ItemRegistry` from config.
 
-**The single entry point for runner control is `AssignRunner(runnerId, taskSequence, reason)`**. It cancels current activity, sets the new task sequence, publishes `TaskSequenceChanged`, and starts executing the first step via `AdvanceMacroStep`. There is no `CommandGather` — what a runner does is entirely determined by their task sequence + micro rules.
+**The single entry point for runner control is `AssignRunner(runnerId, taskSequence, reason)`**. It cancels current activity, sets the new task sequence, publishes `TaskSequenceChanged`, and starts executing the first step via `ExecuteCurrentStep`. There is no `CommandGather` — what a runner does is entirely determined by their task sequence + micro rules.
 
 **Travel:** `StartTravelInternal()` is the shared helper for starting travel. It handles two cases:
 
@@ -248,7 +253,9 @@ The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistr
 
 **Task Sequence System:** Task sequences live in a **global library** on GameState. Runners hold a `TaskSequenceId` string reference and a `TaskSequenceCurrentStepIndex` for per-runner progress. A `TaskSequence` is a list of `TaskStep`s (TravelTo, Work, Deposit) with an `Id` and `Name`. Looping sequences wrap around; non-looping sequences complete and fire `TaskSequenceCompleted`, letting macro rules re-evaluate. `TaskSequence.CreateLoop(nodeId, hubId)` creates the standard gather loop: TravelTo(node) → Work → TravelTo(hub) → Deposit → repeat. Work steps explicitly specify their `MicroRulesetId` — no implicit fallbacks. When inventory fills during gathering, the default micro rule (IF InventoryFull → FinishTask) advances past the Work step — InventoryFull handling is not hardcoded but expressed as a visible, editable micro rule.
 
-**Macro Rules:** `EvaluateMacroRules(runner, triggerReason)` evaluates every tick for all runners (non-Idle via TickRunner, Idle via AdvanceMacroStep). If a macro rule fires, it calls `AssignRunner` with a new task sequence (e.g., `WorkAt` creates `TaskSequence.CreateLoop` for a different node). Same-assignment suppression prevents infinite loops. Rules with `FinishCurrentSequence = true` set a `PendingTaskSequence` that executes at the next sequence boundary instead of immediately. If there's no active sequence when a deferred rule fires, it degrades to immediate. "Work At" button sets `MacroSuspendedUntilLoop` to guarantee one cycle before macro rules resume.
+**Sequence Reuse (Work At):** `CommandWorkAtSuspendMacrosForOneCycle` calls `FindMatchingGatherLoop(nodeId, hubId)` before creating a new sequence. This searches `TaskSequenceLibrary` for an existing standard gather loop matching ALL of: same `TargetNodeId`, `Loop == true`, exactly 4 steps (TravelTo(node) → Work → TravelTo(hub) → Deposit), and the Work step's `MicroRulesetId == DefaultRulesets.DefaultMicroId`. If found, it reuses the existing sequence instead of creating a duplicate. If the player edits a sequence's micro ruleset, the next node-click creates a fresh sequence — the edited one stays untouched.
+
+**Macro Rules:** `EvaluateMacroRules(runner, triggerReason)` evaluates every tick for all runners (non-Idle via TickRunner, Idle via ExecuteCurrentStep). If a macro rule fires, it calls `AssignRunner` with a new task sequence (e.g., `WorkAt` creates `TaskSequence.CreateLoop` for a different node). Same-assignment suppression prevents infinite loops. Rules with `FinishCurrentSequence = true` set a `PendingTaskSequence` that executes at the next sequence boundary instead of immediately. If there's no active sequence when a deferred rule fires, it degrades to immediate. "Work At" button sets `MacroSuspendedUntilLoop` to guarantee one cycle before macro rules resume.
 
 **Micro Rules:** `EvaluateMicroRules(runner, node)` runs when the assignment hits a Work step. Returns a gatherable index (GatherHere), -1 (FinishTask), or -2 (NoMatch = stuck). `ReevaluateMicroDuringGathering` runs after each item gathered — may switch resource, FinishTask, or stop with NoMicroRuleMatched. "Let it break" philosophy: if no rule matches, the runner stays idle and a warning event fires.
 
@@ -427,6 +434,8 @@ Concrete implementation of `ISaveSystem`. Uses `JsonUtility.ToJson/FromJson` and
 ### `View/GameBootstrapper.cs`
 Entry point that wires up the simulation, visuals, and debug UI. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner.
 
+**Click handling (LateUpdate):** On left-click, checks (1) not over UI, (2) `TryPickRunner()` raycasts for RunnerVisual on the "Runners" layer — if found, selects that runner and returns. (3) `TryPickBank()` raycasts the "Bank" layer — if found, toggles the bank panel and returns. (4) `TryPickNode()` raycasts the "Nodes" layer for `NodeMarker` — if found and not the hub node, shows a confirmation popup ("Send [Runner] to work at [Node]?") via `UIManager.ShowNodeClickConfirmation()`. Runner > Bank > Node priority. Requires three physics layers: "Runners", "Nodes", "Bank" — logs `Debug.LogError` if any is missing.
+
 The debug UI (`OnGUI`) provides full inspection and editing of the automation system. It is organized into panels:
 
 **Top-center — Runner selector:** Compact multi-column table of all runners. Shows name and abbreviated state. Click to select.
@@ -457,8 +466,14 @@ The debug UI (`OnGUI`) provides full inspection and editing of the automation sy
 - **Activity**: Per-runner event timeline (excludes Lifecycle noise)
 - **Event Log**: Full searchable/filterable raw event log with category toggles, runner filter, optional collapsing
 
+### `View/NodeMarker.cs`
+Simple MonoBehaviour storing a `NodeId` string. Attached by `VisualSyncSystem.CreateNodeMarker()` to each node's GameObject so that raycasting can identify which world node was clicked. Used by `GameBootstrapper.TryPickNode()`.
+
+### `View/BankMarker.cs`
+Simple MonoBehaviour (no fields) attached to the bank cube by `VisualSyncSystem.CreateBankMarker()`. Used by `GameBootstrapper.TryPickBank()` to detect bank clicks via the "Bank" physics layer.
+
 ### `View/VisualSyncSystem.cs`
-Bridges sim state to 3D world. Builds visual representations of world nodes (colored cylinders with floating labels) and runners (capsule primitives), updates runner positions each `LateUpdate()`.
+Bridges sim state to 3D world. Builds visual representations of world nodes (colored cylinders with floating labels) and runners (capsule primitives), updates runner positions each `LateUpdate()`. Attaches `NodeMarker` components to node GameObjects during creation for click-to-select. Creates a bank cube near the hub with `BankMarker` component and floating "Bank" label on the "Bank" physics layer.
 
 Runner position calculation (`GetRunnerWorldPosition`):
 - **Traveling:** Lerps between start and destination using `Travel.Progress`. If `StartWorldX`/`StartWorldZ` is set (redirect), uses those as the start position instead of the FromNode's position — this prevents visual snapping when a runner changes direction mid-travel.
@@ -473,19 +488,23 @@ Orbit camera with zoom. Uses Unity's New Input System (inline action definitions
 MonoBehaviour attached to each runner's 3D representation. Handles interpolated movement between positions set by VisualSyncSystem — the simulation ticks at 10/sec but the view renders at 60fps, so RunnerVisual smoothly interpolates between tick positions over one tick interval. Also creates and manages a floating name label (TextMeshPro) that billboards toward the camera.
 
 ### `View/UI/UIManager.cs`
-Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates `RunnerPortraitBarController`, `RunnerDetailsPanelController`, and `AutomationPanelController` as plain C# controller objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` to refresh all controllers every tick (10/sec). Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Provides `OpenAutomationPanelToItem()` and `OpenAutomationPanelToItemFromRunner()` for navigation from the runner Automation tab to the editing panel. The Automation toggle button is added programmatically to the root element. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`.
+Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates `RunnerPortraitBarController`, `RunnerDetailsPanelController`, `AutomationPanelController`, `BankPanelController`, and `ResourceBarController` as plain C# controller objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` to refresh all controllers every tick (10/sec). Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Provides `OpenAutomationPanelToItem()` and `OpenAutomationPanelToItemFromRunner()` for navigation from the runner Automation tab to the editing panel. `ToggleBankPanel()` and `OpenBankPanel()` control the bank overlay. `ShowNodeClickConfirmation()` shows a centered popup for node-click Work At. The Automation toggle button is added programmatically to the root element. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`.
 
 ### `View/UI/RunnerPortraitBarController.cs`
-Plain C# class (not MonoBehaviour). Manages the portrait bar at the top of the screen. Clones `RunnerPortrait.uxml` templates per runner. Handles click-to-select (USS class `selected` toggle) and periodic state label refresh. Each portrait shows runner name and short state text.
+Plain C# class (not MonoBehaviour). Manages the portrait bar at the top of the screen. Clones `RunnerPortrait.uxml` templates per runner. Handles click-to-select (USS class `selected` toggle) and periodic state label refresh. Each portrait shows runner name and short state text. **Warning badge**: a red circle (top-right) toggled by `runner.ActiveWarning != null`. Tooltip shows the warning message. Badge `pickingMode` switches between `Position` (hoverable when visible) and `Ignore` (pass-through when hidden).
 
 ### `View/UI/RunnerDetailsPanelController.cs`
-Plain C# class. Manages the bottom-right details panel showing four tabs for the selected runner: Overview (name, state, task, travel progress, inventory summary, live stats, skills summary), Inventory (28-slot grid with icons), Skills (15 skill rows with XP bars), and Automation (sub-tabs for task sequence, macro rules, micro rules — read-only summary with "Edit in Library" buttons). Equipment tab remains disabled. The Automation tab is lazy-initialized on first switch. Accepts optional `VisualTreeAsset` for the automation tab template. Overview inventory items use pooled row elements (`_inventoryItemRowCache`) — rows are reused in-place, excess rows hidden, new rows created only when needed.
+Plain C# class. Manages the bottom-right details panel showing four tabs for the selected runner: Overview (name, state, task, travel progress, inventory summary, live stats, skill XP bars, skills summary), Inventory (28-slot grid with icons), Skills (15 skill rows with XP bars), and Automation (sub-tabs for task sequence, macro rules, micro rules — read-only summary with "Edit in Library" buttons). Equipment tab remains disabled. The Automation tab is lazy-initialized on first switch. Accepts optional `VisualTreeAsset` for the automation tab template. Overview inventory items use pooled row elements (`_inventoryItemRowCache`) — rows are reused in-place, excess rows hidden, new rows created only when needed.
+
+**Skill XP progress bars (Live Stats):** Tracks per-skill XP changes using `_lastKnownSkillXp` and `_skillXpLastChangeTime` arrays. When XP changes, the timestamp is updated. Bars are shown for skills where `Time.time - lastChangeTime < LiveStatsXpDisplayWindowSeconds`, sorted by most recent. Pool of bar elements (label + ProgressBar) is created once, shown/hidden as needed. Reset on runner switch via `ResetSkillXpTracking()`. Config-driven: `LiveStatsMaxSkillXpBars` (max simultaneous bars) and `LiveStatsXpDisplayWindowSeconds` (fade window).
 
 ### `View/UI/AutomationTabController.cs`
 Plain C# class. Controller for the runner Automation tab (read-only portal). Uses **shape-keyed caching**: elements are built once when the data shape (step count, rule count, work step structure) is first seen, then updated in-place on subsequent ticks. Rebuild only happens when the shape changes (e.g., runner switches to a sequence with a different step count). Three sub-tabs:
-- **Task Seq**: Shows active sequence steps with current step highlighted (gold), loop status, macro suspension indicator, pending sequence, [Clear Task] / [Resume Macros] / [Edit in Library] buttons.
-- **Macro**: Shows ruleset rules as natural language sentences with enabled indicator and timing tag. "Used by N runners" label.
+- **Task Seq**: Assign dropdown (pick from library or "(None)"), active sequence steps with current step highlighted (gold), loop status, macro suspension indicator, pending sequence, [Clear Task] / [Resume Macros] / [Edit in Library] buttons.
+- **Macro**: Assign dropdown (pick from library or "(None)"), ruleset rules as natural language sentences with enabled indicator and timing tag. "Used by N runners" label.
 - **Micro**: Shows each Work step in the current sequence with its micro ruleset and rules. "Used by N sequences" label. Uses `MicroWorkSectionCache` class per Work step.
+
+Assign dropdowns are populated from the global library every refresh. Callbacks route through `CommandAssignTaskSequenceToRunner` / `CommandAssignMacroRulesetToRunner` (or `ClearTaskSequence` for "(None)").
 
 All [Edit in Library] buttons navigate to the Automation panel via `UIManager.OpenAutomationPanelToItemFromRunner()`.
 
@@ -493,13 +512,19 @@ All [Edit in Library] buttons navigate to the Automation panel via `UIManager.Op
 Plain C# class. Manages the Automation overlay panel (toggle via top-left button, close with Escape). Three library tabs: Task Sequences, Macro Rulesets, Micro Rulesets. Each tab delegates to a sub-controller. Provides `OpenToItem()` and `OpenToItemFromRunner()` for navigation from the runner tab. Purely event-driven — no tick-driven `Refresh()`. Editors refresh on open, tab switch, and user interaction only.
 
 ### `View/UI/TaskSequenceEditorController.cs`
-Plain C# class. Master-detail editor for the Task Sequence library. Uses **persistent elements**: editor shell from UXML (name field, loop toggle, banner, used-by label) is updated in-place via `SetValueWithoutNotify`. Steps editor uses shape-key caching (seq ID + step count) — skips rebuild when the same sequence is re-selected. List pane uses item cache (`Dictionary<string, ...>`) for CSS-only selection toggling and in-place name updates on rename. Left pane: searchable list with [+ New]. Right pane: name field, loop toggle, step list with node/micro dropdowns, [+ Add Step] (step type picker), shared template warning banner when used by >1 runner, [Clone] / [Delete], "Used by: runner names" footer.
+Plain C# class. Master-detail editor for the Task Sequence library. Uses **persistent elements**: editor shell from UXML (name field, loop toggle, banner, used-by label) is updated in-place via `SetValueWithoutNotify`. Steps editor uses shape-key caching (seq ID + step count) — skips rebuild when the same sequence is re-selected. List pane uses item cache (`Dictionary<string, ...>`) for CSS-only selection toggling and in-place name updates on rename. Left pane: searchable list with [+ New]. Right pane: name field, loop toggle, step list with node/micro dropdowns, [+ Add Step] (step type picker), shared template warning banner when used by >1 runner, [Assign To...] (runner picker popup) / [Clone] / [Delete], "Used by: runner names" footer.
 
 ### `View/UI/MacroRulesetEditorController.cs`
-Plain C# class. Master-detail editor for the Macro Ruleset library. Uses **persistent editor shell**: banner, name field, rules header, rules container, add button, and footer are built once in `BuildEditorShell()` and updated in-place. Only the rules container rebuilds, gated by shape-key caching (ruleset ID + rule count). List pane uses item cache for CSS-only selection toggling. Left pane: searchable list. Right pane: name field, interactive rule list (via `RuleEditorController`), [+ Add Rule], [Clone] / [Reset to Default] / [Delete], shared template banner.
+Plain C# class. Master-detail editor for the Macro Ruleset library. Uses **persistent editor shell**: banner, name field, rules header, rules container, add button, and footer are built once in `BuildEditorShell()` and updated in-place. Only the rules container rebuilds, gated by shape-key caching (ruleset ID + rule count). List pane uses item cache for CSS-only selection toggling. Left pane: searchable list. Right pane: name field, interactive rule list (via `RuleEditorController`), [+ Add Rule], [Assign To...] (runner picker popup) / [Clone] / [Reset to Default] / [Delete], shared template banner.
 
 ### `View/UI/MicroRulesetEditorController.cs`
 Plain C# class. Master-detail editor for the Micro Ruleset library. Same persistent-element architecture as Macro. Shows "Used by N sequences" instead of runners. Micro-specific action types (GatherHere, FinishTask) and no timing toggle.
+
+### `View/UI/BankPanelController.cs`
+Plain C# class. OSRS-style bank overlay panel. Follows `AutomationPanelController` pattern: `IsOpen`, `Open()`, `Close()`, `Toggle()`, Escape to close. Shows all stacked items in a flex-wrap grid with category filtering (tab buttons), text search (case-insensitive), and persistent-element caching (shape-keyed by filtered item IDs — quantities update in-place, full rebuild only on shape change). Refreshes on `Open()` and on `RunnerDeposited` events while open (not every tick). Tooltips show item name, quantity, and category. Footer shows total item count. Opened via `UIManager.ToggleBankPanel()` (from bank click) or `UIManager.OpenBankPanel()` (from resource bar click).
+
+### `View/UI/ResourceBarController.cs`
+Plain C# class. Always-visible left-side panel showing guild bank totals grouped by `ItemCategory` (Rimworld-style). Refreshes every tick via `UIManager.OnSimulationTick()`. Groups items by category with collapsible headers (gold text, click to toggle). Compact rows: item name + formatted quantity (K/M suffixes for large numbers). Hidden when bank is empty. Shape-keyed caching: rebuilds DOM only when item set changes, updates quantities in-place otherwise. Collapsed state tracked in `HashSet<ItemCategory>`. Clicking any item row opens the bank panel.
 
 ### `View/UI/RuleEditorController.cs`
 Static helper class. Builds interactive rule rows with inline editing. Each row has: enable toggle, condition picker (cascading dropdowns for type → parameters), action picker (macro: Idle/WorkAt/ReturnToHub with node dropdown; micro: GatherHere/FinishTask with item picker), timing toggle (macro only), move up/down buttons, delete button. All changes go through `GameSimulation` commands. Used by both Macro and Micro editor controllers.
@@ -523,6 +548,7 @@ Resolves node IDs via GameState.Map, item IDs via optional `ItemNameResolver` de
 `AutomationTab.uxml/.uss` — Sub-tab bar (Task Seq / Macro / Micro) with content containers for read-only runner automation summary. Instantiated into the details panel's automation content area.
 `AutomationPanel.uxml/.uss` — Full-screen overlay panel for editing automation libraries. Title bar with close button, library tab bar (Task Sequences / Macro Rulesets / Micro Rulesets), master-detail layout (list pane left, editor pane right). Includes shared template warning banner, step type picker, and editor field styles.
 `RuleEditor.uss` — Styles for interactive rule editing rows: condition/action pickers, operator dropdowns, move/delete buttons, timing toggle. Loaded via AutomationPanel.uxml.
+`BankPanel.uxml/.uss` — Overlay panel for OSRS-style bank view. Title bar with close button, search field, category tab row, flex-wrap item grid (66px slots, 48px icons, quantity bottom-right), footer with item count.
 `PanelSettings.asset` — Scale With Screen Size, 1920x1080 reference, controls UI scaling across resolutions.
 
 ---
@@ -541,7 +567,7 @@ Effective level with/without passion, XP gain, level-up, multi-level-up, passion
 Default construction, skill access, effective level, factory creation (random, definition-based, biased), config range respect.
 
 ### `Tests/Editor/GameSimulationTests.cs`
-New game creation, tick counting, time accumulation, travel commands, travel progress/completion, Athletics speed scaling, config-driven speed, event publishing, map-based travel.
+New game creation, tick counting, time accumulation, travel commands, travel progress/completion, Athletics speed scaling, config-driven speed, event publishing, map-based travel. `FindMatchingGatherLoop` sequence reuse tests: matches standard loop, rejects different node/micro/non-looping, `CommandWorkAtSuspendMacrosForOneCycle` reuses existing and creates new for different nodes.
 
 ### `Tests/Editor/ItemTests.cs`
 ItemRegistry register/get, ItemDefinition construction, stackable vs non-stackable defaults.
@@ -584,6 +610,9 @@ Ruleset mutation commands (add/remove/reorder/toggle/update/reset/rename rules),
 
 ### `Tests/Editor/RedirectTests.cs`
 Uses a simple 3-node right triangle map (A, B, C) with constant speed for predictable math. Tests: basic redirect (changes destination, sets StartWorld override, virtual position correct, Euclidean TotalDistance, resets DistanceCovered, preserves FromNodeId, arrives at new destination), redirect to current destination is no-op, redirect back to origin (works, arrives, correct virtual pos and distance), chained redirects (virtual position correct, arrives at final destination, back-and-forth stress test), normal travel has no StartWorld override, redirect publishes RunnerStartedTravel event, edge cases (idle runner starts normal travel, redirect at progress zero).
+
+### `Tests/Editor/WarningBadgeTests.cs`
+`Runner.ActiveWarning` lifecycle tests. Null by default. Set on: `GatheringFailed` (NoGatherablesAtNode, NotEnoughSkill), `NoMicroRuleMatched` (empty ruleset). Cleared on: `AssignRunner`, `CommandTravel`, `StartGathering`. Uses nodes with no gatherables, high MinLevel gatherables, and empty micro rulesets to trigger warnings.
 
 ---
 

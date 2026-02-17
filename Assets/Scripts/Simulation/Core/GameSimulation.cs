@@ -226,7 +226,7 @@ namespace ProjectGuild.Simulation.Core
         private void TickRunner(Runner runner)
         {
             // Evaluate macro rules every tick for all active (non-Idle) runners.
-            // Idle runners evaluate via AdvanceMacroStep which also handles step execution.
+            // Idle runners go through ExecuteCurrentStep which evaluates macros then executes the current step.
             // An Immediate rule that fires here will call AssignRunner, changing state — skip the rest of the tick.
             if (runner.State != RunnerState.Idle)
             {
@@ -237,7 +237,7 @@ namespace ProjectGuild.Simulation.Core
             switch (runner.State)
             {
                 case RunnerState.Idle:
-                    AdvanceMacroStep(runner);
+                    ExecuteCurrentStep(runner);
                     break;
 
                 case RunnerState.Traveling:
@@ -300,7 +300,7 @@ namespace ProjectGuild.Simulation.Core
                 if (EvaluateMacroRules(runner, "ArrivedAtNode")) return;
 
                 // Immediately try to advance macro step now that we're idle
-                AdvanceMacroStep(runner);
+                ExecuteCurrentStep(runner);
             }
         }
 
@@ -364,6 +364,7 @@ namespace ProjectGuild.Simulation.Core
             if (distance < 0) return false;
 
             string fromNodeId = runner.CurrentNodeId;
+            runner.ActiveWarning = null;
             runner.State = RunnerState.Traveling;
             runner.Travel = new TravelState
             {
@@ -396,6 +397,7 @@ namespace ProjectGuild.Simulation.Core
             if (runner == null || runner.State == RunnerState.Dead) return;
 
             string fromNode = runner.CurrentNodeId;
+            runner.ActiveWarning = null;
             runner.State = RunnerState.Traveling;
             runner.Travel = new TravelState
             {
@@ -421,6 +423,7 @@ namespace ProjectGuild.Simulation.Core
         {
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
 
+            runner.ActiveWarning = null;
             runner.State = RunnerState.Gathering;
             runner.Gathering = new GatheringState
             {
@@ -532,9 +535,39 @@ namespace ProjectGuild.Simulation.Core
             if (runner == null) return;
 
             var hubId = CurrentGameState.Map.HubNodeId;
-            var taskSeq = TaskSequence.CreateLoop(nodeId, hubId);
+            var taskSeq = FindMatchingGatherLoop(nodeId, hubId) ?? TaskSequence.CreateLoop(nodeId, hubId);
             runner.MacroSuspendedUntilLoop = true;
             AssignRunner(runnerId, taskSeq, "Work At");
+        }
+
+        /// <summary>
+        /// Search the TaskSequenceLibrary for an existing standard gather loop
+        /// that exactly matches: same node, looping, 4-step pattern (TravelTo → Work → TravelTo(hub) → Deposit),
+        /// and the Work step uses the default micro ruleset.
+        /// Returns null if no match found, signaling that a new sequence should be created.
+        /// </summary>
+        public TaskSequence FindMatchingGatherLoop(string nodeId, string hubId)
+        {
+            foreach (var seq in CurrentGameState.TaskSequenceLibrary)
+            {
+                if (seq.TargetNodeId != nodeId) continue;
+                if (!seq.Loop) continue;
+                if (seq.Steps == null || seq.Steps.Count != 4) continue;
+
+                var s0 = seq.Steps[0];
+                var s1 = seq.Steps[1];
+                var s2 = seq.Steps[2];
+                var s3 = seq.Steps[3];
+
+                if (s0.Type != TaskStepType.TravelTo || s0.TargetNodeId != nodeId) continue;
+                if (s1.Type != TaskStepType.Work) continue;
+                if (s1.MicroRulesetId != DefaultRulesets.DefaultMicroId) continue;
+                if (s2.Type != TaskStepType.TravelTo || s2.TargetNodeId != hubId) continue;
+                if (s3.Type != TaskStepType.Deposit) continue;
+
+                return seq;
+            }
+            return null;
         }
 
         /// <summary>
@@ -570,6 +603,8 @@ namespace ProjectGuild.Simulation.Core
         {
             var runner = FindRunner(runnerId);
             if (runner == null) return;
+
+            runner.ActiveWarning = null;
 
             // Cancel current activity — if mid-travel, capture virtual position for redirect
             float? redirectWorldX = null;
@@ -620,20 +655,20 @@ namespace ProjectGuild.Simulation.Core
             });
 
             // Start executing the first step
-            AdvanceMacroStep(runner);
+            ExecuteCurrentStep(runner);
         }
 
         /// <summary>
         /// Execute the current step of the runner's task sequence.
         /// Called when the runner becomes Idle (after arriving, after depositing, etc.).
         /// </summary>
-        private void AdvanceMacroStep(Runner runner)
+        private void ExecuteCurrentStep(Runner runner)
         {
             if (runner.State != RunnerState.Idle) return;
 
             // Evaluate macro rules before executing the next step.
             // If a rule fires and changes the task sequence, AssignRunner will call
-            // AdvanceMacroStep again. Same-sequence suppression prevents infinite loops.
+            // ExecuteCurrentStep recurses after AssignRunner. Same-sequence suppression prevents infinite loops.
             if (EvaluateMacroRules(runner, "StepAdvance")) return;
 
             var seq = GetRunnerTaskSequence(runner);
@@ -668,7 +703,7 @@ namespace ProjectGuild.Simulation.Core
                 if (AdvanceRunnerStepIndex(runner, seq))
                 {
                     PublishStepAdvanced(runner, seq);
-                    AdvanceMacroStep(runner); // recurse for next step
+                    ExecuteCurrentStep(runner); // recurse for next step
                 }
                 else
                 {
@@ -679,7 +714,7 @@ namespace ProjectGuild.Simulation.Core
 
             // Start traveling. Step index stays on TravelTo so the display
             // correctly shows what the runner is doing. When travel completes
-            // (Idle → AdvanceMacroStep), it will see "already at target" and advance.
+            // (Idle → ExecuteCurrentStep), it will see "already at target" and advance.
             StartTravelInternal(runner, step.TargetNodeId);
         }
 
@@ -689,6 +724,7 @@ namespace ProjectGuild.Simulation.Core
             if (node == null || node.Gatherables.Length == 0)
             {
                 // No gatherables at this node — runner stays stuck. "Let it break."
+                runner.ActiveWarning = "No gatherables at this node";
                 Events.Publish(new GatheringFailed
                 {
                     RunnerId = runner.Id,
@@ -707,7 +743,7 @@ namespace ProjectGuild.Simulation.Core
                 if (AdvanceRunnerStepIndex(runner, seq))
                 {
                     PublishStepAdvanced(runner, seq);
-                    AdvanceMacroStep(runner);
+                    ExecuteCurrentStep(runner);
                 }
                 else
                 {
@@ -723,6 +759,33 @@ namespace ProjectGuild.Simulation.Core
                 return;
             }
 
+            // GatherAny found no eligible gatherables (all above runner's skill level).
+            if (gatherableIndex == MicroResultNoEligibleGatherable)
+            {
+                // Find the highest-MinLevel gatherable to report a useful error
+                var highestGatherable = node.Gatherables[0];
+                for (int i = 1; i < node.Gatherables.Length; i++)
+                {
+                    if (node.Gatherables[i].MinLevel > highestGatherable.MinLevel)
+                        highestGatherable = node.Gatherables[i];
+                }
+                var reportSkill = runner.GetSkill(highestGatherable.RequiredSkill);
+
+                runner.ActiveWarning = $"{highestGatherable.RequiredSkill} level too low ({reportSkill.Level}/{highestGatherable.MinLevel})";
+
+                Events.Publish(new GatheringFailed
+                {
+                    RunnerId = runner.Id,
+                    NodeId = runner.CurrentNodeId,
+                    ItemId = highestGatherable.ProducedItemId,
+                    Skill = highestGatherable.RequiredSkill,
+                    RequiredLevel = highestGatherable.MinLevel,
+                    CurrentLevel = reportSkill.Level,
+                    Reason = GatheringFailureReason.NotEnoughSkill,
+                });
+                return;
+            }
+
             var gatherableConfig = node.Gatherables[gatherableIndex];
 
             // Check skill level requirement
@@ -732,6 +795,8 @@ namespace ProjectGuild.Simulation.Core
                 if (skill.Level < gatherableConfig.MinLevel)
                 {
                     // Can't gather — runner stays stuck at Work step. "Let it break."
+                    runner.ActiveWarning = $"{gatherableConfig.RequiredSkill} level too low ({skill.Level}/{gatherableConfig.MinLevel})";
+
                     Events.Publish(new GatheringFailed
                     {
                         RunnerId = runner.Id,
@@ -750,12 +815,13 @@ namespace ProjectGuild.Simulation.Core
 
             // Step index stays on Work so the display correctly shows what the
             // runner is doing. When gathering completes (inventory full), TickGathering
-            // advances past this step, then calls AdvanceMacroStep for the next one.
+            // advances past this step, then calls ExecuteCurrentStep for the next one.
         }
 
         private void ExecuteDepositStep(Runner runner, TaskSequence seq)
         {
             // Start the deposit timer — actual deposit happens when it completes
+            runner.ActiveWarning = null;
             runner.State = RunnerState.Depositing;
             runner.Depositing = new DepositingState
             {
@@ -767,6 +833,7 @@ namespace ProjectGuild.Simulation.Core
 
         private const int MicroResultFinishTask = -1;
         private const int MicroResultNoMatch = -2;
+        private const int MicroResultNoEligibleGatherable = -3;
 
         /// <summary>
         /// Evaluate the micro ruleset for the current Work step to decide which resource to gather.
@@ -776,6 +843,7 @@ namespace ProjectGuild.Simulation.Core
         ///   >= 0: gatherable index to gather
         ///   -1 (MicroResultFinishTask): FinishTask — advance macro step
         ///   -2 (MicroResultNoMatch): no valid rule matched — runner is stuck, stay idle
+        ///   -3 (MicroResultNoEligibleGatherable): rule matched but no gatherable within skill level
         ///
         /// Null or empty micro ruleset = no valid rule matched = runner is stuck (let it break).
         /// </summary>
@@ -823,6 +891,10 @@ namespace ProjectGuild.Simulation.Core
                             actionLabel, false, DecisionLayer.Micro);
                         return index;
                     }
+
+                    // GatherAny found no eligible gatherables at this node (all above MinLevel)
+                    if (index == MicroResultNoEligibleGatherable)
+                        return MicroResultNoEligibleGatherable;
                 }
 
                 // Rule matched but action is invalid (wrong type, out-of-bounds index).
@@ -870,12 +942,36 @@ namespace ProjectGuild.Simulation.Core
                     return runner.Gathering.GatherableIndex;
                 }
 
-                // Fresh pick: Work step entry (Gathering==null) or item just produced
-                return _random.Next(node.Gatherables.Length);
+                // Fresh pick: Work step entry (Gathering==null) or item just produced.
+                // "Any" means "any I'm capable of" — filter by MinLevel.
+                var eligible = new System.Collections.Generic.List<int>();
+                for (int i = 0; i < node.Gatherables.Length; i++)
+                {
+                    var g = node.Gatherables[i];
+                    if (g.MinLevel <= 0 || runner.GetSkill(g.RequiredSkill).Level >= g.MinLevel)
+                        eligible.Add(i);
+                }
+
+                if (eligible.Count == 0) return MicroResultNoEligibleGatherable;
+                return eligible[_random.Next(eligible.Count)];
             }
 
             // Positional index (default behavior)
             return action.IntParam;
+        }
+
+        /// <summary>
+        /// Returns true if at least one gatherable at this node is within the runner's skill level.
+        /// </summary>
+        private static bool HasAnyEligibleGatherable(Runner runner, World.WorldNode node)
+        {
+            for (int i = 0; i < node.Gatherables.Length; i++)
+            {
+                var g = node.Gatherables[i];
+                if (g.MinLevel <= 0 || runner.GetSkill(g.RequiredSkill).Level >= g.MinLevel)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -900,7 +996,7 @@ namespace ProjectGuild.Simulation.Core
                 if (seq != null && AdvanceRunnerStepIndex(runner, seq))
                 {
                     PublishStepAdvanced(runner, seq);
-                    AdvanceMacroStep(runner);
+                    ExecuteCurrentStep(runner);
                 }
                 else
                 {
@@ -918,10 +1014,45 @@ namespace ProjectGuild.Simulation.Core
                 return;
             }
 
-            // Different resource — switch (reset accumulator for the new resource)
+            // GatherAny found no eligible gatherables mid-gather — shouldn't normally happen
+            // (runner was already gathering something eligible), but handle it cleanly.
+            if (newIndex == MicroResultNoEligibleGatherable)
+            {
+                runner.State = RunnerState.Idle;
+                runner.Gathering = null;
+                runner.ActiveWarning = "No eligible gatherables at this node";
+                return;
+            }
+
+            // Different resource — check MinLevel before switching
             if (newIndex != runner.Gathering.GatherableIndex)
             {
                 var gatherableConfig = node.Gatherables[newIndex];
+
+                // MinLevel gate: same check as ExecuteWorkStep. If the runner can't
+                // gather this resource, stop and go stuck rather than silently mining it.
+                if (gatherableConfig.MinLevel > 0)
+                {
+                    var skill = runner.GetSkill(gatherableConfig.RequiredSkill);
+                    if (skill.Level < gatherableConfig.MinLevel)
+                    {
+                        runner.State = RunnerState.Idle;
+                        runner.Gathering = null;
+                        runner.ActiveWarning = $"{gatherableConfig.RequiredSkill} level too low ({skill.Level}/{gatherableConfig.MinLevel})";
+                        Events.Publish(new GatheringFailed
+                        {
+                            RunnerId = runner.Id,
+                            NodeId = runner.CurrentNodeId,
+                            ItemId = gatherableConfig.ProducedItemId,
+                            Skill = gatherableConfig.RequiredSkill,
+                            RequiredLevel = gatherableConfig.MinLevel,
+                            CurrentLevel = skill.Level,
+                            Reason = GatheringFailureReason.NotEnoughSkill,
+                        });
+                        return;
+                    }
+                }
+
                 runner.Gathering.GatherableIndex = newIndex;
                 runner.Gathering.TickAccumulator = 0f;
                 runner.Gathering.TicksRequired = CalculateTicksRequired(runner, gatherableConfig);
@@ -977,7 +1108,7 @@ namespace ProjectGuild.Simulation.Core
             // Apply pending set by the macro eval above (deferred rule that fired at sequence boundary)
             if (ApplyPendingTaskSequence(runner)) return;
 
-            AdvanceMacroStep(runner);
+            ExecuteCurrentStep(runner);
         }
 
         private void PublishStepAdvanced(Runner runner, TaskSequence seq)
@@ -1018,7 +1149,7 @@ namespace ProjectGuild.Simulation.Core
             });
 
             // Macro rules get a chance to assign a new sequence.
-            // If a rule fires, AssignRunner calls AdvanceMacroStep internally.
+            // If a rule fires, AssignRunner calls ExecuteCurrentStep internally.
             // If no rule fires, runner stays idle — next tick picks it up.
             EvaluateMacroRules(runner, "SequenceCompleted");
         }
@@ -1154,6 +1285,11 @@ namespace ProjectGuild.Simulation.Core
                     ruleset = FindMicroRulesetInLibrary(step.MicroRulesetId);
             }
             ruleset ??= runner.MicroRuleset;
+
+            bool isEmpty = ruleset == null || ruleset.Rules == null || ruleset.Rules.Count == 0;
+            runner.ActiveWarning = isEmpty
+                ? "No micro rules configured"
+                : $"No micro rule matched at {runner.CurrentNodeId} ({ruleset.Rules.Count} rules evaluated)";
 
             Events.Publish(new NoMicroRuleMatched
             {
@@ -1812,6 +1948,7 @@ namespace ProjectGuild.Simulation.Core
                 if (distance < 0) return;
             }
 
+            runner.ActiveWarning = null;
             runner.State = RunnerState.Traveling;
             runner.Travel = new TravelState
             {

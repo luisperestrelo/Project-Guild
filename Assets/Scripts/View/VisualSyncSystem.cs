@@ -61,6 +61,9 @@ namespace ProjectGuild.View
                 CreateNodeMarker(node);
             }
 
+            // Create bank marker near hub
+            CreateBankMarker();
+
             // Create runner visuals
             foreach (var runner in Sim.CurrentGameState.Runners)
             {
@@ -110,6 +113,15 @@ namespace ProjectGuild.View
             marker.name = $"Node_{node.Id}";
             marker.transform.position = NodeWorldPosition(node);
 
+            // Attach NodeMarker component for click-to-select
+            var nodeMarkerComponent = marker.AddComponent<NodeMarker>();
+            nodeMarkerComponent.Initialize(node.Id);
+
+            // Put nodes on their own physics layer for selective raycasting
+            int nodeLayer = LayerMask.NameToLayer("Nodes");
+            if (nodeLayer >= 0)
+                SetLayerRecursive(marker, nodeLayer);
+
             // Add a floating label — parented for cleanup but using world position
             // (can't use localPosition because the cylinder's Y scale is 0.1, which squishes children)
             var labelObj = new GameObject("Label");
@@ -124,6 +136,41 @@ namespace ProjectGuild.View
             label.rectTransform.sizeDelta = new Vector2(8f, 2f);
 
             _nodeMarkers[node.Id] = marker;
+        }
+
+        private void CreateBankMarker()
+        {
+            var hubId = Sim.CurrentGameState.Map?.HubNodeId;
+            if (hubId == null) return;
+            var hub = Sim.CurrentGameState.Map.GetNode(hubId);
+            if (hub == null) return;
+
+            var bankObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bankObj.name = "BankMarker";
+            bankObj.transform.localScale = new Vector3(2f, 2f, 2f);
+            bankObj.transform.position = new Vector3(hub.WorldX + 4f, 1f, hub.WorldZ);
+
+            var renderer = bankObj.GetComponent<Renderer>();
+            if (renderer != null)
+                renderer.material.color = new Color(0.7f, 0.6f, 0.2f);
+
+            bankObj.AddComponent<BankMarker>();
+
+            int bankLayer = LayerMask.NameToLayer("Bank");
+            if (bankLayer >= 0)
+                SetLayerRecursive(bankObj, bankLayer);
+
+            // Floating label
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(bankObj.transform, worldPositionStays: true);
+            labelObj.transform.position = bankObj.transform.position + new Vector3(0f, 2f, 0f);
+            labelObj.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+            var label = labelObj.AddComponent<TMPro.TextMeshPro>();
+            label.text = "Bank";
+            label.fontSize = 6f;
+            label.alignment = TMPro.TextAlignmentOptions.Center;
+            label.color = Color.yellow;
+            label.rectTransform.sizeDelta = new Vector2(4f, 2f);
         }
 
         private void CreateRunnerVisual(Runner runner)

@@ -184,8 +184,8 @@ namespace ProjectGuild.Simulation.Core
         public int DecisionLogMaxEntries = 2000;
 
         /// <summary>
-        /// Maximum entries kept in the event log (ring buffer eviction).
-        /// 500 covers several minutes of rich activity.
+        /// (Dev only) Maximum entries kept in the event log (ring buffer eviction).
+        /// The event log is for debugging, not player-facing. 500 covers several minutes.
         /// </summary>
         public int EventLogMaxEntries = 500;
 

@@ -167,6 +167,42 @@
     -unity-text-align: middle-right;
 }
 
+/* ─── Skill XP Bars (Live Stats) ────────────────────── */
+
+.live-stat-xp-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 4px;
+    margin-bottom: 1px;
+}
+
+.live-stat-xp-label {
+    font-size: 10px;
+    color: rgb(160, 160, 180);
+    min-width: 120px;
+    flex-shrink: 0;
+}
+
+.live-stat-xp-bar {
+    flex-grow: 1;
+    height: 8px;
+}
+
+.live-stat-xp-bar .unity-progress-bar__background {
+    background-color: rgba(30, 30, 50, 0.8);
+    border-radius: 2px;
+}
+
+.live-stat-xp-bar .unity-progress-bar__progress {
+    background-color: rgb(50, 120, 180);
+    border-radius: 2px;
+}
+
+.live-stat-xp-bar .unity-progress-bar__title {
+    font-size: 7px;
+    color: rgb(180, 180, 200);
+}
+
 /* ─── Inventory ───────────────────────────────────── */
 
 .inventory-items-container {

@@ -99,6 +99,13 @@ namespace ProjectGuild.Simulation.Core
         public string LastCompletedTaskSequenceId;
 
         /// <summary>
+        /// Human-readable warning message when the runner is stuck.
+        /// Null = no warning. Set when NoMicroRuleMatched or GatheringFailed occurs.
+        /// Cleared when the runner transitions to a productive activity.
+        /// </summary>
+        public string ActiveWarning;
+
+        /// <summary>
         /// ID reference into MacroRulesetLibrary.
         /// </summary>
         public string MacroRulesetId;

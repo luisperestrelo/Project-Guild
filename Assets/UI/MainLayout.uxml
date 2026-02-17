@@ -9,6 +9,9 @@
             <!-- Portraits inserted dynamically by RunnerPortraitBarController -->
         </ui:VisualElement>
 
+        <!-- Resource overview bar — absolute positioned, left side -->
+        <ui:VisualElement name="resource-bar-container" class="resource-bar-container" picking-mode="Ignore" />
+
         <!-- Runner details panel — absolute positioned, bottom-right overlay -->
         <ui:VisualElement name="details-panel-container" class="details-panel-container" />
     </ui:VisualElement>

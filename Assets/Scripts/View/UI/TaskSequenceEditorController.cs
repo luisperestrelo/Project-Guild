@@ -39,6 +39,7 @@ namespace ProjectGuild.View.UI
         private readonly VisualElement _stepsEditor;
         private readonly Button _btnAddStep;
         private readonly Label _usedByLabel;
+        private readonly Button _btnAssignTo;
         private readonly Button _btnClone;
         private readonly Button _btnDelete;
 
@@ -74,10 +75,12 @@ namespace ProjectGuild.View.UI
             _stepsEditor = root.Q("taskseq-steps-editor");
             _btnAddStep = root.Q<Button>("btn-add-step");
             _usedByLabel = root.Q<Label>("taskseq-used-by-label");
+            _btnAssignTo = root.Q<Button>("btn-assign-to-taskseq");
             _btnClone = root.Q<Button>("btn-clone-taskseq");
             _btnDelete = root.Q<Button>("btn-delete-taskseq");
 
             // Editor events
+            _btnAssignTo.clicked += OnAssignToClicked;
             _nameField.RegisterValueChangedCallback(evt =>
             {
                 if (_selectedId == null) return;
@@ -420,6 +423,49 @@ namespace ProjectGuild.View.UI
             // Insert after the add button
             int addBtnIndex = _btnAddStep.parent.IndexOf(_btnAddStep);
             _btnAddStep.parent.Insert(addBtnIndex + 1, picker);
+        }
+
+        private void OnAssignToClicked()
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null || _selectedId == null) return;
+
+            // Remove any existing popup first
+            var existingPopup = _btnAssignTo.parent?.Q("assign-popup");
+            if (existingPopup != null) { existingPopup.RemoveFromHierarchy(); return; }
+
+            var popup = new VisualElement();
+            popup.name = "assign-popup";
+            popup.AddToClassList("assign-popup");
+
+            var header = new Label("Assign to runner:");
+            header.AddToClassList("assign-popup-header");
+            popup.Add(header);
+
+            foreach (var runner in sim.CurrentGameState.Runners)
+            {
+                string capturedRunnerId = runner.Id;
+                bool alreadyAssigned = runner.TaskSequenceId == _selectedId;
+                var btn = new Button(() =>
+                {
+                    sim.CommandAssignTaskSequenceToRunner(capturedRunnerId, _selectedId);
+                    popup.RemoveFromHierarchy();
+                    RefreshEditor();
+                    RebuildList();
+                });
+                btn.text = alreadyAssigned ? $"{runner.Name} (current)" : runner.Name;
+                btn.SetEnabled(!alreadyAssigned);
+                btn.AddToClassList("assign-popup-runner");
+                popup.Add(btn);
+            }
+
+            var cancelBtn = new Button(() => popup.RemoveFromHierarchy());
+            cancelBtn.text = "Cancel";
+            cancelBtn.AddToClassList("assign-popup-cancel");
+            popup.Add(cancelBtn);
+
+            int idx = _btnAssignTo.parent.IndexOf(_btnAssignTo);
+            _btnAssignTo.parent.Insert(idx + 1, popup);
         }
 
         private void OnCloneClicked()

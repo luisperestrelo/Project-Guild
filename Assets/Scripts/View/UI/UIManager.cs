@@ -19,18 +19,27 @@ namespace ProjectGuild.View.UI
         [SerializeField] private VisualSyncSystem _visualSyncSystem;
         [SerializeField] private CameraController _cameraController;
 
+        [Header("UI Config")]
+        [Tooltip("How long (seconds) a skill XP bar stays visible after the skill last gained XP.")]
+        [SerializeField] private float _liveStatsXpDisplayWindowSeconds = 5.0f;
+        [Tooltip("Maximum number of skill XP progress bars shown simultaneously.")]
+        [SerializeField] private int _liveStatsMaxSkillXpBars = 4;
+
         [Header("UI Assets")]
         [SerializeField] private VisualTreeAsset _mainLayoutAsset;
         [SerializeField] private VisualTreeAsset _runnerPortraitAsset;
         [SerializeField] private VisualTreeAsset _runnerDetailsPanelAsset;
         [SerializeField] private VisualTreeAsset _automationTabAsset;
         [SerializeField] private VisualTreeAsset _automationPanelAsset;
+        [SerializeField] private VisualTreeAsset _bankPanelAsset;
         [SerializeField] private PanelSettings _panelSettings;
 
         private UIDocument _uiDocument;
         private RunnerPortraitBarController _portraitBarController;
         private RunnerDetailsPanelController _detailsPanelController;
         private AutomationPanelController _automationPanelController;
+        private BankPanelController _bankPanelController;
+        private ResourceBarController _resourceBarController;
 
         private string _selectedRunnerId;
         private bool _initialized;
@@ -45,8 +54,13 @@ namespace ProjectGuild.View.UI
         // Event-driven tracking uses UI Toolkit's own hit testing — no coordinate transforms needed.
         private bool _isPointerOverDetailsPanel;
 
+        // ─── Node-click confirmation popup ────────────────
+        private VisualElement _nodeClickPopup;
+
         public string SelectedRunnerId => _selectedRunnerId;
         public GameSimulation Simulation => _simulationRunner?.Simulation;
+        public float LiveStatsXpDisplayWindowSeconds => _liveStatsXpDisplayWindowSeconds;
+        public int LiveStatsMaxSkillXpBars => _liveStatsMaxSkillXpBars;
 
         /// <summary>
         /// Returns true if the mouse pointer is over any interactive UI panel.
@@ -56,6 +70,7 @@ namespace ProjectGuild.View.UI
         {
             if (_isPointerOverDetailsPanel) return true;
             if (_automationPanelController?.IsOpen == true) return true;
+            if (_bankPanelController?.IsOpen == true) return true;
             return false;
         }
 
@@ -127,6 +142,25 @@ namespace ProjectGuild.View.UI
                 root.Add(toggleBtn);
             }
 
+            // Bank panel (overlay)
+            if (_bankPanelAsset != null)
+            {
+                var bankInstance = _bankPanelAsset.Instantiate();
+                bankInstance.style.position = Position.Absolute;
+                bankInstance.style.left = 0;
+                bankInstance.style.top = 0;
+                bankInstance.style.right = 0;
+                bankInstance.style.bottom = 0;
+                bankInstance.pickingMode = PickingMode.Ignore;
+                root.Add(bankInstance);
+                _bankPanelController = new BankPanelController(bankInstance, this);
+            }
+
+            // Resource overview bar (left side)
+            var resourceBarContainer = root.Q("resource-bar-container");
+            if (resourceBarContainer != null)
+                _resourceBarController = new ResourceBarController(resourceBarContainer, this);
+
             // Populate portraits for runners that already exist
             foreach (var runner in Simulation.CurrentGameState.Runners)
                 _portraitBarController.AddPortrait(runner.Id);
@@ -190,6 +224,11 @@ namespace ProjectGuild.View.UI
             _automationPanelController?.OpenToItemFromRunner(tabType, itemId, runnerId);
         }
 
+        // ─── Bank Panel ─────────────────────────────────────
+
+        public void ToggleBankPanel() => _bankPanelController?.Toggle();
+        public void OpenBankPanel() => _bankPanelController?.Open();
+
         // ─── Tooltip ─────────────────────────────────────
 
         private void BuildTooltip(VisualElement root)
@@ -246,6 +285,65 @@ namespace ProjectGuild.View.UI
                 _tooltip.style.left = evt.position.x + 12;
                 _tooltip.style.top = evt.position.y + 16;
             });
+        }
+
+        // ─── Node-Click Confirmation Popup ──────────────
+
+        /// <summary>
+        /// Shows a centered confirmation popup: "Send [Runner] to work at [Node]?"
+        /// Confirm calls CommandWorkAtSuspendMacrosForOneCycle. Cancel dismisses.
+        /// Only one popup can be open at a time.
+        /// </summary>
+        public void ShowNodeClickConfirmation(string runnerId, string nodeId)
+        {
+            DismissNodeClickConfirmation();
+
+            var sim = Simulation;
+            if (sim == null) return;
+
+            var runner = sim.CurrentGameState.Runners.Find(r => r.Id == runnerId);
+            var node = sim.CurrentGameState.Map.GetNode(nodeId);
+            if (runner == null || node == null) return;
+
+            string runnerName = runner.Name ?? runnerId;
+            string nodeName = node.Name ?? nodeId;
+
+            _nodeClickPopup = new VisualElement();
+            _nodeClickPopup.name = "node-click-popup";
+            _nodeClickPopup.AddToClassList("node-click-popup");
+
+            var message = new Label($"Send {runnerName} to work at {nodeName}?");
+            message.AddToClassList("node-click-popup-message");
+            _nodeClickPopup.Add(message);
+
+            var buttonRow = new VisualElement();
+            buttonRow.AddToClassList("node-click-popup-buttons");
+
+            var confirmBtn = new Button(() =>
+            {
+                sim.CommandWorkAtSuspendMacrosForOneCycle(runnerId, nodeId);
+                DismissNodeClickConfirmation();
+            });
+            confirmBtn.text = "Confirm";
+            confirmBtn.AddToClassList("node-click-popup-confirm");
+            buttonRow.Add(confirmBtn);
+
+            var cancelBtn = new Button(DismissNodeClickConfirmation);
+            cancelBtn.text = "Cancel";
+            cancelBtn.AddToClassList("node-click-popup-cancel");
+            buttonRow.Add(cancelBtn);
+
+            _nodeClickPopup.Add(buttonRow);
+            _uiDocument.rootVisualElement.Add(_nodeClickPopup);
+        }
+
+        public void DismissNodeClickConfirmation()
+        {
+            if (_nodeClickPopup != null)
+            {
+                _nodeClickPopup.RemoveFromHierarchy();
+                _nodeClickPopup = null;
+            }
         }
 
         private void OnDestroy()

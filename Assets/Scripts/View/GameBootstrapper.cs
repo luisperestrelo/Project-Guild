@@ -29,6 +29,8 @@ namespace ProjectGuild.View
         private InputAction _clickAction;
         private bool _clickedThisFrame;
         private int _runnerLayerMask;
+        private int _nodeLayerMask;
+        private int _bankLayerMask;
         private bool _debugUIEnabled = true;
 
         private void Awake()
@@ -37,7 +39,16 @@ namespace ProjectGuild.View
                 binding: "<Mouse>/leftButton");
 
             int runnerLayer = LayerMask.NameToLayer("Runners");
-            _runnerLayerMask = runnerLayer >= 0 ? (1 << runnerLayer) : ~0; // fallback to all layers if not configured
+            if (runnerLayer < 0) Debug.LogError("[GameBootstrapper] 'Runners' layer not found. Add it in Project Settings > Tags and Layers.");
+            _runnerLayerMask = 1 << runnerLayer;
+
+            int nodeLayer = LayerMask.NameToLayer("Nodes");
+            if (nodeLayer < 0) Debug.LogError("[GameBootstrapper] 'Nodes' layer not found. Add it in Project Settings > Tags and Layers.");
+            _nodeLayerMask = 1 << nodeLayer;
+
+            int bankLayer = LayerMask.NameToLayer("Bank");
+            if (bankLayer < 0) Debug.LogError("[GameBootstrapper] 'Bank' layer not found. Add it in Project Settings > Tags and Layers.");
+            _bankLayerMask = 1 << bankLayer;
         }
 
         private void OnEnable() => _clickAction.Enable();
@@ -117,30 +128,71 @@ namespace ProjectGuild.View
                 if (GUIUtility.hotControl > 0) return;
                 if (_uiManager != null && _uiManager.IsPointerOverUI()) return;
 
-                TryPickRunner();
+                if (!TryPickRunner())
+                    if (!TryPickBank())
+                        TryPickNode();
             }
         }
 
-        private void TryPickRunner()
+        private bool TryPickRunner()
         {
             var sim = _simulationRunner.Simulation;
-            if (sim == null || Camera.main == null) return;
+            if (sim == null || Camera.main == null) return false;
 
             Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
             if (!Physics.Raycast(ray, out RaycastHit hit, 200f, _runnerLayerMask))
-                return;
+                return false;
 
             var visual = hit.collider.GetComponentInParent<RunnerVisual>();
-            if (visual == null) return;
+            if (visual == null) return false;
             // Find the runner index by ID
             for (int i = 0; i < sim.CurrentGameState.Runners.Count; i++)
             {
                 if (sim.CurrentGameState.Runners[i].Id == visual.RunnerId)
                 {
                     SelectRunner(i);
-                    return;
+                    return true;
                 }
             }
+            return false;
+        }
+
+        private bool TryPickBank()
+        {
+            if (Camera.main == null || _uiManager == null) return false;
+
+            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
+            if (!Physics.Raycast(ray, out RaycastHit hit, 200f, _bankLayerMask))
+                return false;
+
+            var marker = hit.collider.GetComponentInParent<BankMarker>();
+            if (marker == null) return false;
+
+            _uiManager.ToggleBankPanel();
+            return true;
+        }
+
+        private void TryPickNode()
+        {
+            var sim = _simulationRunner.Simulation;
+            if (sim == null || Camera.main == null) return;
+            if (_uiManager == null || _uiManager.SelectedRunnerId == null) return;
+
+            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
+            if (!Physics.Raycast(ray, out RaycastHit hit, 200f, _nodeLayerMask))
+                return;
+
+            var nodeMarker = hit.collider.GetComponentInParent<NodeMarker>();
+            if (nodeMarker == null) return;
+
+            string nodeId = nodeMarker.NodeId;
+            string hubId = sim.CurrentGameState.Map.HubNodeId;
+
+            // Skip hub node (no Work At on hub)
+            if (nodeId == hubId) return;
+
+            _uiManager.ShowNodeClickConfirmation(
+                _uiManager.SelectedRunnerId, nodeId);
         }
 
         // ─── Temporary Debug UI ──────────────────────────────────────

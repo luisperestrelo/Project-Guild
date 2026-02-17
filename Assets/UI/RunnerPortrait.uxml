@@ -1,6 +1,8 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:Style src="RunnerPortrait.uss" />
     <ui:VisualElement name="portrait-root" class="portrait">
+        <!-- Warning badge (top-right, hidden by default) -->
+        <ui:VisualElement name="portrait-warning-badge" class="portrait-warning-badge" picking-mode="Ignore" style="display: none;" />
         <!-- Name and state float at the bottom over the portrait background -->
         <ui:VisualElement name="portrait-label-bar" class="portrait-label-bar" picking-mode="Ignore">
             <ui:Label name="portrait-name" class="portrait-name" text="Runner" picking-mode="Ignore" />

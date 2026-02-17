@@ -414,7 +414,7 @@ namespace ProjectGuild.Tests
             // Advance runner to step 1 (Work)
             // Runner starts at mine, TravelTo mine is instant, so it advances
             // Actually, runner is already at mine, so TravelTo is skip → Work step
-            // Let me check: AssignRunner sets index=0, calls AdvanceMacroStep.
+            // Let me check: AssignRunner sets index=0, calls ExecuteCurrentStep.
             // Step 0 is TravelTo mine, runner is already at mine → skip → advance to 1 (Work).
             // So runner should be gathering now at step index 1.
             Assert.AreEqual(1, _runner.TaskSequenceCurrentStepIndex,

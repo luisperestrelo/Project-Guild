@@ -16,6 +16,11 @@
                 <ui:Label name="taskseq-usage-label" class="auto-usage-label" text="" />
             </ui:VisualElement>
 
+            <ui:VisualElement name="taskseq-assign-row" class="auto-info-row">
+                <ui:Label class="auto-info-key" text="Assign:" />
+                <ui:DropdownField name="taskseq-assign-dropdown" class="auto-assign-dropdown" />
+            </ui:VisualElement>
+
             <ui:VisualElement name="taskseq-loop-row" class="auto-info-row">
                 <ui:Label class="auto-info-key" text="Loop:" />
                 <ui:Label name="taskseq-loop-value" class="auto-info-value" text="-" />
@@ -41,6 +46,11 @@
             <ui:VisualElement name="macro-header" class="auto-section">
                 <ui:Label name="macro-name-label" class="auto-name-label" text="No macro ruleset" />
                 <ui:Label name="macro-usage-label" class="auto-usage-label" text="" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="macro-assign-row" class="auto-info-row">
+                <ui:Label class="auto-info-key" text="Assign:" />
+                <ui:DropdownField name="macro-assign-dropdown" class="auto-assign-dropdown" />
             </ui:VisualElement>
 
             <ui:VisualElement name="macro-rules-container" class="auto-list-container" />
