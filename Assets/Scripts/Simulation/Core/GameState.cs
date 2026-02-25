@@ -19,7 +19,9 @@ namespace ProjectGuild.Simulation.Core
 
         public WorldMap Map;
         public Bank Bank = new();
-        public DecisionLog DecisionLog = new();
+        public DecisionLog MacroDecisionLog = new();
+        public DecisionLog MicroDecisionLog = new();
+        public LogbookState Logbook = new();
 
         // ─── Global Automation Libraries ────────────────────────────
         // Named templates with IDs. Runners hold string refs into these.

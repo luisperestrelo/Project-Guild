@@ -14,7 +14,7 @@ namespace ProjectGuild.View.UI
     ///
     /// Plain C# class (not MonoBehaviour) — idiomatic for UI Toolkit controllers.
     /// </summary>
-    public class RunnerPortraitBarController
+    public class RunnerPortraitBarController : ITickRefreshable
     {
         private const float DragThresholdPixels = 5f;
 
@@ -57,6 +57,8 @@ namespace ProjectGuild.View.UI
             _container = container;
             _portraitTemplate = portraitTemplate;
             _uiManager = uiManager;
+
+            uiManager.RegisterTickRefreshable(this);
         }
 
         // ─── Public API ──────────────────────────────────

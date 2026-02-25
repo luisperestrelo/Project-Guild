@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
@@ -32,6 +34,10 @@ namespace ProjectGuild.View.UI
         [SerializeField] private VisualTreeAsset _automationTabAsset;
         [SerializeField] private VisualTreeAsset _automationPanelAsset;
         [SerializeField] private VisualTreeAsset _bankPanelAsset;
+        [SerializeField] private VisualTreeAsset _chroniclePanelAsset;
+        [SerializeField] private VisualTreeAsset _logPanelContainerAsset;
+        [SerializeField] private VisualTreeAsset _decisionLogPanelAsset;
+        [SerializeField] private VisualTreeAsset _logbookPanelAsset;
         [SerializeField] private PanelSettings _panelSettings;
 
         private UIDocument _uiDocument;
@@ -40,13 +46,25 @@ namespace ProjectGuild.View.UI
         private AutomationPanelController _automationPanelController;
         private BankPanelController _bankPanelController;
         private ResourceBarController _resourceBarController;
+        private LogPanelContainerController _logPanelContainerController;
+        private LogbookPanelController _logbookPanelController;
 
         private string _selectedRunnerId;
         private bool _initialized;
 
+        // ─── Auto-refresh registry ────────────────────────
+        // Controllers that implement ITickRefreshable register themselves here
+        // via RegisterTickRefreshable() in their constructors. OnSimulationTick
+        // iterates this list — no manual per-controller wiring needed.
+        private readonly List<ITickRefreshable> _tickRefreshables = new();
+
         // ─── Tooltip ─────────────────────────────────────
         private VisualElement _tooltip;
         private Label _tooltipLabel;
+
+        // ─── Context Menu (right-click) ─────────────────
+        private VisualElement _contextMenu;
+        private VisualElement _contextMenuItems;
 
         // ─── Pointer-over-UI tracking ───────────────────
         // Uses PointerEnter/LeaveEvent instead of manual ScreenToPanel + panel.Pick(),
@@ -54,6 +72,8 @@ namespace ProjectGuild.View.UI
         // Event-driven tracking uses UI Toolkit's own hit testing — no coordinate transforms needed.
         private bool _isPointerOverDetailsPanel;
         private bool _isPointerOverPortraitBar;
+        private bool _isPointerOverLogPanel;
+        private bool _isPointerOverLogbook;
 
         // ─── Node-click confirmation popup ────────────────
         private VisualElement _nodeClickPopup;
@@ -71,9 +91,20 @@ namespace ProjectGuild.View.UI
         {
             if (_isPointerOverDetailsPanel) return true;
             if (_isPointerOverPortraitBar) return true;
+            if (_isPointerOverLogPanel) return true;
+            if (_isPointerOverLogbook) return true;
             if (_automationPanelController?.IsOpen == true) return true;
             if (_bankPanelController?.IsOpen == true) return true;
             return false;
+        }
+
+        /// <summary>
+        /// Register a controller for automatic per-tick refresh.
+        /// Called by controllers in their constructors.
+        /// </summary>
+        public void RegisterTickRefreshable(ITickRefreshable refreshable)
+        {
+            _tickRefreshables.Add(refreshable);
         }
 
         /// <summary>
@@ -162,6 +193,33 @@ namespace ProjectGuild.View.UI
                 _bankPanelController = new BankPanelController(bankInstance, this);
             }
 
+            // Log panel container (Activity + Decisions tabs, bottom-left)
+            var logPanelContainer = root.Q("log-panel-container");
+            if (logPanelContainer != null && _logPanelContainerAsset != null)
+            {
+                var containerInstance = _logPanelContainerAsset.Instantiate();
+                containerInstance.style.flexGrow = 1;
+                logPanelContainer.Add(containerInstance);
+                _logPanelContainerController = new LogPanelContainerController(
+                    containerInstance, this, _chroniclePanelAsset, _decisionLogPanelAsset);
+
+                logPanelContainer.RegisterCallback<PointerEnterEvent>(_ => _isPointerOverLogPanel = true);
+                logPanelContainer.RegisterCallback<PointerLeaveEvent>(_ => _isPointerOverLogPanel = false);
+            }
+
+            // Logbook panel (bottom-center, player scratchpad)
+            var logbookContainer = root.Q("logbook-panel-container");
+            if (logbookContainer != null && _logbookPanelAsset != null)
+            {
+                var logbookInstance = _logbookPanelAsset.Instantiate();
+                logbookInstance.style.flexGrow = 1;
+                logbookContainer.Add(logbookInstance);
+                _logbookPanelController = new LogbookPanelController(logbookInstance, this);
+
+                logbookContainer.RegisterCallback<PointerEnterEvent>(_ => _isPointerOverLogbook = true);
+                logbookContainer.RegisterCallback<PointerLeaveEvent>(_ => _isPointerOverLogbook = false);
+            }
+
             // Resource overview bar (left side)
             var resourceBarContainer = root.Q("resource-bar-container");
             if (resourceBarContainer != null)
@@ -177,6 +235,7 @@ namespace ProjectGuild.View.UI
 
             // Build tooltip element (shared across all UI)
             BuildTooltip(root);
+            BuildContextMenu(root);
 
             // Select first runner
             var runners = Simulation.CurrentGameState.Runners;
@@ -191,6 +250,7 @@ namespace ProjectGuild.View.UI
             _selectedRunnerId = runnerId;
             _portraitBarController?.SetSelectedRunner(runnerId);
             _detailsPanelController?.ShowRunner(runnerId);
+            _logbookPanelController?.OnRunnerSelected(runnerId);
 
             // Move camera to selected runner's visual
             if (_visualSyncSystem != null && _cameraController != null)
@@ -201,11 +261,19 @@ namespace ProjectGuild.View.UI
             }
         }
 
+        private void Update()
+        {
+            if (_contextMenu != null && _contextMenu.style.display != DisplayStyle.None)
+            {
+                if (Mouse.current.leftButton.wasPressedThisFrame)
+                    DismissContextMenu();
+            }
+        }
+
         private void OnSimulationTick(SimulationTickCompleted evt)
         {
-            _portraitBarController?.Refresh();
-            _detailsPanelController?.Refresh();
-            _resourceBarController?.Refresh();
+            for (int i = 0; i < _tickRefreshables.Count; i++)
+                _tickRefreshables[i].Refresh();
         }
 
         private void OnRunnerCreated(RunnerCreated evt)
@@ -229,6 +297,17 @@ namespace ProjectGuild.View.UI
         public void OpenAutomationPanelToItemFromRunner(string tabType, string itemId, string runnerId)
         {
             _automationPanelController?.OpenToItemFromRunner(tabType, itemId, runnerId);
+        }
+
+        // ─── Logbook ─────────────────────────────────────────
+
+        /// <summary>
+        /// Appends text to the current logbook page. Used by Chronicle and Decision Log
+        /// "Copy to Logbook" context menu actions.
+        /// </summary>
+        public void AppendToLogbook(string text)
+        {
+            _logbookPanelController?.AppendToCurrentPage(text);
         }
 
         // ─── Bank Panel ─────────────────────────────────────
@@ -323,6 +402,102 @@ namespace ProjectGuild.View.UI
 
             _tooltip.style.left = x;
             _tooltip.style.top = y;
+        }
+
+        // ─── Context Menu (right-click popup) ───────────
+
+        private void BuildContextMenu(VisualElement root)
+        {
+            _contextMenu = new VisualElement();
+            _contextMenu.style.position = Position.Absolute;
+            _contextMenu.style.backgroundColor = new StyleColor(new Color(0.1f, 0.1f, 0.15f, 0.97f));
+            _contextMenu.style.borderTopWidth = _contextMenu.style.borderBottomWidth =
+                _contextMenu.style.borderLeftWidth = _contextMenu.style.borderRightWidth = 1;
+            _contextMenu.style.borderTopColor = _contextMenu.style.borderBottomColor =
+                _contextMenu.style.borderLeftColor = _contextMenu.style.borderRightColor =
+                    new StyleColor(new Color(0.4f, 0.4f, 0.5f));
+            _contextMenu.style.borderTopLeftRadius = _contextMenu.style.borderTopRightRadius =
+                _contextMenu.style.borderBottomLeftRadius = _contextMenu.style.borderBottomRightRadius = 3;
+            _contextMenu.style.paddingTop = _contextMenu.style.paddingBottom = 2;
+            _contextMenu.style.display = DisplayStyle.None;
+            _contextMenu.style.minWidth = 120;
+
+            _contextMenuItems = new VisualElement();
+            _contextMenu.Add(_contextMenuItems);
+
+            root.Add(_contextMenu);
+        }
+
+        /// <summary>
+        /// Register a right-click context menu on an element.
+        /// Actions: list of (label, callback) pairs shown as menu items.
+        /// </summary>
+        public void RegisterContextMenu(VisualElement element, System.Func<System.Collections.Generic.List<(string label, System.Action action)>> getActions)
+        {
+            element.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                // Right mouse button = button index 1
+                if (evt.button != 1) return;
+                evt.StopPropagation();
+
+                var actions = getActions();
+                if (actions == null || actions.Count == 0) return;
+
+                ShowContextMenu(evt.position.x, evt.position.y, actions);
+            });
+        }
+
+        public void ShowContextMenu(float x, float y, System.Collections.Generic.List<(string label, System.Action action)> actions)
+        {
+            _contextMenuItems.Clear();
+
+            foreach (var (label, action) in actions)
+            {
+                var item = new Label(label);
+                item.style.paddingLeft = item.style.paddingRight = 10;
+                item.style.paddingTop = item.style.paddingBottom = 4;
+                item.style.color = new StyleColor(new Color(0.85f, 0.85f, 0.9f));
+                item.style.fontSize = 12;
+                item.style.cursor = new StyleCursor(new UnityEngine.UIElements.Cursor());
+                item.RegisterCallback<PointerEnterEvent>(_ =>
+                    item.style.backgroundColor = new StyleColor(new Color(0.25f, 0.25f, 0.35f)));
+                item.RegisterCallback<PointerLeaveEvent>(_ =>
+                    item.style.backgroundColor = StyleKeyword.None);
+                item.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    evt.StopPropagation();
+                    action?.Invoke();
+                    DismissContextMenu();
+                });
+                _contextMenuItems.Add(item);
+            }
+
+            // Position the menu
+            var panelRoot = _contextMenu.panel?.visualTree;
+            float panelWidth = panelRoot?.resolvedStyle.width ?? 1920;
+            float panelHeight = panelRoot?.resolvedStyle.height ?? 1080;
+
+            // Default: below-right of cursor
+            float menuX = x;
+            float menuY = y;
+
+            // Adjust if going off-screen (estimate 140px width, 30px per item height)
+            float estWidth = 140;
+            float estHeight = actions.Count * 28 + 4;
+            if (menuX + estWidth > panelWidth) menuX = x - estWidth;
+            if (menuY + estHeight > panelHeight) menuY = y - estHeight;
+            if (menuX < 0) menuX = 0;
+            if (menuY < 0) menuY = 0;
+
+            _contextMenu.style.left = menuX;
+            _contextMenu.style.top = menuY;
+            _contextMenu.style.display = DisplayStyle.Flex;
+        }
+
+        public void DismissContextMenu()
+        {
+            _contextMenu.style.display = DisplayStyle.None;
+            _contextMenuItems.Clear();
         }
 
         // ─── Node-Click Confirmation Popup ──────────────

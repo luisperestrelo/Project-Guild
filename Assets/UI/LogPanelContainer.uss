@@ -1,0 +1,89 @@
+/* ─── Expanded Panel ─────────────────────────────── */
+
+.log-panel-expanded {
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+/* ─── Tab Bar ────────────────────────────────────── */
+
+.log-tab-bar {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 4px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(80, 80, 100, 0.4);
+    flex-shrink: 0;
+}
+
+.log-tab {
+    background-color: transparent;
+    color: rgb(140, 140, 160);
+    border-width: 0;
+    border-bottom-width: 2px;
+    border-bottom-color: transparent;
+    border-radius: 0;
+    padding: 5px 12px;
+    margin-right: 2px;
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.log-tab:hover {
+    color: rgb(200, 200, 220);
+    background-color: rgba(40, 40, 60, 0.4);
+}
+
+.log-tab-active {
+    color: rgb(220, 180, 60);
+    border-bottom-color: rgb(220, 180, 60);
+}
+
+.log-tab-spacer {
+    flex-grow: 1;
+}
+
+.collapse-button {
+    background-color: transparent;
+    color: rgb(140, 140, 160);
+    border-width: 0;
+    padding: 2px 6px;
+    font-size: 14px;
+    margin-left: 4px;
+}
+
+.collapse-button:hover {
+    color: rgb(220, 220, 240);
+}
+
+/* ─── Content slots ──────────────────────────────── */
+
+.log-tab-content {
+    flex-grow: 1;
+    display: none;
+}
+
+/* ─── Collapsed state ────────────────────────────── */
+
+.log-panel-collapsed {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 10px;
+    display: none;
+}
+
+.collapsed-label {
+    font-size: 11px;
+    color: rgb(180, 180, 200);
+}
+
+.collapsed-badge {
+    font-size: 10px;
+    color: rgb(15, 15, 25);
+    background-color: rgb(220, 180, 60);
+    border-radius: 8px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    -unity-font-style: bold;
+    display: none;
+}

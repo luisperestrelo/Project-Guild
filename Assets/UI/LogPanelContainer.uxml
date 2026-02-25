@@ -1,0 +1,27 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="LogPanelContainer.uss" />
+
+    <!-- Expanded state -->
+    <ui:VisualElement name="log-panel-expanded" class="log-panel-expanded">
+
+        <!-- Tab bar -->
+        <ui:VisualElement name="log-tab-bar" class="log-tab-bar">
+            <ui:Button name="tab-chronicle" class="log-tab log-tab-active" text="Chronicle" />
+            <ui:Button name="tab-decisions" class="log-tab" text="Decisions" />
+            <ui:VisualElement class="log-tab-spacer" />
+            <ui:Button name="collapse-button" class="collapse-button" text="&#x2014;" />
+        </ui:VisualElement>
+
+        <!-- Content slots — sub-panel templates instantiated here -->
+        <ui:VisualElement name="chronicle-content" class="log-tab-content" />
+        <ui:VisualElement name="decision-content" class="log-tab-content" />
+
+    </ui:VisualElement>
+
+    <!-- Collapsed state -->
+    <ui:VisualElement name="log-panel-collapsed" class="log-panel-collapsed">
+        <ui:Label name="collapsed-label" class="collapsed-label" text="Logs" />
+        <ui:Label name="collapsed-badge" class="collapsed-badge" text="" />
+    </ui:VisualElement>
+
+</ui:UXML>

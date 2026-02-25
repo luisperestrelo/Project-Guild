@@ -1,0 +1,130 @@
+/* ─── Chronicle Panel ────────────────────────────── */
+
+.chronicle-panel {
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+/* ─── Header ─────────────────────────────────────── */
+
+.chronicle-header {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(80, 80, 100, 0.4);
+    flex-shrink: 0;
+}
+
+.chronicle-filters {
+    flex-direction: row;
+    flex-grow: 1;
+}
+
+.filter-button {
+    background-color: rgba(30, 30, 45, 0.8);
+    color: rgb(140, 140, 160);
+    border-width: 0;
+    border-radius: 2px;
+    padding: 3px 8px;
+    margin-right: 2px;
+    font-size: 11px;
+}
+
+.filter-button:hover {
+    background-color: rgba(40, 40, 60, 0.9);
+    color: rgb(180, 180, 200);
+}
+
+.filter-active {
+    background-color: rgba(50, 50, 70, 0.9);
+    color: rgb(240, 240, 240);
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(220, 180, 60);
+}
+
+/* ─── Scroll area ────────────────────────────────── */
+
+.chronicle-scroll {
+    flex-grow: 1;
+}
+
+.chronicle-entries {
+    flex-direction: column;
+    padding: 2px 0;
+}
+
+/* ─── Entry rows ─────────────────────────────────── */
+
+.chronicle-entry {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 2px 8px;
+    border-left-width: 3px;
+    border-left-color: rgba(140, 180, 220, 0.6);
+}
+
+.chronicle-entry:hover {
+    background-color: rgba(50, 50, 70, 0.3);
+}
+
+/* Category colors — left border */
+.entry-warning {
+    border-left-color: rgba(230, 140, 50, 0.8);
+}
+
+.entry-production {
+    border-left-color: rgba(100, 200, 100, 0.8);
+}
+
+.entry-statechange {
+    border-left-color: rgba(140, 180, 220, 0.6);
+}
+
+.entry-automation {
+    border-left-color: rgba(180, 140, 220, 0.8);
+}
+
+.entry-lifecycle {
+    border-left-color: rgba(160, 160, 180, 0.5);
+}
+
+.entry-text {
+    font-size: 11px;
+    color: rgb(200, 200, 210);
+    white-space: normal;
+    flex-grow: 1;
+}
+
+/* Warning text gets orange color too */
+.entry-warning .entry-text {
+    color: rgb(230, 160, 70);
+}
+
+/* Production text gets slightly green */
+.entry-production .entry-text {
+    color: rgb(140, 210, 140);
+}
+
+.entry-repeat {
+    font-size: 10px;
+    color: rgb(160, 160, 180);
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+
+/* ─── New entries indicator ──────────────────────── */
+
+.new-entries-indicator {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    translate: -50% 0;
+    background-color: rgba(220, 180, 60, 0.9);
+    color: rgb(15, 15, 25);
+    font-size: 10px;
+    -unity-font-style: bold;
+    padding: 2px 10px;
+    border-radius: 8px;
+    display: none;
+}

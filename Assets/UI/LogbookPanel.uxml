@@ -1,0 +1,41 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="LogbookPanel.uss" />
+
+    <!-- Expanded state -->
+    <ui:VisualElement name="logbook-expanded" class="logbook-expanded">
+
+        <!-- Header row -->
+        <ui:VisualElement name="logbook-header" class="logbook-header">
+            <!-- Folder dropdown -->
+            <ui:DropdownField name="folder-dropdown" class="folder-dropdown" />
+
+            <!-- Page tabs -->
+            <ui:VisualElement name="page-tabs" class="page-tabs" />
+            <ui:Button name="add-page-button" class="add-page-button" text="+" />
+
+            <!-- Spacer -->
+            <ui:VisualElement class="header-spacer" />
+
+            <!-- Lock / Search / Collapse -->
+            <ui:Button name="lock-button" class="header-button" text="Unlocked" />
+            <ui:Button name="search-button" class="header-button" text="Search" />
+            <ui:Button name="collapse-button" class="header-button collapse-button" text="&#x2014;" />
+        </ui:VisualElement>
+
+        <!-- Search bar (hidden by default) -->
+        <ui:VisualElement name="search-bar" class="search-bar">
+            <ui:TextField name="search-field" class="search-field" />
+            <ui:VisualElement name="search-results" class="search-results" />
+        </ui:VisualElement>
+
+        <!-- Text editing area -->
+        <ui:TextField name="logbook-text" class="logbook-text" multiline="true" />
+
+    </ui:VisualElement>
+
+    <!-- Collapsed state -->
+    <ui:VisualElement name="logbook-collapsed" class="logbook-collapsed">
+        <ui:Label name="collapsed-label" class="collapsed-label" text="Logbook" />
+    </ui:VisualElement>
+
+</ui:UXML>

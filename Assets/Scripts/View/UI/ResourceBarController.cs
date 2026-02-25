@@ -11,7 +11,7 @@ namespace ProjectGuild.View.UI
     /// Rimworld-style: collapsible category headers, compact item rows with quantity.
     /// Refreshes every tick — updates quantities in-place, rebuilds only when item set changes.
     /// </summary>
-    public class ResourceBarController
+    public class ResourceBarController : ITickRefreshable
     {
         private readonly VisualElement _root;
         private readonly UIManager _uiManager;
@@ -32,6 +32,8 @@ namespace ProjectGuild.View.UI
         {
             _root = root;
             _uiManager = uiManager;
+
+            uiManager.RegisterTickRefreshable(this);
         }
 
         public void Refresh()

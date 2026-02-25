@@ -158,7 +158,7 @@ Key field groups:
 - **Skills/XP**: `PassionEffectivenessMultiplier`, `PassionXpMultiplier`, `XpCurveBase`, `XpCurveGrowth`
 - **Runner Generation**: `MinStartingLevel`, `MaxStartingLevel`, `PassionChance`, `EasterEggNameChance`
 - **Gathering**: `GlobalGatheringSpeedMultiplier`, `GatheringFormula`, `GatheringSpeedExponent`, `HyperbolicSpeedPerLevel`
-- **Automation**: `DecisionLogMaxEntries` (default 2000), `EventLogMaxEntries` (default 500), `DepositDurationTicks`, `AutomationPeriodicCheckInterval` — all wired through `SimulationConfigAsset` inspector
+- **Automation**: `MacroDecisionLogMaxEntries` (default 2000), `MicroDecisionLogMaxEntries` (default 1000), `EventLogMaxEntries` (default 500), `DepositDurationTicks`, `AutomationPeriodicCheckInterval` — all wired through `SimulationConfigAsset` inspector
 - **Items**: `ItemDefinitions[]` (populated from SOs at load time)
 - **Inventory**: `InventorySize` (default 28)
 - **Death**: `DeathRespawnBaseTime`, `DeathRespawnTravelMultiplier`
@@ -225,7 +225,7 @@ Event definitions — small structs carrying just the data a listener needs:
 | `SimulationTickCompleted` | TickNumber | Every tick |
 
 ### `Simulation/Core/GameState.cs`
-Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, automation DecisionLog, and three **global automation libraries**: `TaskSequenceLibrary`, `MacroRulesetLibrary`, `MicroRulesetLibrary` (all `List<T>` indexed by string ID). Runners reference library entries by ID. Editing a library entry immediately affects all runners/sequences using it. Serializing this one object captures the entire game world.
+Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, separate MacroDecisionLog and MicroDecisionLog (independent ring buffers so micro spam doesn't evict macro history), and three **global automation libraries**: `TaskSequenceLibrary`, `MacroRulesetLibrary`, `MicroRulesetLibrary` (all `List<T>` indexed by string ID). Runners reference library entries by ID. Editing a library entry immediately affects all runners/sequences using it. Serializing this one object captures the entire game world.
 
 ### `Simulation/Core/GameSimulation.cs`
 The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistry`, and `EventLogService`. Its `Tick()` method processes all runners based on their current state.
@@ -265,6 +265,15 @@ Pure C# service that subscribes to all 15 event types and stores formatted log e
 
 ### `Simulation/Core/EventLogEntry.cs`
 Data class for event log entries: TickNumber, EventCategory, RunnerId, Summary, RepeatCount (for collapsing), CollapseKey.
+
+### `Simulation/Core/ChronicleService.cs`
+Player-facing Chronicle. Subscribes to the same EventBus events as EventLogService but produces human-readable text (e.g., "Kira gathered copper_ore (23 slots free)" instead of raw struct dumps). Completely separate from EventLogService (which is dev/debug only). Collapsing enabled by default (noisy events like ItemGathered and StepAdvanced merge). Ring buffer default 1000 entries (`ChronicleMaxEntries`). Resolves RunnerName and NodeId (via node.Name) at event time. Query methods: `GetAll()`, `GetForRunner(runnerId)`, `GetForNode(nodeId)`, `GetRecent(count)`. Categories reuse the existing `EventCategory` enum. SimulationTickCompleted intentionally not subscribed (no Lifecycle noise).
+
+### `Simulation/Core/ChronicleEntry.cs`
+Data class for player-facing log entries: TickNumber, RunnerId, RunnerName, NodeId, EventCategory, Text, RepeatCount, CollapseKey.
+
+### `Simulation/Core/LogbookState.cs`
+Player scratchpad/notepad data model. Lives on `GameState.Logbook` purely for save/load persistence — the simulation layer doesn't interact with it. Contains `LogbookFolder` list, each with `Id`, `Name`, `NodeId` (non-null for auto-created node folders), and `List<LogbookPage>`. Each page has `Id`, `Name`, `Content` (plain text). Node folders are auto-created on first runner visit and cannot be deleted. Custom folders are player-created (NodeId=null) and can be renamed/deleted. All folder/page management is handled by `LogbookPanelController` in the view layer.
 
 ### Automation — `Simulation/Automation/`
 
@@ -306,9 +315,9 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 - `CreateDefaultMicro()` — two rules: `InventoryFull → FinishTask`, `Always → GatherHere(0)`. The default micro for gathering Work steps.
 - `EnsureInLibrary(state)` — ensures default micro exists in library (idempotent). No default macro — runners start with null macro (no auto-switching until player sets up rules).
 
-**`DecisionLogEntry.cs`** — `[Serializable]`: TickNumber, GameTime, RunnerId, RunnerName, RuleIndex, RuleLabel, TriggerReason, ActionType, ActionDetail, ConditionSnapshot, WasDeferred. One entry per macro rule firing.
+**`DecisionLogEntry.cs`** — `[Serializable]`: TickNumber, GameTime, RunnerId, RunnerName, NodeId, RuleIndex, RuleLabel, TriggerReason, ActionType, ActionDetail, ConditionSnapshot, WasDeferred. One entry per macro/micro rule firing. NodeId captures the runner's current node at the time of the decision, enabling node-scoped filtering in the Decision Log UI.
 
-**`DecisionLog.cs`** — `[Serializable]`: Ring-buffer list storage with configurable max entries. `GetForRunner()` and `GetInRange()` filter methods (most recent first). The player's primary "why did my runner do that?" debugging tool. Populated when macro rules fire, with `FormatConditionSnapshot` for human-readable condition state.
+**`DecisionLog.cs`** — `[Serializable]`: Ring-buffer list storage with configurable max entries. `GenerationCounter` increments on every `Add()` so UI can detect content changes even when buffer is full (entry count stays constant). Two separate instances on GameState: `MacroDecisionLog` (2000 max) and `MicroDecisionLog` (1000 max) — micro spam doesn't evict macro history. Query methods (all return most recent first): `GetAll(layer?)`, `GetForRunner(runnerId, layer?)`, `GetForNode(nodeId, layer?)`, `GetInRange(fromTick, toTick)`. The player's primary "why did my runner do that?" debugging tool.
 
 **Library CRUD commands on `GameSimulation`:**
 - `CommandCreate*` / `CommandDelete*` / `CommandAssign*ToRunner` / `CommandClone*` for all three library types (task sequences, macro rulesets, micro rulesets)
@@ -378,7 +387,7 @@ Defines what save/load looks like without implementing it. The simulation layer 
 
 ScriptableObject wrapper around `SimulationConfig`. Mirrors all config fields with `[Tooltip]` and `[Range]` attributes for inspector usability. `ToConfig()` converts to the plain C# object the simulation layer uses.
 
-Inspector sections: Travel, Skills/XP, Runner Generation, Gathering, Automation (DepositDurationTicks, AutomationPeriodicCheckInterval, DecisionLogMaxEntries, EventLogMaxEntries), Items, Inventory, Death.
+Inspector sections: Travel, Skills/XP, Runner Generation, Gathering, Automation (DepositDurationTicks, AutomationPeriodicCheckInterval, MacroDecisionLogMaxEntries, MicroDecisionLogMaxEntries, EventLogMaxEntries), Items, Inventory, Death.
 
 ### `Data/ItemDefinitionAsset.cs`
 `[CreateAssetMenu: Project Guild/Item Definition]`
@@ -488,8 +497,11 @@ Orbit camera with zoom. Uses Unity's New Input System (inline action definitions
 ### `View/Runners/RunnerVisual.cs`
 MonoBehaviour attached to each runner's 3D representation. Handles interpolated movement between positions set by VisualSyncSystem — the simulation ticks at 10/sec but the view renders at 60fps, so RunnerVisual smoothly interpolates between tick positions over one tick interval. Also creates and manages a floating name label (TextMeshPro) that billboards toward the camera.
 
+### `View/UI/ITickRefreshable.cs`
+Interface for UI controllers that display simulation-derived data and need to stay in sync every tick. Controllers implement this and call `UIManager.RegisterTickRefreshable(this)` in their constructor — `OnSimulationTick` iterates the registered list automatically, no manual per-controller wiring needed. Sub-controllers managed by a parent (e.g., `ChroniclePanelController` inside `LogPanelContainerController`) should NOT implement this — their parent handles their refresh timing.
+
 ### `View/UI/UIManager.cs`
-Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates `RunnerPortraitBarController`, `RunnerDetailsPanelController`, `AutomationPanelController`, `BankPanelController`, and `ResourceBarController` as plain C# controller objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` to refresh all controllers every tick (10/sec). Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Provides `OpenAutomationPanelToItem()` and `OpenAutomationPanelToItemFromRunner()` for navigation from the runner Automation tab to the editing panel. `ToggleBankPanel()` and `OpenBankPanel()` control the bank overlay. `ShowNodeClickConfirmation()` shows a centered popup for node-click Work At. The Automation toggle button is added programmatically to the root element. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`. Has `[SerializeField]` Inspector values: `LiveStatsXpDisplayWindowSeconds` (default 5.0f, how long skill XP bars stay visible in Live Stats) and `LiveStatsMaxSkillXpBars` (default 4, max simultaneous XP bars shown).
+Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates all UI controllers as plain C# objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` and iterates `List<ITickRefreshable>` to refresh all registered controllers every tick (10/sec) — controllers self-register via `RegisterTickRefreshable()` in their constructors. Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Provides `OpenAutomationPanelToItem()` and `OpenAutomationPanelToItemFromRunner()` for navigation from the runner Automation tab to the editing panel. `ToggleBankPanel()` and `OpenBankPanel()` control the bank overlay. `AppendToLogbook()` delegates to `LogbookPanelController` for "Copy to Logbook" actions. `ShowNodeClickConfirmation()` shows a centered popup for node-click Work At. The Automation toggle button is added programmatically to the root element. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`. Has `[SerializeField]` Inspector values: `LiveStatsXpDisplayWindowSeconds` (default 5.0f, how long skill XP bars stay visible in Live Stats) and `LiveStatsMaxSkillXpBars` (default 4, max simultaneous XP bars shown).
 
 ### `View/UI/RunnerPortraitBarController.cs`
 Plain C# class (not MonoBehaviour). Manages the portrait bar at the top of the screen. Clones `RunnerPortrait.uxml` templates per runner. Handles click-to-select (USS class `selected` toggle) and periodic state label refresh. Each portrait shows runner name and short state text. **Warning badge**: a red circle (top-right) toggled by `runner.ActiveWarning != null`. Tooltip shows the warning message. Badge `pickingMode` switches between `Position` (hoverable when visible) and `Ignore` (pass-through when hidden).
@@ -524,6 +536,18 @@ Plain C# class. Master-detail editor for the Micro Ruleset library. Same persist
 ### `View/UI/BankPanelController.cs`
 Plain C# class. OSRS-style bank overlay panel. Follows `AutomationPanelController` pattern: `IsOpen`, `Open()`, `Close()`, `Toggle()`, Escape to close. Shows all stacked items in a flex-wrap grid with category filtering (tab buttons), text search (case-insensitive), and persistent-element caching (shape-keyed by filtered item IDs — quantities update in-place, full rebuild only on shape change). Refreshes on `Open()` and on `RunnerDeposited` events while open (not every tick). Tooltips show item name, quantity, and category. Footer shows total item count. Opened via `UIManager.ToggleBankPanel()` (from bank click) or `UIManager.OpenBankPanel()` (from resource bar click).
 
+### `View/UI/LogPanelContainerController.cs`
+Plain C# class. Orchestrates the tabbed log panel (bottom-left, 450x280px). Owns two tabs: Chronicle and Decisions. Manages tab switching, collapse/expand state, and a combined unread badge. Instantiates `ChroniclePanelController` and `DecisionLogPanelController` as sub-controllers, passing them the appropriate VisualTreeAssets. On each tick, tracks new entry counts from both sub-controllers; only refreshes the active tab's controller. When collapsed, accumulates unread counts from both and shows a combined badge. Created by `UIManager` with references to both sub-panel template assets.
+
+### `View/UI/ChroniclePanelController.cs`
+Plain C# class. Player-facing Chronicle content panel. Reads from `GameSimulation.Chronicle` (ChronicleService). Three filter modes: Current Node (default, shows all events at selected runner's node), Selected Runner, Global. Category color-coded rows (orange=Warning, green=Production, blue=StateChange, purple=Automation) with 3px left border. Auto-scroll to newest entries; pauses when user scrolls up with "New entries below" indicator. Right-click entries to copy text to clipboard. Refreshes every tick; shape-key check skips rebuild when nothing changed. Row cache reuses VisualElements. Collapse/expand logic owned by parent `LogPanelContainerController`. Exposes `NewEntriesSinceLastView` / `ResetNewEntries()` / `NotifyNewEntries()` for unread tracking.
+
+### `View/UI/DecisionLogPanelController.cs`
+Plain C# class. Player-facing Decision Log content panel. Reads from `MacroDecisionLog` and `MicroDecisionLog` (separate ring buffers on GameState). Uses `GenerationCounter` for change detection (works even when buffer is full). Two filter dimensions: scope (Node/Runner/All) and layer (All/Macro/Micro). When showing All layers, merges both logs with tick-ordered interleaving. Entry rows show `"{time}s [LAYER] RunnerName: Condition -> Action"` with optional `(deferred)` suffix. Left-border color-coded by layer (green=Macro, blue=Micro). Same auto-scroll, new-entries-indicator, right-click copy, and row cache patterns as Chronicle. Collapse/expand owned by parent `LogPanelContainerController`. Default scope filter: Selected Runner.
+
+### `View/UI/LogbookPanelController.cs`
+Plain C# class. Player scratchpad positioned bottom-center (between log panel and details panel). Manages `LogbookState` on `GameState` directly in the view layer (no sim commands needed — it's pure player notes). Features: folder dropdown (node folders auto-created on first visit + custom folders), page tabs with gold active underline, multiline text editing (writes back immediately on value change), lock toggle (auto-locks on text focus to prevent navigation interrupting typing), collapse/expand, Ctrl+F search across all pages in all folders (results dropdown navigates to matched folder/page). Right-click context menus on folder dropdown (rename/delete custom folders) and page tabs (rename/delete pages, can't delete last page). `OnRunnerSelected(runnerId)` called by UIManager — when unlocked, auto-navigates to the node folder matching the runner's current location. `AppendToCurrentPage(text)` used by Chronicle and Decision Log "Copy to Logbook" context menu actions. No tick-driven refresh (text is user-driven, not sim-driven).
+
 ### `View/UI/ResourceBarController.cs`
 Plain C# class. Always-visible left-side panel showing guild bank totals grouped by `ItemCategory` (Rimworld-style). Refreshes every tick via `UIManager.OnSimulationTick()`. Groups items by category with collapsible headers (gold text, click to toggle). Compact rows: item name + formatted quantity (K/M suffixes for large numbers). Hidden when bank is empty. Shape-keyed caching: rebuilds DOM only when item set changes, updates quantities in-place otherwise. Collapsed state tracked in `HashSet<ItemCategory>`. Clicking any item row opens the bank panel.
 
@@ -543,13 +567,17 @@ Static helper class (pure C#, no Unity deps). Natural language formatting for au
 Resolves node IDs via GameState.Map, item IDs via optional `ItemNameResolver` delegate (falls back to `HumanizeId`).
 
 ### UI Assets — `Assets/UI/`
-`MainLayout.uxml/.uss` — Root layout with flexbox: portrait bar (top), viewport spacer (center), details panel container (bottom-right). Also styles the Automation toggle button (absolute-positioned top-left). All containers use `picking-mode: ignore` so mouse clicks pass through to the 3D world.
+`MainLayout.uxml/.uss` — Root layout with flexbox: portrait bar (top), viewport spacer (center), log panel container (bottom-left), logbook panel container (bottom-center), details panel container (bottom-right). Also styles the Automation toggle button (absolute-positioned top-left). All containers use `picking-mode: ignore` so mouse clicks pass through to the 3D world.
 `RunnerPortrait.uxml/.uss` — Template for one portrait, cloned per runner. Dark background, gold border on `.selected`, hover effect.
 `RunnerDetailsPanel.uxml/.uss` — Bottom-right panel with tab bar (Overview, Inventory, Skills, Equipment*, Automation) and ScrollView content. Dark theme with gold section headers.
 `AutomationTab.uxml/.uss` — Sub-tab bar (Task Seq / Macro / Micro) with content containers for read-only runner automation summary. Instantiated into the details panel's automation content area.
 `AutomationPanel.uxml/.uss` — Full-screen overlay panel for editing automation libraries. Title bar with close button, library tab bar (Task Sequences / Macro Rulesets / Micro Rulesets), master-detail layout (list pane left, editor pane right). Includes shared template warning banner, step type picker, and editor field styles.
 `RuleEditor.uss` — Styles for interactive rule editing rows: condition/action pickers, operator dropdowns, move/delete buttons, timing toggle. Loaded via AutomationPanel.uxml.
 `BankPanel.uxml/.uss` — Overlay panel for OSRS-style bank view. Title bar with close button, search field, category tab row, flex-wrap item grid (66px slots, 48px icons, quantity bottom-right), footer with item count.
+`LogPanelContainer.uxml/.uss` — Tabbed container for the bottom-left log area. Tab bar with Chronicle/Decisions tabs (gold underline on active), collapse button, content slots for sub-panel templates. Collapsed state shows "Logs" label with unread badge.
+`ChroniclePanel.uxml/.uss` — Content template for the Chronicle. Filter buttons (Node/Runner/All), scroll view with entry rows, new-entries indicator. No collapse elements (owned by container).
+`DecisionLogPanel.uxml/.uss` — Content template for Decision Log. Two filter rows: scope filters (Node/Runner/All) and layer filters (All/Macro/Micro) separated by a thin divider. Entry rows color-coded by layer (green left border = Macro, blue = Micro). Same scroll/indicator pattern as Chronicle.
+`LogbookPanel.uxml/.uss` — Player scratchpad panel (bottom-center). Header with folder dropdown, page tabs (gold underline active), add-page button, lock/search/collapse buttons. Search bar (hidden by default, toggles with Ctrl+F or search button click) with results dropdown. Multiline TextField for note content (transparent background, no border). Collapsed state shows small "Logbook" label.
 `PanelSettings.asset` — Scale With Screen Size, 1920x1080 reference, controls UI scaling across resolutions.
 
 ---
@@ -603,8 +631,11 @@ Micro rules integrated with GameSimulation: default micro rule gathers, GatherHe
 ### `Tests/Editor/EventLogServiceTests.cs`
 EventLogService unit tests: add/retrieve entries, collapsing (same key, different key, different runner, null key, disabled), ring buffer eviction, query methods (GetWarnings, GetActivityFeed, GetByCategories, GetForRunner, Clear). Integration tests: ItemGathered logs entries, NoMicroRuleMatched appears as warning.
 
+### `Tests/Editor/ChronicleServiceTests.cs`
+ChronicleService unit tests: add/retrieve, collapsing (same key+runner, different key, different runner, null key), ring buffer eviction, query methods (GetForRunner, GetForNode, GetRecent, GetAll, Clear, SetMaxEntries). Integration tests via EventBus: ItemGathered produces player-friendly text with RunnerName/NodeId, GatheringFailed produces warning, LevelUp produces production entry, StartedTravel/Arrived resolve node names, Deposited/InventoryFull produce state changes, ItemGathered collapses by default, NoMicroRuleMatched produces warning.
+
 ### `Tests/Editor/DecisionLogTests.cs`
-Add/retrieve entries, ring buffer eviction (oldest removed), SetMaxEntries evicts existing, filter by runner (most recent first), filter by tick range, no matches returns empty, Clear removes all.
+Add/retrieve entries, ring buffer eviction (oldest removed), SetMaxEntries evicts existing, GenerationCounter (increments on add, continues when buffer full), GetAll (most recent first, layer filter), GetForNode (node filter, node+layer filter), filter by runner (most recent first), filter by tick range, no matches returns empty, Clear removes all.
 
 ### `Tests/Editor/AutomationCommandTests.cs`
 Ruleset mutation commands (add/remove/reorder/toggle/update/reset/rename rules), task sequence mutation commands (add/remove/move step with runner index adjustment), query helpers (count/names of runners using templates), FindRulesetInAnyLibrary, and natural language formatting (AutomationUIHelpers). Tests cover: insert before/after/at current step, remove with index clamping, empty sequence → idle, step move with index tracking, multi-runner isolation, all operator/condition/action format strings, HumanizeId.

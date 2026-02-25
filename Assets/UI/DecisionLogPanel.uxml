@@ -1,0 +1,32 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="DecisionLogPanel.uss" />
+
+    <!-- Decision Log content (collapse/expand owned by LogPanelContainer) -->
+    <ui:VisualElement name="decision-log-panel" class="decision-log-panel">
+
+        <!-- Header bar: scope filters (left) + layer filters (right) -->
+        <ui:VisualElement name="decision-log-header" class="decision-log-header">
+            <ui:VisualElement class="decision-log-filters scope-filters">
+                <ui:Button name="scope-node" class="filter-button filter-active" text="Node" />
+                <ui:Button name="scope-runner" class="filter-button" text="Runner" />
+                <ui:Button name="scope-all" class="filter-button" text="All" />
+            </ui:VisualElement>
+            <ui:VisualElement class="filter-divider" />
+            <ui:VisualElement class="decision-log-filters layer-filters">
+                <ui:Button name="layer-all" class="filter-button filter-active" text="All" />
+                <ui:Button name="layer-macro" class="filter-button" text="Macro" />
+                <ui:Button name="layer-micro" class="filter-button" text="Micro" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Log entries -->
+        <ui:ScrollView name="decision-log-scroll" class="decision-log-scroll">
+            <ui:VisualElement name="decision-log-entries" class="decision-log-entries" />
+        </ui:ScrollView>
+
+        <!-- New entries indicator (shown when user scrolled up) -->
+        <ui:Label name="new-entries-indicator" class="new-entries-indicator" text="" />
+
+    </ui:VisualElement>
+
+</ui:UXML>

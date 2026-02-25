@@ -16,7 +16,7 @@ namespace ProjectGuild.View.UI
     /// Plain C# class (not MonoBehaviour). Skill rows and inventory slots
     /// are built once at construction, then refreshed with current data.
     /// </summary>
-    public class RunnerDetailsPanelController
+    public class RunnerDetailsPanelController : ITickRefreshable
     {
         private readonly UIManager _uiManager;
         private readonly VisualElement _root;
@@ -42,6 +42,7 @@ namespace ProjectGuild.View.UI
         private readonly Label _progressLabel;
         private readonly ProgressBar _travelProgressBar;
         private readonly Label _skillsSummaryLabel;
+        private readonly Label _warningLabel;
 
         // ─── Live stats elements ─────────────────────────
         private readonly VisualElement _liveStatsContainer;
@@ -133,6 +134,7 @@ namespace ProjectGuild.View.UI
             _travelProgressContainer = root.Q("travel-progress-container");
             _progressLabel = root.Q<Label>("travel-progress-label");
             _travelProgressBar = root.Q<ProgressBar>("travel-progress-bar");
+            _warningLabel = root.Q<Label>("overview-warning-label");
             _liveStatsContainer = root.Q("live-stats-container");
             BuildLiveStatRows();
             _skillsSummaryLabel = root.Q<Label>("skills-summary-label");
@@ -151,6 +153,8 @@ namespace ProjectGuild.View.UI
             _inventoryGrid = root.Q("inventory-grid");
             BuildInventoryGrid();
             _slotTooltips = new string[_inventorySlots.Count];
+
+            uiManager.RegisterTickRefreshable(this);
         }
 
         private void SwitchTab(string tabName)
@@ -313,6 +317,12 @@ namespace ProjectGuild.View.UI
 
         private void RefreshOverview(Runner runner, GameSimulation sim, SimulationConfig config)
         {
+            // Warning banner
+            bool hasWarning = runner.ActiveWarning != null;
+            _warningLabel.style.display = hasWarning ? DisplayStyle.Flex : DisplayStyle.None;
+            if (hasWarning)
+                _warningLabel.text = runner.ActiveWarning;
+
             // Task info
             var taskSeq = sim.GetRunnerTaskSequence(runner);
             if (taskSeq != null)

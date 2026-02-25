@@ -1,0 +1,26 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="ChroniclePanel.uss" />
+
+    <!-- Chronicle content (collapse/expand owned by LogPanelContainer) -->
+    <ui:VisualElement name="chronicle-panel" class="chronicle-panel">
+
+        <!-- Header bar: filters only (collapse button moved to container) -->
+        <ui:VisualElement name="chronicle-header" class="chronicle-header">
+            <ui:VisualElement class="chronicle-filters">
+                <ui:Button name="filter-node" class="filter-button filter-active" text="Node" />
+                <ui:Button name="filter-runner" class="filter-button" text="Runner" />
+                <ui:Button name="filter-all" class="filter-button" text="All" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Log entries -->
+        <ui:ScrollView name="chronicle-scroll" class="chronicle-scroll">
+            <ui:VisualElement name="chronicle-entries" class="chronicle-entries" />
+        </ui:ScrollView>
+
+        <!-- New entries indicator (shown when user scrolled up) -->
+        <ui:Label name="new-entries-indicator" class="new-entries-indicator" text="" />
+
+    </ui:VisualElement>
+
+</ui:UXML>

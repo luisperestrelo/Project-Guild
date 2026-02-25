@@ -12,6 +12,12 @@
         <!-- Resource overview bar — absolute positioned, left side -->
         <ui:VisualElement name="resource-bar-container" class="resource-bar-container" picking-mode="Ignore" />
 
+        <!-- Log Panel (Activity + Decisions) — absolute positioned, bottom-left -->
+        <ui:VisualElement name="log-panel-container" class="log-panel-container" />
+
+        <!-- Logbook (player scratchpad) — absolute positioned, bottom-center -->
+        <ui:VisualElement name="logbook-panel-container" class="logbook-panel-container" picking-mode="Ignore" />
+
         <!-- Runner details panel — absolute positioned, bottom-right overlay -->
         <ui:VisualElement name="details-panel-container" class="details-panel-container" />
     </ui:VisualElement>
