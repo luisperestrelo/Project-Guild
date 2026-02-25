@@ -31,7 +31,7 @@ namespace ProjectGuild.View
         private int _runnerLayerMask;
         private int _nodeLayerMask;
         private int _bankLayerMask;
-        private bool _debugUIEnabled = true;
+        private bool _debugUIEnabled = false;
 
         private void Awake()
         {
