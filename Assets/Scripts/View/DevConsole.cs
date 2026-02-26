@@ -36,6 +36,12 @@ namespace ProjectGuild.View
         private bool _isOpen;
         private bool _hudVisible = true;
         private bool _eventLogLive;
+        private int _lastSeenEventLogCount;
+
+        // Drag state
+        private VisualElement _titleBar;
+        private bool _isDragging;
+        private Vector2 _dragOffset;
 
         private readonly StringBuilder _outputBuffer = new();
         private const int MaxOutputLines = 500;
@@ -48,7 +54,12 @@ namespace ProjectGuild.View
             if (_simulationRunner == null)
                 _simulationRunner = FindAnyObjectByType<SimulationRunner>();
             if (_uiDocument == null)
-                _uiDocument = FindAnyObjectByType<UIDocument>();
+                _uiDocument = GetComponent<UIDocument>();
+            if (_uiDocument == null)
+            {
+                Debug.LogError("[DevConsole] No UIDocument found on this GameObject. Add a UIDocument component to the DevConsole GameObject.");
+                return;
+            }
 
             _uiManager = FindAnyObjectByType<UI.UIManager>();
 
@@ -87,23 +98,31 @@ namespace ProjectGuild.View
         {
             var root = _uiDocument.rootVisualElement;
 
-            // ─ HUD (persistent tick/time counter, top-left) ─
+            // ─ HUD (persistent tick/time counter, top-right) ─
             _hudLabel = new Label("Tick 0 | 0:00");
             _hudLabel.style.position = Position.Absolute;
-            _hudLabel.style.left = 8;
+            _hudLabel.style.right = 8;
             _hudLabel.style.top = 8;
             _hudLabel.style.fontSize = 12;
-            _hudLabel.style.color = new Color(0.7f, 0.7f, 0.7f, 0.8f);
+            _hudLabel.style.color = new Color(0.8f, 0.8f, 0.8f, 0.9f);
             _hudLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _hudLabel.style.backgroundColor = new Color(0.05f, 0.05f, 0.08f, 0.7f);
+            _hudLabel.style.paddingTop = 3;
+            _hudLabel.style.paddingBottom = 3;
+            _hudLabel.style.paddingLeft = 8;
+            _hudLabel.style.paddingRight = 8;
+            _hudLabel.style.borderTopLeftRadius = 3;
+            _hudLabel.style.borderTopRightRadius = 3;
+            _hudLabel.style.borderBottomLeftRadius = 3;
+            _hudLabel.style.borderBottomRightRadius = 3;
             _hudLabel.pickingMode = PickingMode.Ignore;
             root.Add(_hudLabel);
 
-            // ─ Console panel (centered overlay) ─
+            // ─ Console panel (left-center overlay, draggable) ─
             _consoleRoot = new VisualElement();
             _consoleRoot.style.position = Position.Absolute;
-            _consoleRoot.style.left = new Length(50, LengthUnit.Percent);
-            _consoleRoot.style.top = new Length(10, LengthUnit.Percent);
-            _consoleRoot.style.translate = new Translate(new Length(-50, LengthUnit.Percent), 0);
+            _consoleRoot.style.left = 20;
+            _consoleRoot.style.top = new Length(25, LengthUnit.Percent);
             _consoleRoot.style.width = 700;
             _consoleRoot.style.height = 450;
             _consoleRoot.style.backgroundColor = new Color(0.08f, 0.08f, 0.12f, 0.95f);
@@ -125,14 +144,39 @@ namespace ProjectGuild.View
             _consoleRoot.style.paddingRight = 10;
             _consoleRoot.style.flexDirection = FlexDirection.Column;
 
-            // Title
-            var title = new Label("Dev Console");
-            title.style.fontSize = 14;
-            title.style.color = new Color(0.86f, 0.71f, 0.24f);
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.marginBottom = 6;
-            title.pickingMode = PickingMode.Ignore;
-            _consoleRoot.Add(title);
+            // Title bar (draggable)
+            _titleBar = new VisualElement();
+            _titleBar.style.flexDirection = FlexDirection.Row;
+            _titleBar.style.marginBottom = 6;
+            _titleBar.style.cursor = new UnityEngine.UIElements.Cursor();
+            _titleBar.style.backgroundColor = new Color(0.12f, 0.12f, 0.16f, 0.9f);
+            _titleBar.style.paddingTop = 4;
+            _titleBar.style.paddingBottom = 4;
+            _titleBar.style.paddingLeft = 4;
+            _titleBar.style.paddingRight = 4;
+            _titleBar.style.borderTopLeftRadius = 3;
+            _titleBar.style.borderTopRightRadius = 3;
+
+            var titleLabel = new Label("Dev Console");
+            titleLabel.style.fontSize = 14;
+            titleLabel.style.color = new Color(0.86f, 0.71f, 0.24f);
+            titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            titleLabel.style.flexGrow = 1;
+            titleLabel.pickingMode = PickingMode.Ignore;
+            _titleBar.Add(titleLabel);
+
+            var dragHint = new Label("drag to move");
+            dragHint.style.fontSize = 10;
+            dragHint.style.color = new Color(0.5f, 0.5f, 0.5f, 0.6f);
+            dragHint.style.unityTextAlign = TextAnchor.MiddleRight;
+            dragHint.pickingMode = PickingMode.Ignore;
+            _titleBar.Add(dragHint);
+
+            _titleBar.RegisterCallback<PointerDownEvent>(OnTitleBarPointerDown);
+            _titleBar.RegisterCallback<PointerMoveEvent>(OnTitleBarPointerMove);
+            _titleBar.RegisterCallback<PointerUpEvent>(OnTitleBarPointerUp);
+
+            _consoleRoot.Add(_titleBar);
 
             // Output area (scrollable)
             _outputScroll = new ScrollView(ScrollViewMode.Vertical);
@@ -159,9 +203,20 @@ namespace ProjectGuild.View
 
             // Input field
             _inputField = new TextField();
-            _inputField.style.height = 28;
-            _inputField.style.fontSize = 13;
-            _inputField.RegisterCallback<KeyDownEvent>(OnInputKeyDown);
+            _inputField.style.minHeight = 32;
+            _inputField.style.fontSize = 14;
+            _inputField.style.marginTop = 4;
+            // Style the inner text input element so text isn't clipped
+            var textInput = _inputField.Q(className: "unity-text-field__input");
+            if (textInput != null)
+            {
+                textInput.style.paddingTop = 4;
+                textInput.style.paddingBottom = 4;
+                textInput.style.paddingLeft = 6;
+                textInput.style.paddingRight = 6;
+                textInput.style.fontSize = 14;
+            }
+            _inputField.RegisterCallback<KeyDownEvent>(OnInputKeyDown, TrickleDown.TrickleDown);
             _consoleRoot.Add(_inputField);
 
             root.Add(_consoleRoot);
@@ -173,6 +228,7 @@ namespace ProjectGuild.View
         {
             _isOpen = true;
             SetConsoleVisible(true);
+            _consoleRoot.BringToFront();
             _inputField.schedule.Execute(() =>
             {
                 _inputField.Focus();
@@ -198,6 +254,7 @@ namespace ProjectGuild.View
         {
             if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
             {
+                evt.StopImmediatePropagation();
                 string input = _inputField.value.Trim();
                 if (!string.IsNullOrEmpty(input))
                 {
@@ -205,7 +262,6 @@ namespace ProjectGuild.View
                     ProcessCommand(input);
                 }
                 _inputField.value = "";
-                evt.StopPropagation();
             }
             else if (evt.keyCode == KeyCode.Escape)
             {
@@ -215,9 +271,37 @@ namespace ProjectGuild.View
             else if (evt.keyCode == KeyCode.BackQuote || evt.keyCode == KeyCode.Backslash)
             {
                 evt.StopPropagation();
-                evt.PreventDefault();
                 CloseConsole();
             }
+        }
+
+        // ─── Drag ─────────────────────────────────────────────────
+
+        private void OnTitleBarPointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0) return;
+            _isDragging = true;
+            _dragOffset = new Vector2(
+                evt.position.x - _consoleRoot.resolvedStyle.left,
+                evt.position.y - _consoleRoot.resolvedStyle.top);
+            _titleBar.CapturePointer(evt.pointerId);
+            evt.StopPropagation();
+        }
+
+        private void OnTitleBarPointerMove(PointerMoveEvent evt)
+        {
+            if (!_isDragging) return;
+            _consoleRoot.style.left = evt.position.x - _dragOffset.x;
+            _consoleRoot.style.top = evt.position.y - _dragOffset.y;
+            evt.StopPropagation();
+        }
+
+        private void OnTitleBarPointerUp(PointerUpEvent evt)
+        {
+            if (!_isDragging) return;
+            _isDragging = false;
+            _titleBar.ReleasePointer(evt.pointerId);
+            evt.StopPropagation();
         }
 
         // ─── Runner Targeting ──────────────────────────────────────
@@ -308,6 +392,8 @@ namespace ProjectGuild.View
             if (input.StartsWith("/"))
                 input = input.Substring(1);
 
+            // Strip commas — users naturally type "/spawn Bob, mining 5" etc.
+            input = input.Replace(",", " ");
             var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return;
 
@@ -319,6 +405,7 @@ namespace ProjectGuild.View
                 case "spawn": HandleSpawn(parts); break;
                 case "eventlog": HandleEventLog(parts); break;
                 case "tick": HandleTick(parts); break;
+                case "advance": HandleAdvance(parts); break;
                 case "time": PrintTimeInfo(); break;
                 case "hud": HandleHud(parts); break;
                 case "runners": HandleRunners(); break;
@@ -385,6 +472,7 @@ namespace ProjectGuild.View
             Print("<color=#DCB43C>--- Simulation ---</color>");
             Print("  /tick                     Show current tick");
             Print("  /tick <N>                 Fast-forward N ticks");
+            Print("  /advance 30s|5m|2h        Advance game time");
             Print("  /time                     Show game time");
             Print("");
             Print("<color=#DCB43C>--- Event Log ---</color>");
@@ -450,16 +538,31 @@ namespace ProjectGuild.View
             int idx = 1;
             string forcedName = null;
 
-            // Check for quoted name
+            // Check for quoted name: /spawn "First Last" mining 5
             if (parts[idx].StartsWith("\""))
             {
                 var nameParts = new List<string>();
                 for (; idx < parts.Length; idx++)
                 {
-                    nameParts.Add(parts[idx].Trim('"'));
-                    if (parts[idx].EndsWith("\"")) { idx++; break; }
+                    string cleaned = parts[idx].Trim('"', ',', ' ');
+                    if (cleaned.Length > 0) nameParts.Add(cleaned);
+                    if (parts[idx].TrimEnd(',', ' ').EndsWith("\"")) { idx++; break; }
                 }
                 forcedName = string.Join(" ", nameParts);
+            }
+            // Check for unquoted name: if first token isn't a skill name, treat it as a name
+            // Supports single-word (/spawn Bob mining 5) and two-word (/spawn Bob Smith mining 5)
+            else if (!TryParseSkillType(parts[idx], out _))
+            {
+                forcedName = parts[idx];
+                idx++;
+                // Check if the next token is also not a skill (two-word name)
+                if (idx < parts.Length && !TryParseSkillType(parts[idx], out _)
+                    && !int.TryParse(parts[idx], out _))
+                {
+                    forcedName += " " + parts[idx];
+                    idx++;
+                }
             }
 
             // Parse skill overrides: skill level [P] skill level [P] ...
@@ -718,8 +821,11 @@ namespace ProjectGuild.View
                 return;
             }
 
-            runner.Skills[(int)skillType].Xp += amount;
-            Print($"Granted {amount:F0} XP to {runner.Name}'s {skillType} (now {runner.Skills[(int)skillType].Xp:F0} XP)");
+            var skill = runner.Skills[(int)skillType];
+            int levelBefore = skill.Level;
+            bool leveledUp = skill.AddXp(amount, Sim.Config);
+            string levelMsg = leveledUp ? $" <color=#7CCD7C>LEVEL UP! {levelBefore} → {skill.Level}</color>" : "";
+            Print($"Granted {amount:F0} XP to {runner.Name}'s {skillType} (now {skill.Xp:F0} XP, level {skill.Level}){levelMsg}");
         }
 
         private void HandleLevel(string[] parts)
@@ -764,12 +870,24 @@ namespace ProjectGuild.View
         {
             if (Sim == null) { Print("<color=#CC4444>No simulation running.</color>"); return; }
 
-            var (runner, _) = ResolveRunnerArg(parts, 1);
+            var (runner, argsConsumed) = ResolveRunnerArg(parts, 1);
             if (runner == null) return;
 
-            // If gathering, fill with the current resource. Otherwise use first item in inventory, or copper_ore.
+            // Check if an explicit item ID was provided after the runner name
+            int itemArgIndex = 1 + argsConsumed;
             string itemId = null;
-            if (runner.State == RunnerState.Gathering && runner.Gathering != null)
+            if (itemArgIndex < parts.Length)
+            {
+                itemId = parts[itemArgIndex].ToLowerInvariant();
+                if (Sim.ItemRegistry.Get(itemId) == null)
+                {
+                    Print($"<color=#CC4444>Unknown item: {parts[itemArgIndex]}. Use /items to list.</color>");
+                    return;
+                }
+            }
+
+            // Auto-detect: current gather target > first inventory item > first registered item
+            if (itemId == null && runner.State == RunnerState.Gathering && runner.Gathering != null)
             {
                 var node = Sim.CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
                 if (node != null && runner.Gathering.GatherableIndex < node.Gatherables.Length)
@@ -777,16 +895,11 @@ namespace ProjectGuild.View
             }
             if (itemId == null)
             {
-                // Try first item already in inventory
-                for (int i = 0; i < runner.Inventory.MaxSlots; i++)
-                {
-                    var slot = runner.Inventory.GetSlot(i);
-                    if (slot != null) { itemId = slot.ItemId; break; }
-                }
+                var firstSlot = runner.Inventory.Slots.FirstOrDefault();
+                if (firstSlot != null) itemId = firstSlot.ItemId;
             }
             if (itemId == null)
             {
-                // Fall back to first registered item
                 var firstItem = Sim.ItemRegistry.AllItemDefinitions.FirstOrDefault();
                 itemId = firstItem?.Id;
             }
@@ -1033,24 +1146,59 @@ namespace ProjectGuild.View
 
             if (int.TryParse(parts[1], out int count) && count > 0)
             {
-                int maxPerBatch = 100000;
-                if (count > maxPerBatch)
-                {
-                    Print($"<color=#CC4444>Max {maxPerBatch} ticks at once. Use multiple commands for more.</color>");
-                    return;
-                }
-
                 long startTick = Sim.CurrentGameState.TickCount;
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 for (int i = 0; i < count; i++)
                     Sim.Tick();
+                stopwatch.Stop();
                 long endTick = Sim.CurrentGameState.TickCount;
 
                 float seconds = (endTick - startTick) * Sim.TickDeltaTime;
-                Print($"Advanced {count} ticks ({seconds:F1}s game time). Now at tick {endTick}.");
+                Print($"Advanced {count} ticks ({seconds:F1}s game time) in {stopwatch.ElapsedMilliseconds}ms real time. Now at tick {endTick}.");
                 return;
             }
 
             Print($"<color=#CC4444>Usage: /tick <N> to advance N ticks, or /tick to show current.</color>");
+        }
+
+        private void HandleAdvance(string[] parts)
+        {
+            if (Sim == null) { Print("<color=#CC4444>No simulation running.</color>"); return; }
+
+            if (parts.Length < 2)
+            {
+                Print("<color=#CC4444>Usage: /advance 30s, /advance 5m, /advance 2h</color>");
+                return;
+            }
+
+            string arg = parts[1].ToLowerInvariant().Trim();
+            float totalSeconds;
+
+            // Parse time suffix: s=seconds, m=minutes, h=hours
+            if (arg.EndsWith("s") && float.TryParse(arg.TrimEnd('s'), out float secs))
+                totalSeconds = secs;
+            else if (arg.EndsWith("m") && float.TryParse(arg.TrimEnd('m'), out float mins))
+                totalSeconds = mins * 60f;
+            else if (arg.EndsWith("h") && float.TryParse(arg.TrimEnd('h'), out float hours))
+                totalSeconds = hours * 3600f;
+            else if (float.TryParse(arg, out float raw))
+                totalSeconds = raw; // bare number = seconds
+            else
+            {
+                Print("<color=#CC4444>Usage: /advance 30s, /advance 5m, /advance 2h (bare number = seconds)</color>");
+                return;
+            }
+
+            int tickCount = Math.Max(1, (int)(totalSeconds / Sim.TickDeltaTime));
+            long startTick = Sim.CurrentGameState.TickCount;
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < tickCount; i++)
+                Sim.Tick();
+            stopwatch.Stop();
+            long endTick = Sim.CurrentGameState.TickCount;
+
+            float actualSeconds = (endTick - startTick) * Sim.TickDeltaTime;
+            Print($"Advanced {actualSeconds:F1}s game time ({tickCount} ticks) in {stopwatch.ElapsedMilliseconds}ms real time. Now at tick {endTick}.");
         }
 
         private void PrintTimeInfo()
@@ -1323,15 +1471,14 @@ namespace ProjectGuild.View
             if (_eventLogLive && _isOpen)
             {
                 var entries = Sim.EventLog.Entries;
-                if (entries.Count > 0)
+                for (int i = _lastSeenEventLogCount; i < entries.Count; i++)
                 {
-                    var latest = entries[entries.Count - 1];
-                    if (latest.TickNumber == e.TickNumber)
-                    {
-                        Print($"  <color=#6699CC>[LIVE]</color> T{latest.TickNumber}: {latest.Summary}");
-                    }
+                    var entry = entries[i];
+                    string cat = entry.Category.ToString().Substring(0, Math.Min(4, entry.Category.ToString().Length));
+                    Print($"  <color=#6699CC>[LIVE]</color> T{entry.TickNumber} [{cat}] {entry.Summary}");
                 }
             }
+            _lastSeenEventLogCount = Sim.EventLog.Entries.Count;
         }
     }
 }
