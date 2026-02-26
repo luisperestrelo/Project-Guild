@@ -51,6 +51,7 @@ namespace ProjectGuild.View.UI
         // ─── Task Sequence assign dropdown state ──────
         private readonly List<string> _taskSeqChoiceIds = new();
         private bool _taskSeqAssignSuppressCallback;
+        private string _cachedTaskSeqDropdownKey;
 
         // ─── Macro sub-tab (persistent UXML elements) ──────
         private readonly Label _macroNameLabel;
@@ -62,6 +63,7 @@ namespace ProjectGuild.View.UI
         // ─── Macro assign dropdown state ──────
         private readonly List<string> _macroChoiceIds = new();
         private bool _macroAssignSuppressCallback;
+        private string _cachedMacroDropdownKey;
 
         // ─── Macro cached rule rows ──────
         private string _cachedMacroShapeKey;
@@ -139,6 +141,8 @@ namespace ProjectGuild.View.UI
             _cachedTaskSeqShapeKey = null;
             _cachedMacroShapeKey = null;
             _cachedMicroShapeKey = null;
+            _cachedTaskSeqDropdownKey = null;
+            _cachedMacroDropdownKey = null;
             Refresh();
         }
 
@@ -659,47 +663,67 @@ namespace ProjectGuild.View.UI
 
         private void PopulateTaskSeqAssignDropdown(Runner runner, GameSimulation sim)
         {
-            var choices = new List<string> { "(None)" };
-            _taskSeqChoiceIds.Clear();
-            _taskSeqChoiceIds.Add(null);
+            // Shape-key: library count + runner's current assignment
+            // Only rebuild choices when the library or assignment changes
+            int libCount = sim.CurrentGameState.TaskSequenceLibrary?.Count ?? 0;
+            string dropdownKey = $"{libCount}|{runner.TaskSequenceId}";
 
-            foreach (var seq in sim.CurrentGameState.TaskSequenceLibrary)
+            if (dropdownKey != _cachedTaskSeqDropdownKey)
             {
-                choices.Add(seq.Name ?? seq.Id ?? "Unnamed");
-                _taskSeqChoiceIds.Add(seq.Id);
-            }
-            _taskSeqAssignDropdown.choices = choices;
+                _cachedTaskSeqDropdownKey = dropdownKey;
 
-            // Set current value without triggering callback
-            int currentIdx = runner.TaskSequenceId != null
-                ? _taskSeqChoiceIds.IndexOf(runner.TaskSequenceId)
-                : 0;
-            if (currentIdx < 0) currentIdx = 0;
-            _taskSeqAssignSuppressCallback = true;
-            _taskSeqAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
-            _taskSeqAssignSuppressCallback = false;
+                var choices = new List<string> { "(None)" };
+                _taskSeqChoiceIds.Clear();
+                _taskSeqChoiceIds.Add(null);
+
+                foreach (var seq in sim.CurrentGameState.TaskSequenceLibrary)
+                {
+                    choices.Add(seq.Name ?? seq.Id ?? "Unnamed");
+                    _taskSeqChoiceIds.Add(seq.Id);
+                }
+                _taskSeqAssignDropdown.choices = choices;
+
+                // Set current value without triggering callback
+                int currentIdx = runner.TaskSequenceId != null
+                    ? _taskSeqChoiceIds.IndexOf(runner.TaskSequenceId)
+                    : 0;
+                if (currentIdx < 0) currentIdx = 0;
+                _taskSeqAssignSuppressCallback = true;
+                _taskSeqAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
+                _taskSeqAssignSuppressCallback = false;
+            }
         }
 
         private void PopulateMacroAssignDropdown(Runner runner, GameSimulation sim)
         {
-            var choices = new List<string> { "(None)" };
-            _macroChoiceIds.Clear();
-            _macroChoiceIds.Add(null);
+            // Shape-key: library count + runner's current assignment
+            // Only rebuild choices when the library or assignment changes
+            int libCount = sim.CurrentGameState.MacroRulesetLibrary?.Count ?? 0;
+            string dropdownKey = $"{libCount}|{runner.MacroRulesetId}";
 
-            foreach (var ruleset in sim.CurrentGameState.MacroRulesetLibrary)
+            if (dropdownKey != _cachedMacroDropdownKey)
             {
-                choices.Add(ruleset.Name ?? ruleset.Id ?? "Unnamed");
-                _macroChoiceIds.Add(ruleset.Id);
-            }
-            _macroAssignDropdown.choices = choices;
+                _cachedMacroDropdownKey = dropdownKey;
 
-            int currentIdx = runner.MacroRulesetId != null
-                ? _macroChoiceIds.IndexOf(runner.MacroRulesetId)
-                : 0;
-            if (currentIdx < 0) currentIdx = 0;
-            _macroAssignSuppressCallback = true;
-            _macroAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
-            _macroAssignSuppressCallback = false;
+                var choices = new List<string> { "(None)" };
+                _macroChoiceIds.Clear();
+                _macroChoiceIds.Add(null);
+
+                foreach (var ruleset in sim.CurrentGameState.MacroRulesetLibrary)
+                {
+                    choices.Add(ruleset.Name ?? ruleset.Id ?? "Unnamed");
+                    _macroChoiceIds.Add(ruleset.Id);
+                }
+                _macroAssignDropdown.choices = choices;
+
+                int currentIdx = runner.MacroRulesetId != null
+                    ? _macroChoiceIds.IndexOf(runner.MacroRulesetId)
+                    : 0;
+                if (currentIdx < 0) currentIdx = 0;
+                _macroAssignSuppressCallback = true;
+                _macroAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
+                _macroAssignSuppressCallback = false;
+            }
         }
 
         private void OnTaskSeqAssignChanged(ChangeEvent<string> evt)

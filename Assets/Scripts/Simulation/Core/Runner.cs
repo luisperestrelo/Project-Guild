@@ -110,14 +110,6 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public string MacroRulesetId;
 
-        // ─── Legacy fields for save migration (populated in old saves) ───
-        // These are read by MigrateRunnerRulesets() during LoadState, then cleared.
-        // New saves only populate the ID fields above.
-        public TaskSequence TaskSequence;
-        public TaskSequence PendingTaskSequence;
-        public Ruleset MacroRuleset;
-        public Ruleset MicroRuleset;
-
         public Runner()
         {
             Skills = new Skill[SkillTypeExtensions.SkillCount];

@@ -76,6 +76,27 @@
     border-color: rgba(220, 180, 60, 0.7);
 }
 
+/* ─── Options Toggle Button (top-left, next to Automation) ── */
+
+.options-toggle-button {
+    position: absolute;
+    left: 120px;
+    top: 12px;
+    background-color: rgba(25, 25, 40, 0.9);
+    color: rgb(220, 180, 60);
+    border-width: 1px;
+    border-color: rgba(220, 180, 60, 0.4);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.options-toggle-button:hover {
+    background-color: rgba(40, 40, 55, 0.95);
+    border-color: rgba(220, 180, 60, 0.7);
+}
+
 /* ─── Resource Overview Bar (left side) ──────────── */
 
 .resource-bar-container {

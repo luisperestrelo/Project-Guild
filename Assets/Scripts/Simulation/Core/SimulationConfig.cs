@@ -179,15 +179,28 @@ namespace ProjectGuild.Simulation.Core
         public int AutomationPeriodicCheckInterval = 10;
 
         /// <summary>
-        /// Maximum entries kept in the decision log (ring buffer eviction).
+        /// Maximum entries kept in the macro decision log (ring buffer eviction).
+        /// Macro decisions are rare/high-value — keep more history.
         /// </summary>
-        public int DecisionLogMaxEntries = 2000;
+        public int MacroDecisionLogMaxEntries = 2000;
+
+        /// <summary>
+        /// Maximum entries kept in the micro decision log (ring buffer eviction).
+        /// Micro decisions fire every tick per gathering runner — smaller buffer is fine.
+        /// </summary>
+        public int MicroDecisionLogMaxEntries = 1000;
 
         /// <summary>
         /// (Dev only) Maximum entries kept in the event log (ring buffer eviction).
         /// The event log is for debugging, not player-facing. 500 covers several minutes.
         /// </summary>
         public int EventLogMaxEntries = 500;
+
+        /// <summary>
+        /// Maximum entries kept in the player-facing activity log (ring buffer eviction).
+        /// Separate from the dev EventLog. 1000 covers extended play sessions.
+        /// </summary>
+        public int ChronicleMaxEntries = 1000;
 
         // ─── Death (Overworld Only — Raid deaths use separate logic) ──
 

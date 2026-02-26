@@ -173,7 +173,7 @@ namespace ProjectGuild.View.UI
 
         // ─── Editor Pane ──────────────────────────────
 
-        private void RefreshEditor()
+        public void RefreshEditor()
         {
             var sim = _uiManager.Simulation;
             if (sim == null) return;
@@ -218,7 +218,10 @@ namespace ProjectGuild.View.UI
         private void RebuildStepsEditor(TaskSequence seq, GameSimulation sim)
         {
             int stepCount = seq.Steps?.Count ?? 0;
-            string shapeKey = $"{seq.Id}|{stepCount}";
+            // Include library/node counts so dropdowns rebuild when upstream data changes
+            int microLibCount = sim.CurrentGameState.MicroRulesetLibrary?.Count ?? 0;
+            int nodeCount = sim.CurrentGameState.Map?.Nodes?.Count ?? 0;
+            string shapeKey = $"{seq.Id}|{stepCount}|m{microLibCount}|n{nodeCount}";
             if (shapeKey == _cachedStepsShapeKey) return;
 
             _stepsEditor.Clear();

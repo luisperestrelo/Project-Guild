@@ -69,9 +69,16 @@ namespace ProjectGuild.Tests
             var ruleset = new Ruleset { Id = id, Name = id, Category = RulesetCategory.General };
             _sim.CurrentGameState.MacroRulesetLibrary.Add(ruleset);
             _runner.MacroRulesetId = id;
-            _runner.MacroRuleset = ruleset;
             return ruleset;
         }
+
+        /// <summary>Resolve the runner's current task sequence from the library.</summary>
+        private TaskSequence GetRunnerTaskSequence(Runner runner) =>
+            _sim.GetRunnerTaskSequence(runner);
+
+        /// <summary>Resolve the runner's pending task sequence from the library.</summary>
+        private TaskSequence GetRunnerPendingTaskSequence(Runner runner) =>
+            _sim.GetRunnerPendingTaskSequence(runner);
 
         /// <summary>Create a library task sequence for the given node and register it.</summary>
         private string RegisterLibrarySequence(string nodeId, string name = null)
@@ -110,12 +117,12 @@ namespace ProjectGuild.Tests
 
             // Tick until the runner switches to forest
             TickUntil(() =>
-                _runner.TaskSequence != null
-                && _runner.TaskSequence.TargetNodeId == "forest",
+                GetRunnerTaskSequence(_runner) != null
+                && GetRunnerTaskSequence(_runner).TargetNodeId == "forest",
                 safetyLimit: 5000);
 
-            Assert.IsNotNull(_runner.TaskSequence);
-            Assert.AreEqual("forest", _runner.TaskSequence.TargetNodeId,
+            Assert.IsNotNull(GetRunnerTaskSequence(_runner));
+            Assert.AreEqual("forest", GetRunnerTaskSequence(_runner).TargetNodeId,
                 "Macro rule should have switched assignment to forest after bank threshold");
         }
 
@@ -152,11 +159,11 @@ namespace ProjectGuild.Tests
             // After deposit (loop boundary), PendingTaskSequence should have been applied
             // Runner should now be heading to forest or already there
             TickUntil(() =>
-                _runner.TaskSequence != null
-                && _runner.TaskSequence.TargetNodeId == "forest",
+                GetRunnerTaskSequence(_runner) != null
+                && GetRunnerTaskSequence(_runner).TargetNodeId == "forest",
                 safetyLimit: 100);
 
-            Assert.AreEqual("forest", _runner.TaskSequence.TargetNodeId,
+            Assert.AreEqual("forest", GetRunnerTaskSequence(_runner).TargetNodeId,
                 "Deferred macro rule should apply at loop boundary (after deposit)");
         }
 
@@ -187,9 +194,9 @@ namespace ProjectGuild.Tests
             // but be deferred since FinishCurrentSequence = true.
             // The rule fires on arrival at mine — bank already has enough copper.
             // PendingTaskSequence should be set.
-            Assert.IsNotNull(_runner.PendingTaskSequence,
-                "FinishCurrentSequence rule should store PendingTaskSequence");
-            Assert.AreEqual("forest", _runner.PendingTaskSequence.TargetNodeId);
+            Assert.IsNotNull(_runner.PendingTaskSequenceId,
+                "FinishCurrentSequence rule should store PendingTaskSequenceId");
+            Assert.AreEqual("forest", GetRunnerPendingTaskSequence(_runner).TargetNodeId);
         }
 
         // ─── Immediate macro rule ───────────────────────────────
@@ -224,7 +231,7 @@ namespace ProjectGuild.Tests
             TickUntil(() => _runner.CurrentNodeId == "mine", safetyLimit: 500);
 
             // Now macro should have fired and reassigned to forest
-            Assert.AreEqual("forest", _runner.TaskSequence?.TargetNodeId,
+            Assert.AreEqual("forest", GetRunnerTaskSequence(_runner)?.TargetNodeId,
                 "Immediate macro rule should change assignment on arrival");
         }
 
@@ -253,7 +260,7 @@ namespace ProjectGuild.Tests
             // Tick until macro fires and clears assignment
             TickUntil(() => _runner.CurrentNodeId == "mine", safetyLimit: 500);
 
-            Assert.IsNull(_runner.TaskSequence,
+            Assert.IsNull(GetRunnerTaskSequence(_runner),
                 "Idle macro rule should clear assignment");
             Assert.AreEqual(RunnerState.Idle, _runner.State);
         }
@@ -283,9 +290,9 @@ namespace ProjectGuild.Tests
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Tick until rule fires
-            TickUntil(() => _runner.TaskSequence?.TargetNodeId == "forest", safetyLimit: 500);
+            TickUntil(() => GetRunnerTaskSequence(_runner)?.TargetNodeId == "forest", safetyLimit: 500);
 
-            var entries = _sim.CurrentGameState.DecisionLog.GetForRunner(_runner.Id, DecisionLayer.Macro);
+            var entries = _sim.CurrentGameState.MacroDecisionLog.GetForRunner(_runner.Id, DecisionLayer.Macro);
             Assert.Greater(entries.Count, 0, "DecisionLog should have macro entries");
 
             var entry = entries[0]; // most recent macro
@@ -317,9 +324,9 @@ namespace ProjectGuild.Tests
             _sim.AssignRunner(_runner.Id, assignment);
 
             // Tick until pending assignment is set
-            TickUntil(() => _runner.PendingTaskSequence != null, safetyLimit: 500);
+            TickUntil(() => _runner.PendingTaskSequenceId != null, safetyLimit: 500);
 
-            var entries = _sim.CurrentGameState.DecisionLog.GetForRunner(_runner.Id, DecisionLayer.Macro);
+            var entries = _sim.CurrentGameState.MacroDecisionLog.GetForRunner(_runner.Id, DecisionLayer.Macro);
             Assert.Greater(entries.Count, 0, "DecisionLog should have macro entries");
 
             var entry = entries[0];
@@ -402,11 +409,11 @@ namespace ProjectGuild.Tests
             _sim.AssignRunner(runner2.Id, TaskSequence.CreateLoop("mine", "hub"));
 
             // Tick until runner1 switches
-            TickUntil(() => _runner.TaskSequence?.TargetNodeId == "forest", safetyLimit: 500);
+            TickUntil(() => GetRunnerTaskSequence(_runner)?.TargetNodeId == "forest", safetyLimit: 500);
 
-            Assert.AreEqual("forest", _runner.TaskSequence?.TargetNodeId,
+            Assert.AreEqual("forest", GetRunnerTaskSequence(_runner)?.TargetNodeId,
                 "Runner 1 should have switched to forest");
-            Assert.AreEqual("mine", runner2.TaskSequence?.TargetNodeId,
+            Assert.AreEqual("mine", GetRunnerTaskSequence(runner2)?.TargetNodeId,
                 "Runner 2 should still be mining (no macro rules)");
         }
 
@@ -420,7 +427,7 @@ namespace ProjectGuild.Tests
             // degrade to immediate and assign right away.
             Setup("hub");
 
-            Assert.IsNull(_runner.TaskSequence);
+            Assert.IsNull(GetRunnerTaskSequence(_runner));
 
             // Pre-fill bank so rule condition matches
             for (int i = 0; i < 50; i++)
@@ -441,9 +448,9 @@ namespace ProjectGuild.Tests
             // One tick — idle runner evaluates macro rules, rule fires, degrades to immediate
             _sim.Tick();
 
-            Assert.AreEqual("forest", _runner.TaskSequence?.TargetNodeId,
+            Assert.AreEqual("forest", GetRunnerTaskSequence(_runner)?.TargetNodeId,
                 "Deferred rule with no active sequence should degrade to immediate");
-            Assert.IsNull(_runner.PendingTaskSequence,
+            Assert.IsNull(_runner.PendingTaskSequenceId,
                 "Should not have stored as pending (applied immediately)");
         }
 
@@ -473,7 +480,7 @@ namespace ProjectGuild.Tests
             // Runner is at hub, TravelTo(hub) skips, AdvanceStep returns false → completed
             Assert.IsNotNull(completed, "TaskSequenceCompleted should fire for non-looping sequence");
             Assert.AreEqual("One-trip", completed.Value.SequenceName);
-            Assert.IsNull(_runner.TaskSequence, "TaskSequence should be cleared after completion");
+            Assert.IsNull(GetRunnerTaskSequence(_runner), "TaskSequence should be cleared after completion");
             Assert.AreEqual(RunnerState.Idle, _runner.State);
         }
 
@@ -490,7 +497,7 @@ namespace ProjectGuild.Tests
             // Runner should start gathering — micro rule fires GatherHere
             Assert.AreEqual(RunnerState.Gathering, _runner.State);
 
-            var microEntries = _sim.CurrentGameState.DecisionLog.GetForRunner(
+            var microEntries = _sim.CurrentGameState.MicroDecisionLog.GetForRunner(
                 _runner.Id, DecisionLayer.Micro);
             Assert.Greater(microEntries.Count, 0, "Micro decisions should be logged");
             Assert.AreEqual(DecisionLayer.Micro, microEntries[0].Layer);
@@ -536,7 +543,7 @@ namespace ProjectGuild.Tests
             // One tick — macro eval fires at top of TickRunner, interrupts gathering
             _sim.Tick();
 
-            Assert.AreEqual("forest", _runner.TaskSequence?.TargetNodeId,
+            Assert.AreEqual("forest", GetRunnerTaskSequence(_runner)?.TargetNodeId,
                 "Immediate macro rule should interrupt mid-gather and switch to forest");
             Assert.AreNotEqual(RunnerState.Gathering, _runner.State,
                 "Runner should no longer be gathering at the mine");

@@ -145,7 +145,7 @@ namespace ProjectGuild.View.UI
                 var warningBadge = kvp.Value.Q("portrait-warning-badge");
                 if (warningBadge != null)
                 {
-                    bool hasWarning = runner.ActiveWarning != null;
+                    bool hasWarning = !string.IsNullOrEmpty(runner.ActiveWarning);
                     warningBadge.style.display = hasWarning ? DisplayStyle.Flex : DisplayStyle.None;
                     warningBadge.pickingMode = hasWarning ? PickingMode.Position : PickingMode.Ignore;
                 }

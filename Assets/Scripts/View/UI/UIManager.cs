@@ -38,16 +38,23 @@ namespace ProjectGuild.View.UI
         [SerializeField] private VisualTreeAsset _logPanelContainerAsset;
         [SerializeField] private VisualTreeAsset _decisionLogPanelAsset;
         [SerializeField] private VisualTreeAsset _logbookPanelAsset;
+        [SerializeField] private VisualTreeAsset _optionsPanelAsset;
         [SerializeField] private PanelSettings _panelSettings;
+
+        [Header("Scene References (Optional)")]
+        [SerializeField] private GameBootstrapper _gameBootstrapper;
 
         private UIDocument _uiDocument;
         private RunnerPortraitBarController _portraitBarController;
         private RunnerDetailsPanelController _detailsPanelController;
         private AutomationPanelController _automationPanelController;
         private BankPanelController _bankPanelController;
+        private OptionsPanelController _optionsPanelController;
         private ResourceBarController _resourceBarController;
         private LogPanelContainerController _logPanelContainerController;
         private LogbookPanelController _logbookPanelController;
+
+        private PlayerPreferences _preferences;
 
         private string _selectedRunnerId;
         private bool _initialized;
@@ -82,6 +89,8 @@ namespace ProjectGuild.View.UI
         public GameSimulation Simulation => _simulationRunner?.Simulation;
         public float LiveStatsXpDisplayWindowSeconds => _liveStatsXpDisplayWindowSeconds;
         public int LiveStatsMaxSkillXpBars => _liveStatsMaxSkillXpBars;
+        public PlayerPreferences Preferences => _preferences;
+        public SaveManager SaveManager => _gameBootstrapper?.SaveManager;
 
         /// <summary>
         /// Returns true if the mouse pointer is over any interactive UI panel.
@@ -95,6 +104,7 @@ namespace ProjectGuild.View.UI
             if (_isPointerOverLogbook) return true;
             if (_automationPanelController?.IsOpen == true) return true;
             if (_bankPanelController?.IsOpen == true) return true;
+            if (_optionsPanelController?.IsOpen == true) return true;
             return false;
         }
 
@@ -123,6 +133,13 @@ namespace ProjectGuild.View.UI
         public void Initialize()
         {
             if (_initialized) return;
+
+            // Load player preferences (UI-layer, not game state)
+            _preferences ??= PlayerPreferences.Load();
+
+            // Resolve GameBootstrapper if not wired in Inspector
+            if (_gameBootstrapper == null)
+                _gameBootstrapper = FindAnyObjectByType<GameBootstrapper>();
 
             // Set up UIDocument
             _uiDocument = GetComponent<UIDocument>();
@@ -191,6 +208,26 @@ namespace ProjectGuild.View.UI
                 bankInstance.pickingMode = PickingMode.Ignore;
                 root.Add(bankInstance);
                 _bankPanelController = new BankPanelController(bankInstance, this);
+            }
+
+            // Options panel (overlay)
+            if (_optionsPanelAsset != null)
+            {
+                var optionsInstance = _optionsPanelAsset.Instantiate();
+                optionsInstance.style.position = Position.Absolute;
+                optionsInstance.style.left = 0;
+                optionsInstance.style.top = 0;
+                optionsInstance.style.right = 0;
+                optionsInstance.style.bottom = 0;
+                optionsInstance.pickingMode = PickingMode.Ignore;
+                root.Add(optionsInstance);
+                _optionsPanelController = new OptionsPanelController(optionsInstance, this);
+
+                // Toggle button (top-left, next to Automation)
+                var optionsBtn = new Button(() => _optionsPanelController.Toggle());
+                optionsBtn.text = "Options";
+                optionsBtn.AddToClassList("options-toggle-button");
+                root.Add(optionsBtn);
             }
 
             // Log panel container (Activity + Decisions tabs, bottom-left)
@@ -314,6 +351,69 @@ namespace ProjectGuild.View.UI
 
         public void ToggleBankPanel() => _bankPanelController?.Toggle();
         public void OpenBankPanel() => _bankPanelController?.Open();
+
+        // ─── Options Panel ──────────────────────────────────
+
+        public void ToggleOptionsPanel() => _optionsPanelController?.Toggle();
+
+        // ─── Save / Load delegation ─────────────────────────
+
+        public void RequestSaveGame() => _gameBootstrapper?.SaveGame();
+        public void RequestLoadGame() => _gameBootstrapper?.LoadSavedGame();
+        public void RequestNewGame() => _gameBootstrapper?.StartNewGameFromOptions();
+
+        // ─── Teardown (for reload) ──────────────────────────
+
+        /// <summary>
+        /// Unsubscribes from sim events, clears the visual tree, and resets state
+        /// so Initialize() can be called again after a game reload.
+        /// </summary>
+        public void Teardown()
+        {
+            if (!_initialized) return;
+
+            // Unsubscribe from events
+            if (_simulationRunner?.Events != null)
+            {
+                _simulationRunner.Events.Unsubscribe<SimulationTickCompleted>(OnSimulationTick);
+                _simulationRunner.Events.Unsubscribe<RunnerCreated>(OnRunnerCreated);
+            }
+
+            // Clear all controller references
+            _portraitBarController = null;
+            _detailsPanelController = null;
+            _automationPanelController = null;
+            _bankPanelController = null;
+            _optionsPanelController = null;
+            _resourceBarController = null;
+            _logPanelContainerController = null;
+            _logbookPanelController = null;
+            _tickRefreshables.Clear();
+
+            // Reset pointer tracking
+            _isPointerOverDetailsPanel = false;
+            _isPointerOverPortraitBar = false;
+            _isPointerOverLogPanel = false;
+            _isPointerOverLogbook = false;
+
+            // Clear tooltip/context menu refs (will be rebuilt in Initialize)
+            _tooltip = null;
+            _tooltipLabel = null;
+            _contextMenu = null;
+            _contextMenuItems = null;
+            DismissNodeClickConfirmation();
+
+            // Clear the visual tree so Initialize rebuilds it fresh.
+            // Reset visualTreeAsset to force UIDocument to re-instantiate on next assignment.
+            if (_uiDocument != null && _uiDocument.rootVisualElement != null)
+            {
+                _uiDocument.rootVisualElement.Clear();
+                _uiDocument.visualTreeAsset = null;
+            }
+
+            _selectedRunnerId = null;
+            _initialized = false;
+        }
 
         // ─── Tooltip ─────────────────────────────────────
 
@@ -561,11 +661,7 @@ namespace ProjectGuild.View.UI
 
         private void OnDestroy()
         {
-            if (_simulationRunner?.Events != null)
-            {
-                _simulationRunner.Events.Unsubscribe<SimulationTickCompleted>(OnSimulationTick);
-                _simulationRunner.Events.Unsubscribe<RunnerCreated>(OnRunnerCreated);
-            }
+            Teardown();
         }
     }
 }

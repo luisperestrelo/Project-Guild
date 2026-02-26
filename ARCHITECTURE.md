@@ -118,7 +118,8 @@ Back to Tick() (continues processing)
 | `GatherableConfigAsset.cs` | Data | The field guide. SO wrapper for gatherable configs |
 | `WorldNodeAsset.cs` | Data | The pin. SO wrapper for a world node |
 | `WorldMapAsset.cs` | Data | The atlas. SO wrapper for the full world map |
-| `GameBootstrapper.cs` | View | The director. Wires everything up, debug UI, node-click |
+| `GameBootstrapper.cs` | View | The director. Wires everything up, 3D picking, save/load |
+| `DevConsole.cs` | View | Dev-only console (tilde to open). Spawn runners, event log, tick/time |
 | `VisualSyncSystem.cs` | View | The cameraman. Keeps 3D visuals in sync with sim |
 | `NodeMarker.cs` | View | Tags node GameObjects for click-to-select raycasting |
 | `BankMarker.cs` | View | Tags the bank GameObject for click-to-open raycasting |
@@ -442,39 +443,31 @@ Concrete implementation of `ISaveSystem`. Uses `JsonUtility.ToJson/FromJson` and
 ## Scripts — View Layer
 
 ### `View/GameBootstrapper.cs`
-Entry point that wires up the simulation, visuals, and debug UI. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner.
+Entry point that wires up the simulation, visuals, and 3D picking. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner. Owns a `SaveManager` instance. Provides `SaveGame()`, `LoadSavedGame()`, and `StartNewGameFromOptions()` for the Options panel. Load/New Game use `ReloadWorld()` which tears down UI (`UIManager.Teardown()`), runs the load/create action, rebuilds visuals (`VisualSyncSystem.BuildWorld()`), and re-initializes UI (`UIManager.Initialize()`).
 
 **Click handling (LateUpdate):** On left-click, checks (1) not over UI, (2) `TryPickRunner()` raycasts for RunnerVisual on the "Runners" layer — if found, selects that runner and returns. (3) `TryPickBank()` raycasts the "Bank" layer — if found, toggles the bank panel and returns. (4) `TryPickNode()` raycasts the "Nodes" layer for `NodeMarker` — if found and not the hub node, shows a confirmation popup ("Send [Runner] to work at [Node]?") via `UIManager.ShowNodeClickConfirmation()`. Runner > Bank > Node priority. Requires three physics layers: "Runners", "Nodes", "Bank" — logs `Debug.LogError` if any is missing.
 
-The debug UI (`OnGUI`) provides full inspection and editing of the automation system. It is organized into panels:
+### `View/DevConsole.cs`
+Development-only console for debugging and testing. Wrapped in `#if UNITY_EDITOR || DEVELOPMENT_BUILD` — excluded from release builds entirely. Standalone MonoBehaviour that builds its UI programmatically (no UXML). Requires a `UIDocument` and `SimulationRunner` reference (auto-resolved if not set).
 
-**Top-center — Runner selector:** Compact multi-column table of all runners. Shows name and abbreviated state. Click to select.
+**Controls:** Tilde key (~) to open/close. Escape to close. Enter to submit command. Commands can optionally start with `/`.
 
-**Left panel — Runner info & commands:**
-- Runner name, state, location, assignment info
-- Travel progress (when traveling)
-- Gathering progress (when gathering)
-- Depositing progress (when depositing)
-- Inventory summary (slot count, items by type)
-- "Send to" buttons per node (creates assignment via `AssignRunner`)
+**Persistent HUD:** Small tick/time label in top-left corner, always visible (toggleable via `/hud on/off`). Shows current tick number and elapsed game time (M:SS format). Updated every tick.
 
-**Bottom-center — Pawn generation & Guild Bank:**
-- Random and Tutorial pawn generation buttons
-- Tick count and elapsed time
-- Guild bank contents
-
-**Right panel — Skills & Live Stats:**
-- All 15 skills: level, passion marker (yellow P), effective level, XP progress bar (current/needed)
-- Live stats: travel speed, travel ETA/distance, Athletics XP/tick, gathering ticks/item + items/min, gathering XP/tick (with passion indicator), passion summary
-
-**Automation panel (6 tabs):**
-- **Task Sequence**: View active sequence steps, current step highlighted, pending sequence, clear button
-- **Macro Rules**: View/edit/reorder/enable/delete macro rules, add rule form (condition + action + FinishCurrentSequence), copy/paste
-- **Micro Rules**: View/edit/reorder/enable/delete micro rules, add form restricted to GatherHere/FinishTask actions, shows gatherables at current node for context
-- **Decision Log**: Per-runner log of macro rule firings with condition snapshots
-- **Warnings**: All NoMicroRuleMatched and GatheringFailed events across runners
-- **Activity**: Per-runner event timeline (excludes Lifecycle noise)
-- **Event Log**: Full searchable/filterable raw event log with category toggles, runner filter, optional collapsing
+**Commands:**
+- `/spawn random` — creates a random runner at the hub via `RunnerFactory.Create()` + `sim.AddRunner()`. Prints name and notable skills.
+- `/spawn tutorial` — creates a tutorial-biased runner (one random gathering skill boosted with passion) via `RunnerFactory.CreateBiased()`.
+- `/eventlog` — dumps last 50 entries from `EventLogService` ring buffer (newest on top). Color-coded by category.
+- `/eventlog N` — dumps last N entries.
+- `/eventlog filter <category>` — filters by category (warning, auto, state, prod, life).
+- `/eventlog live` — toggles real-time event streaming. When ON, prints each new event as it occurs.
+- `/eventlog max` — shows current buffer size.
+- `/runners` — lists all runners with state, location, and current task.
+- `/tick` — prints current tick number.
+- `/time` — prints game time in H:MM:SS format with tick count.
+- `/hud on|off` — toggles the persistent HUD label.
+- `/clear` — clears console output.
+- `/help` — lists all commands.
 
 ### `View/NodeMarker.cs`
 Simple MonoBehaviour storing a `NodeId` string. Attached by `VisualSyncSystem.CreateNodeMarker()` to each node's GameObject so that raycasting can identify which world node was clicked. Used by `GameBootstrapper.TryPickNode()`.
@@ -501,7 +494,7 @@ MonoBehaviour attached to each runner's 3D representation. Handles interpolated 
 Interface for UI controllers that display simulation-derived data and need to stay in sync every tick. Controllers implement this and call `UIManager.RegisterTickRefreshable(this)` in their constructor — `OnSimulationTick` iterates the registered list automatically, no manual per-controller wiring needed. Sub-controllers managed by a parent (e.g., `ChroniclePanelController` inside `LogPanelContainerController`) should NOT implement this — their parent handles their refresh timing.
 
 ### `View/UI/UIManager.cs`
-Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates all UI controllers as plain C# objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` and iterates `List<ITickRefreshable>` to refresh all registered controllers every tick (10/sec) — controllers self-register via `RegisterTickRefreshable()` in their constructors. Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Provides `OpenAutomationPanelToItem()` and `OpenAutomationPanelToItemFromRunner()` for navigation from the runner Automation tab to the editing panel. `ToggleBankPanel()` and `OpenBankPanel()` control the bank overlay. `AppendToLogbook()` delegates to `LogbookPanelController` for "Copy to Logbook" actions. `ShowNodeClickConfirmation()` shows a centered popup for node-click Work At. The Automation toggle button is added programmatically to the root element. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`. Has `[SerializeField]` Inspector values: `LiveStatsXpDisplayWindowSeconds` (default 5.0f, how long skill XP bars stay visible in Live Stats) and `LiveStatsMaxSkillXpBars` (default 4, max simultaneous XP bars shown).
+Top-level MonoBehaviour for the real UI (UI Toolkit). Owns the `UIDocument` component, coordinates all UI controllers as plain C# objects. Manages runner selection state (`SelectedRunnerId`). Subscribes to `SimulationTickCompleted` and iterates `List<ITickRefreshable>` to refresh all registered controllers every tick (10/sec) — controllers self-register via `RegisterTickRefreshable()` in their constructors. Also coordinates camera movement on runner selection via `CameraController.SetTarget()`. Provides `OpenAutomationPanelToItem()` and `OpenAutomationPanelToItemFromRunner()` for navigation from the runner Automation tab to the editing panel. `ToggleBankPanel()` and `OpenBankPanel()` control the bank overlay. `ToggleOptionsPanel()` controls the options overlay. `AppendToLogbook()` delegates to `LogbookPanelController` for "Copy to Logbook" actions. `ShowNodeClickConfirmation()` shows a centered popup for node-click Work At. `RequestSaveGame()`, `RequestLoadGame()`, `RequestNewGame()` delegate to `GameBootstrapper`. `Teardown()` unsubscribes from sim events, clears all controller references and the visual tree, resets `_initialized` so `Initialize()` can be called again after a game reload. Loads `PlayerPreferences` on first `Initialize()` and exposes via `Preferences` property. Exposes `SaveManager` via `GameBootstrapper.SaveManager`. The Automation and Options toggle buttons are added programmatically to the root element. Initialized by `GameBootstrapper` after `StartNewGame()` and `BuildWorld()`. Has `[SerializeField]` Inspector values: `LiveStatsXpDisplayWindowSeconds` (default 5.0f, how long skill XP bars stay visible in Live Stats) and `LiveStatsMaxSkillXpBars` (default 4, max simultaneous XP bars shown).
 
 ### `View/UI/RunnerPortraitBarController.cs`
 Plain C# class (not MonoBehaviour). Manages the portrait bar at the top of the screen. Clones `RunnerPortrait.uxml` templates per runner. Handles click-to-select (USS class `selected` toggle) and periodic state label refresh. Each portrait shows runner name and short state text. **Warning badge**: a red circle (top-right) toggled by `runner.ActiveWarning != null`. Tooltip shows the warning message. Badge `pickingMode` switches between `Position` (hoverable when visible) and `Ignore` (pass-through when hidden).
@@ -535,6 +528,12 @@ Plain C# class. Master-detail editor for the Micro Ruleset library. Same persist
 
 ### `View/UI/BankPanelController.cs`
 Plain C# class. OSRS-style bank overlay panel. Follows `AutomationPanelController` pattern: `IsOpen`, `Open()`, `Close()`, `Toggle()`, Escape to close. Shows all stacked items in a flex-wrap grid with category filtering (tab buttons), text search (case-insensitive), and persistent-element caching (shape-keyed by filtered item IDs — quantities update in-place, full rebuild only on shape change). Refreshes on `Open()` and on `RunnerDeposited` events while open (not every tick). Tooltips show item name, quantity, and category. Footer shows total item count. Opened via `UIManager.ToggleBankPanel()` (from bank click) or `UIManager.OpenBankPanel()` (from resource bar click).
+
+### `View/UI/OptionsPanelController.cs`
+Plain C# class. Options overlay panel following BankPanelController pattern: `IsOpen`, `Open()`, `Close()`, `Toggle()`, Escape to close. Two sections: (1) UX Preferences — toggle rows for logbook auto-navigate on selection/arrival, auto-expand on navigation, dropdown fields for chronicle/decision log default scope filters. Changes save immediately to `PlayerPreferences`. (2) Save/Load — save button, load button (with inline confirmation dialog), new game button (with inline confirmation dialog), status label showing last save timestamp. Save/Load/New Game delegate to `UIManager` which delegates to `GameBootstrapper`. Not tick-refreshable (purely event-driven). Opened via `UIManager.ToggleOptionsPanel()`.
+
+### `Bridge/PlayerPreferences.cs`
+Serializable data class for UX preferences that persist across sessions. Stored at `{persistentDataPath}/preferences.json`, separate from game saves. Fields: logbook auto-navigate on selection (default ON), auto-navigate on arrival (default ON), auto-expand on navigation (default OFF), chronicle default scope filter (default "CurrentNode"), decision log default scope filter (default "SelectedRunner"). Static `Load()` returns defaults if file missing/corrupt. Instance `Save()` writes immediately. Loaded once by `UIManager.Initialize()` and exposed via `UIManager.Preferences`.
 
 ### `View/UI/LogPanelContainerController.cs`
 Plain C# class. Orchestrates the tabbed log panel (bottom-left, 450x280px). Owns two tabs: Chronicle and Decisions. Manages tab switching, collapse/expand state, and a combined unread badge. Instantiates `ChroniclePanelController` and `DecisionLogPanelController` as sub-controllers, passing them the appropriate VisualTreeAssets. On each tick, tracks new entry counts from both sub-controllers; only refreshes the active tab's controller. When collapsed, accumulates unread counts from both and shows a combined badge. Created by `UIManager` with references to both sub-panel template assets.
@@ -574,6 +573,7 @@ Resolves node IDs via GameState.Map, item IDs via optional `ItemNameResolver` de
 `AutomationPanel.uxml/.uss` — Full-screen overlay panel for editing automation libraries. Title bar with close button, library tab bar (Task Sequences / Macro Rulesets / Micro Rulesets), master-detail layout (list pane left, editor pane right). Includes shared template warning banner, step type picker, and editor field styles.
 `RuleEditor.uss` — Styles for interactive rule editing rows: condition/action pickers, operator dropdowns, move/delete buttons, timing toggle. Loaded via AutomationPanel.uxml.
 `BankPanel.uxml/.uss` — Overlay panel for OSRS-style bank view. Title bar with close button, search field, category tab row, flex-wrap item grid (66px slots, 48px icons, quantity bottom-right), footer with item count.
+`OptionsPanel.uxml/.uss` — Centered overlay panel (500×520px) for UX preferences and save/load. Two sections: Preferences (toggle rows for logbook auto-navigate/expand, dropdown fields for chronicle/decision log default scope filters) and Save/Load (save/load/new game buttons, status label, inline confirmation dialog for destructive actions). Dark theme, gold section headers. Button (top-left, next to Automation) opens via `UIManager.ToggleOptionsPanel()`.
 `LogPanelContainer.uxml/.uss` — Tabbed container for the bottom-left log area. Tab bar with Chronicle/Decisions tabs (gold underline on active), collapse button, content slots for sub-panel templates. Collapsed state shows "Logs" label with unread badge.
 `ChroniclePanel.uxml/.uss` — Content template for the Chronicle. Filter buttons (Node/Runner/All), scroll view with entry rows, new-entries indicator. No collapse elements (owned by container).
 `DecisionLogPanel.uxml/.uss` — Content template for Decision Log. Two filter rows: scope filters (Node/Runner/All) and layer filters (All/Macro/Micro) separated by a thin divider. Entry rows color-coded by layer (green left border = Macro, blue = Micro). Same scroll/indicator pattern as Chronicle.

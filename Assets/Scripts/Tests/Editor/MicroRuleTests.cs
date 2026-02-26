@@ -68,7 +68,6 @@ namespace ProjectGuild.Tests
         {
             var ruleset = new Ruleset { Id = id, Name = id, Category = RulesetCategory.Gathering };
             _sim.CurrentGameState.MicroRulesetLibrary.Add(ruleset);
-            _runner.MicroRuleset = ruleset; // legacy field for backward compat
             return ruleset;
         }
 
@@ -275,9 +274,6 @@ namespace ProjectGuild.Tests
             Setup("mine");
 
             // Null/missing micro ruleset = broken data. Runner should get stuck.
-            // In production, LoadState migrates to defaults before gameplay.
-            _runner.MicroRuleset = null;
-
             var assignment = TaskSequence.CreateLoop("mine", "hub");
             // Set Work step to point to a non-existent ruleset — simulates bad data
             SetWorkStepMicroRuleset(assignment, "nonexistent-ruleset");

@@ -16,6 +16,7 @@ namespace ProjectGuild.View.UI
     public class BankPanelController
     {
         private readonly VisualElement _root;
+        private readonly VisualElement _panelRoot;
         private readonly UIManager _uiManager;
         private readonly TextField _searchField;
         private readonly VisualElement _categoryTabs;
@@ -37,7 +38,11 @@ namespace ProjectGuild.View.UI
         public BankPanelController(VisualElement root, UIManager uiManager)
         {
             _root = root;
+            _panelRoot = root.Q("bank-panel-root");
             _uiManager = uiManager;
+
+            // Make panel root focusable so it can receive KeyDownEvents
+            _panelRoot.focusable = true;
 
             // Close button
             root.Q<Button>("btn-close-bank").clicked += Close;
@@ -54,8 +59,8 @@ namespace ProjectGuild.View.UI
             _itemGrid = root.Q("bank-item-grid");
             _totalLabel = root.Q<Label>("bank-total-label");
 
-            // Escape to close
-            _root.RegisterCallback<KeyDownEvent>(evt =>
+            // Escape to close (registered on inner panel root, not TemplateContainer)
+            _panelRoot.RegisterCallback<KeyDownEvent>(evt =>
             {
                 if (evt.keyCode == KeyCode.Escape)
                 {
@@ -75,7 +80,7 @@ namespace ProjectGuild.View.UI
         {
             IsOpen = true;
             _root.style.display = DisplayStyle.Flex;
-            _root.Focus();
+            _panelRoot.Focus();
             BuildCategoryTabs();
             _lastShapeKey = ""; // force rebuild
             RebuildGrid();

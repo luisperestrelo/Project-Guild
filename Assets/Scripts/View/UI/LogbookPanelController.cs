@@ -141,24 +141,36 @@ namespace ProjectGuild.View.UI
                 PopulateFolderDropdown();
             }
 
-            // Auto-navigate to selected runner's node (if unlocked)
+            // Auto-navigate to selected runner's node (if unlocked and preference enabled)
             string selectedRunnerId = _uiManager.SelectedRunnerId;
+            var prefs = _uiManager.Preferences;
             if (selectedRunnerId != null && !_isLocked)
             {
                 var runner = sim.CurrentGameState.Runners.Find(r => r.Id == selectedRunnerId);
                 string nodeId = runner?.CurrentNodeId;
 
                 bool runnerChanged = selectedRunnerId != _lastSelectedRunnerId;
-                bool nodeChanged = nodeId != _lastRunnerNodeId;
+                bool nodeChanged = nodeId != null && nodeId != _lastRunnerNodeId;
 
-                if ((runnerChanged || nodeChanged) && nodeId != null)
+                // Check which navigation is relevant and whether the preference allows it
+                bool shouldNavigate = false;
+                if (runnerChanged && prefs?.LogbookAutoNavigateOnSelection != false)
+                    shouldNavigate = true;
+                if (nodeChanged && !runnerChanged && prefs?.LogbookAutoNavigateOnArrival != false)
+                    shouldNavigate = true;
+
+                if (shouldNavigate && nodeId != null)
                 {
                     var node = sim.CurrentGameState.Map.GetNode(nodeId);
                     if (node != null)
                     {
                         var folder = EnsureNodeFolder(nodeId, node.Name);
                         if (folder != null)
+                        {
                             NavigateToFolder(folder.Id);
+                            if (prefs?.LogbookAutoExpandOnNavigation == true && !_isExpanded)
+                                Expand();
+                        }
                     }
                 }
 
@@ -643,11 +655,13 @@ namespace ProjectGuild.View.UI
 
         /// <summary>
         /// Called by UIManager when the selected runner changes.
-        /// If not locked, navigates to the folder matching the runner's current node.
+        /// If not locked and preference enabled, navigates to the folder matching
+        /// the runner's current node.
         /// </summary>
         public void OnRunnerSelected(string runnerId)
         {
             if (_isLocked) return;
+            if (_uiManager.Preferences?.LogbookAutoNavigateOnSelection == false) return;
 
             var sim = _uiManager.Simulation;
             if (sim == null) return;
@@ -664,7 +678,11 @@ namespace ProjectGuild.View.UI
 
             var folder = EnsureNodeFolder(runner.CurrentNodeId, node.Name);
             if (folder != null)
+            {
                 NavigateToFolder(folder.Id);
+                if (_uiManager.Preferences?.LogbookAutoExpandOnNavigation == true && !_isExpanded)
+                    Expand();
+            }
         }
 
         // ─── Search (Ctrl+F) ────────────────────────────

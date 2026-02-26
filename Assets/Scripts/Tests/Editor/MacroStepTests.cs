@@ -102,7 +102,7 @@ namespace ProjectGuild.Tests
             // Already at hub → TravelTo skips → sequence ends → runner goes idle
             Assert.IsNotNull(completed, "Non-looping sequence should complete");
             Assert.AreEqual(RunnerState.Idle, _runner.State);
-            Assert.IsNull(_runner.TaskSequence);
+            Assert.IsNull(_sim.GetRunnerTaskSequence(_runner));
         }
 
         [Test]
@@ -181,7 +181,7 @@ namespace ProjectGuild.Tests
             _sim.AssignRunner(_runner.Id, null);
 
             Assert.AreEqual(RunnerState.Idle, _runner.State);
-            Assert.IsNull(_runner.TaskSequence);
+            Assert.IsNull(_sim.GetRunnerTaskSequence(_runner));
         }
 
         [Test]

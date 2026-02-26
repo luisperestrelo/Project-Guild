@@ -231,7 +231,7 @@ namespace ProjectGuild.View.UI
             _editorContent.Add(_footer);
         }
 
-        private void RefreshEditor()
+        public void RefreshEditor()
         {
             var sim = _uiManager.Simulation;
             if (sim == null) return;
@@ -280,7 +280,10 @@ namespace ProjectGuild.View.UI
         private void RefreshRulesContainer(Ruleset ruleset, GameSimulation sim)
         {
             int ruleCount = ruleset.Rules.Count;
-            string shapeKey = $"{ruleset.Id}|{ruleCount}";
+            // Include task sequence library count so action dropdowns rebuild when new sequences are created
+            int seqLibCount = sim.CurrentGameState.TaskSequenceLibrary?.Count ?? 0;
+            int itemCount = sim.ItemRegistry?.Count ?? 0;
+            string shapeKey = $"{ruleset.Id}|{ruleCount}|s{seqLibCount}|i{itemCount}";
 
             if (shapeKey == _cachedRulesShapeKey) return;
 

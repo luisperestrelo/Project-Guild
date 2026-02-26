@@ -12,6 +12,7 @@ namespace ProjectGuild.View.UI
     {
         private readonly UIManager _uiManager;
         private readonly VisualElement _root;
+        private readonly VisualElement _panelRoot;
 
         // Tab buttons
         private readonly Button _tabTaskSeq;
@@ -35,7 +36,11 @@ namespace ProjectGuild.View.UI
         public AutomationPanelController(VisualElement root, UIManager uiManager)
         {
             _root = root;
+            _panelRoot = root.Q("automation-panel-root");
             _uiManager = uiManager;
+
+            // Make panel root focusable so it can receive KeyDownEvents
+            _panelRoot.focusable = true;
 
             // Close button
             var btnClose = root.Q<Button>("btn-close-panel");
@@ -63,8 +68,8 @@ namespace ProjectGuild.View.UI
             // Start hidden
             _root.style.display = DisplayStyle.None;
 
-            // Register Escape key to close
-            _root.RegisterCallback<KeyDownEvent>(evt =>
+            // Escape to close (registered on inner panel root, not TemplateContainer)
+            _panelRoot.RegisterCallback<KeyDownEvent>(evt =>
             {
                 if (evt.keyCode == UnityEngine.KeyCode.Escape)
                 {
@@ -78,7 +83,7 @@ namespace ProjectGuild.View.UI
         {
             IsOpen = true;
             _root.style.display = DisplayStyle.Flex;
-            _root.Focus();
+            _panelRoot.Focus();
             RefreshActiveTab();
         }
 
@@ -147,12 +152,15 @@ namespace ProjectGuild.View.UI
             {
                 case "taskseq":
                     _taskSeqEditor.RefreshList();
+                    _taskSeqEditor.RefreshEditor();
                     break;
                 case "macro":
                     _macroEditor.RefreshList();
+                    _macroEditor.RefreshEditor();
                     break;
                 case "micro":
                     _microEditor.RefreshList();
+                    _microEditor.RefreshEditor();
                     break;
             }
         }

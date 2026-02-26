@@ -1,0 +1,86 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="OptionsPanel.uss" />
+    <ui:VisualElement name="options-panel-root" class="options-panel-root">
+        <!-- Title bar -->
+        <ui:VisualElement name="options-title-bar" class="options-title-bar">
+            <ui:Label text="Options" class="options-title" />
+            <ui:Button name="btn-close-options" class="options-close-button" text="X" />
+        </ui:VisualElement>
+
+        <!-- Scrollable content -->
+        <ui:ScrollView name="options-content" class="options-content">
+
+            <!-- Preferences section -->
+            <ui:VisualElement class="options-section">
+                <ui:Label text="Preferences" class="options-section-header" />
+
+                <!-- Logbook toggles -->
+                <ui:Label text="Logbook" class="options-subsection-header" />
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-logbook-auto-nav-selection" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Auto-navigate on runner selection" class="options-toggle-label" />
+                        <ui:Label text="Switch logbook folder when you click a different runner" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-logbook-auto-nav-arrival" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Auto-navigate on node arrival" class="options-toggle-label" />
+                        <ui:Label text="Switch logbook folder when the selected runner arrives at a new node" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-logbook-auto-expand" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Auto-expand on navigation" class="options-toggle-label" />
+                        <ui:Label text="Also open the logbook when auto-navigating (otherwise silently switches in background)" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Default filters -->
+                <ui:Label text="Default Filters" class="options-subsection-header" />
+
+                <ui:VisualElement class="options-dropdown-row">
+                    <ui:Label text="Chronicle default scope" class="options-dropdown-label" />
+                    <ui:DropdownField name="dropdown-chronicle-scope" class="options-dropdown" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-dropdown-row">
+                    <ui:Label text="Decision Log default scope" class="options-dropdown-label" />
+                    <ui:DropdownField name="dropdown-decision-log-scope" class="options-dropdown" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Divider -->
+            <ui:VisualElement class="options-divider" />
+
+            <!-- Save / Load section -->
+            <ui:VisualElement class="options-section">
+                <ui:Label text="Save / Load" class="options-section-header" />
+                <ui:Label name="save-status-label" text="No save file found" class="options-save-status" />
+
+                <ui:VisualElement class="options-button-row">
+                    <ui:Button name="btn-save-game" text="Save Game" class="options-button options-button-save" />
+                    <ui:Button name="btn-load-game" text="Load Game" class="options-button options-button-load" />
+                    <ui:Button name="btn-new-game" text="New Game" class="options-button options-button-new" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+        </ui:ScrollView>
+
+        <!-- Confirmation dialog (hidden by default, shown inline) -->
+        <ui:VisualElement name="options-confirm-overlay" class="options-confirm-overlay">
+            <ui:VisualElement name="options-confirm-dialog" class="options-confirm-dialog">
+                <ui:Label name="confirm-message" text="" class="options-confirm-message" />
+                <ui:VisualElement class="options-confirm-buttons">
+                    <ui:Button name="btn-confirm-yes" text="Confirm" class="options-button options-button-confirm" />
+                    <ui:Button name="btn-confirm-no" text="Cancel" class="options-button options-button-cancel" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

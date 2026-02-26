@@ -24,6 +24,7 @@ namespace ProjectGuild.Simulation.Automation
         public float GameTime;
         public string RunnerId;
         public string RunnerName;
+        public string NodeId;
         public DecisionLayer Layer;
         public int RuleIndex;
         public string RuleLabel;

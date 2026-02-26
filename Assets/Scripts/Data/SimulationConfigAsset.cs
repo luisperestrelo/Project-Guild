@@ -98,8 +98,14 @@ namespace ProjectGuild.Data
         [Tooltip("Safety-net interval (ticks) for re-evaluating automation rules. Catches external state changes like BankContains. 10 = once per second.")]
         public int AutomationPeriodicCheckInterval = 10;
 
-        [Tooltip("Maximum entries in the decision log ring buffer.")]
-        public int DecisionLogMaxEntries = 2000;
+        [Tooltip("Maximum entries in the macro decision log ring buffer. Macro decisions are rare/high-value.")]
+        public int MacroDecisionLogMaxEntries = 2000;
+
+        [Tooltip("Maximum entries in the micro decision log ring buffer. Micro decisions fire every tick per gathering runner.")]
+        public int MicroDecisionLogMaxEntries = 1000;
+
+        [Tooltip("Maximum entries in the Chronicle (player-facing event log) ring buffer.")]
+        public int ChronicleMaxEntries = 1000;
 
         [Header("Dev Tools")]
         [Tooltip("Maximum entries in the event log ring buffer. The event log is for debugging, not player-facing.")]
@@ -144,7 +150,9 @@ namespace ProjectGuild.Data
                 InventorySize = InventorySize,
                 DepositDurationTicks = DepositDurationTicks,
                 AutomationPeriodicCheckInterval = AutomationPeriodicCheckInterval,
-                DecisionLogMaxEntries = DecisionLogMaxEntries,
+                MacroDecisionLogMaxEntries = MacroDecisionLogMaxEntries,
+                MicroDecisionLogMaxEntries = MicroDecisionLogMaxEntries,
+                ChronicleMaxEntries = ChronicleMaxEntries,
                 EventLogMaxEntries = EventLogMaxEntries,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
                 DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,

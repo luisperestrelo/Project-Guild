@@ -64,6 +64,108 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(5, log.Entries[0].TickNumber);
         }
 
+        // ─── Generation counter ────────────────────────────────────────
+
+        [Test]
+        public void GenerationCounter_IncrementsOnEachAdd()
+        {
+            var log = new DecisionLog();
+            Assert.AreEqual(0, log.GenerationCounter);
+
+            log.Add(MakeEntry(1, "r1", "A"));
+            Assert.AreEqual(1, log.GenerationCounter);
+
+            log.Add(MakeEntry(2, "r1", "B"));
+            Assert.AreEqual(2, log.GenerationCounter);
+        }
+
+        [Test]
+        public void GenerationCounter_ContinuesIncrementingWhenBufferFull()
+        {
+            var log = new DecisionLog();
+            log.SetMaxEntries(2);
+
+            log.Add(MakeEntry(1, "r1", "A"));
+            log.Add(MakeEntry(2, "r1", "B"));
+            Assert.AreEqual(2, log.GenerationCounter);
+            Assert.AreEqual(2, log.Entries.Count);
+
+            // Buffer full — eviction happens but generation keeps going
+            log.Add(MakeEntry(3, "r1", "C"));
+            Assert.AreEqual(3, log.GenerationCounter);
+            Assert.AreEqual(2, log.Entries.Count, "Count stays at max");
+        }
+
+        // ─── GetAll ────────────────────────────────────────────────────
+
+        [Test]
+        public void GetAll_ReturnsAllMostRecentFirst()
+        {
+            var log = new DecisionLog();
+            log.Add(MakeEntry(1, "r1", "A"));
+            log.Add(MakeEntry(2, "r2", "B"));
+            log.Add(MakeEntry(3, "r1", "C"));
+
+            var result = log.GetAll();
+            Assert.AreEqual(3, result.Count);
+            Assert.AreEqual(3, result[0].TickNumber);
+            Assert.AreEqual(1, result[2].TickNumber);
+        }
+
+        [Test]
+        public void GetAll_FiltersByLayer()
+        {
+            var log = new DecisionLog();
+            log.Add(MakeEntry(1, "r1", "A", layer: DecisionLayer.Macro));
+            log.Add(MakeEntry(2, "r1", "B", layer: DecisionLayer.Micro));
+            log.Add(MakeEntry(3, "r1", "C", layer: DecisionLayer.Macro));
+
+            var macroOnly = log.GetAll(DecisionLayer.Macro);
+            Assert.AreEqual(2, macroOnly.Count);
+            Assert.AreEqual(3, macroOnly[0].TickNumber);
+            Assert.AreEqual(1, macroOnly[1].TickNumber);
+
+            var microOnly = log.GetAll(DecisionLayer.Micro);
+            Assert.AreEqual(1, microOnly.Count);
+            Assert.AreEqual(2, microOnly[0].TickNumber);
+        }
+
+        // ─── GetForNode ──────────────────────────────────────────────
+
+        [Test]
+        public void GetForNode_FiltersCorrectly()
+        {
+            var log = new DecisionLog();
+            log.Add(MakeEntry(1, "r1", "A", nodeId: "mine"));
+            log.Add(MakeEntry(2, "r2", "B", nodeId: "forest"));
+            log.Add(MakeEntry(3, "r1", "C", nodeId: "mine"));
+            log.Add(MakeEntry(4, "r2", "D", nodeId: "forest"));
+
+            var mineEntries = log.GetForNode("mine");
+            Assert.AreEqual(2, mineEntries.Count);
+            Assert.AreEqual(3, mineEntries[0].TickNumber);
+            Assert.AreEqual(1, mineEntries[1].TickNumber);
+        }
+
+        [Test]
+        public void GetForNode_WithLayerFilter()
+        {
+            var log = new DecisionLog();
+            log.Add(MakeEntry(1, "r1", "A", nodeId: "mine", layer: DecisionLayer.Macro));
+            log.Add(MakeEntry(2, "r1", "B", nodeId: "mine", layer: DecisionLayer.Micro));
+            log.Add(MakeEntry(3, "r2", "C", nodeId: "mine", layer: DecisionLayer.Macro));
+            log.Add(MakeEntry(4, "r1", "D", nodeId: "forest", layer: DecisionLayer.Macro));
+
+            var mineMacro = log.GetForNode("mine", DecisionLayer.Macro);
+            Assert.AreEqual(2, mineMacro.Count);
+            Assert.AreEqual(3, mineMacro[0].TickNumber);
+            Assert.AreEqual(1, mineMacro[1].TickNumber);
+
+            var mineMicro = log.GetForNode("mine", DecisionLayer.Micro);
+            Assert.AreEqual(1, mineMicro.Count);
+            Assert.AreEqual(2, mineMicro[0].TickNumber);
+        }
+
         // ─── Filter by runner ────────────────────────────────────────
 
         [Test]
@@ -134,7 +236,8 @@ namespace ProjectGuild.Tests
 
         // ─── Helper ──────────────────────────────────────────────────
 
-        private static DecisionLogEntry MakeEntry(long tick, string runnerId, string label)
+        private static DecisionLogEntry MakeEntry(long tick, string runnerId, string label,
+            string nodeId = null, DecisionLayer layer = DecisionLayer.Macro)
         {
             return new DecisionLogEntry
             {
@@ -142,6 +245,8 @@ namespace ProjectGuild.Tests
                 GameTime = tick * 0.1f,
                 RunnerId = runnerId,
                 RunnerName = runnerId,
+                NodeId = nodeId,
+                Layer = layer,
                 RuleIndex = 0,
                 RuleLabel = label,
                 TriggerReason = "test",

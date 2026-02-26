@@ -25,6 +25,7 @@ namespace ProjectGuild.Simulation.Core
         public SimulationConfig Config { get; private set; }
         public ItemRegistry ItemRegistry { get; private set; }
         public EventLogService EventLog { get; private set; }
+        public ChronicleService Chronicle { get; private set; }
 
         private readonly System.Random _random = new();
 
@@ -43,6 +44,8 @@ namespace ProjectGuild.Simulation.Core
             TickDeltaTime = 1f / tickRate;
             EventLog = new EventLogService(Config.EventLogMaxEntries, () => CurrentGameState);
             EventLog.SubscribeAll(Events);
+            Chronicle = new ChronicleService(Config.ChronicleMaxEntries, () => CurrentGameState);
+            Chronicle.SubscribeAll(Events);
         }
 
         /// <summary>
@@ -52,72 +55,7 @@ namespace ProjectGuild.Simulation.Core
         {
             CurrentGameState = state;
             CurrentGameState.Map?.Initialize();
-            MigrateRunnerRulesets();
-        }
-
-        /// <summary>
-        /// Migrate runners from old save format (direct object fields) to new format (ID references).
-        /// Also ensures defaults exist for runners with no rulesets.
-        /// </summary>
-        private void MigrateRunnerRulesets()
-        {
             DefaultRulesets.EnsureInLibrary(CurrentGameState);
-
-            foreach (var runner in CurrentGameState.Runners)
-            {
-                // Migrate legacy MacroRuleset → library + MacroRulesetId
-                if (runner.MacroRuleset != null && string.IsNullOrEmpty(runner.MacroRulesetId))
-                {
-                    if (string.IsNullOrEmpty(runner.MacroRuleset.Id))
-                        runner.MacroRuleset.Id = Guid.NewGuid().ToString();
-                    if (string.IsNullOrEmpty(runner.MacroRuleset.Name))
-                        runner.MacroRuleset.Name = "Migrated Macro";
-                    if (FindMacroRulesetInLibrary(runner.MacroRuleset.Id) == null)
-                        CurrentGameState.MacroRulesetLibrary.Add(runner.MacroRuleset);
-                    runner.MacroRulesetId = runner.MacroRuleset.Id;
-                }
-
-                // Migrate legacy MicroRuleset → library + Work step MicroRulesetId
-                if (runner.MicroRuleset != null)
-                {
-                    if (string.IsNullOrEmpty(runner.MicroRuleset.Id))
-                        runner.MicroRuleset.Id = Guid.NewGuid().ToString();
-                    if (string.IsNullOrEmpty(runner.MicroRuleset.Name))
-                        runner.MicroRuleset.Name = "Migrated Micro";
-                    runner.MicroRuleset.Category = RulesetCategory.Gathering;
-                    if (FindMicroRulesetInLibrary(runner.MicroRuleset.Id) == null)
-                        CurrentGameState.MicroRulesetLibrary.Add(runner.MicroRuleset);
-                    // Set MicroRulesetId on all Work steps of the runner's task sequence
-                    var seq = runner.TaskSequence ?? FindTaskSequenceInLibrary(runner.TaskSequenceId);
-                    if (seq?.Steps != null)
-                    {
-                        foreach (var step in seq.Steps)
-                        {
-                            if (step.Type == TaskStepType.Work && string.IsNullOrEmpty(step.MicroRulesetId))
-                                step.MicroRulesetId = runner.MicroRuleset.Id;
-                        }
-                    }
-                    runner.MicroRuleset = null; // clear legacy field after migration
-                }
-
-                // Migrate legacy TaskSequence → library + TaskSequenceId
-                if (runner.TaskSequence != null && string.IsNullOrEmpty(runner.TaskSequenceId))
-                {
-                    if (string.IsNullOrEmpty(runner.TaskSequence.Id))
-                        runner.TaskSequence.Id = Guid.NewGuid().ToString();
-                    if (FindTaskSequenceInLibrary(runner.TaskSequence.Id) == null)
-                        CurrentGameState.TaskSequenceLibrary.Add(runner.TaskSequence);
-                    runner.TaskSequenceId = runner.TaskSequence.Id;
-                }
-
-                // Migrate old saves that assigned the removed "default-macro" — clear to null
-                if (runner.MacroRulesetId == "default-macro")
-                    runner.MacroRulesetId = null;
-            }
-
-            // Remove the obsolete "default-macro" entry from the library if present
-            CurrentGameState.MacroRulesetLibrary.RemoveAll(r => r.Id == "default-macro");
-
         }
 
         /// <summary>
@@ -136,7 +74,8 @@ namespace ProjectGuild.Simulation.Core
                 ItemRegistry.Register(itemDef);
 
             // Initialize decision log max entries from config
-            CurrentGameState.DecisionLog.SetMaxEntries(Config.DecisionLogMaxEntries);
+            CurrentGameState.MacroDecisionLog.SetMaxEntries(Config.MacroDecisionLogMaxEntries);
+            CurrentGameState.MicroDecisionLog.SetMaxEntries(Config.MicroDecisionLogMaxEntries);
 
             // Ensure default rulesets exist in the library before creating runners
             DefaultRulesets.EnsureInLibrary(CurrentGameState);
@@ -641,7 +580,6 @@ namespace ProjectGuild.Simulation.Core
             }
 
             runner.TaskSequenceId = taskSequence?.Id;
-            runner.TaskSequence = taskSequence; // keep legacy field in sync for now
             runner.TaskSequenceCurrentStepIndex = 0;
             runner.LastCompletedTaskSequenceId = null;
             // Don't clear MacroSuspendedUntilLoop here — WorkAt() sets it before
@@ -837,8 +775,7 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Evaluate the micro ruleset for the current Work step to decide which resource to gather.
-        /// Reads the micro ruleset from the Work step's MicroRulesetId, falling back to
-        /// runner.MicroRuleset for backward compatibility until Step 5 migration.
+        /// Reads the micro ruleset from the Work step's MicroRulesetId.
         /// Returns:
         ///   >= 0: gatherable index to gather
         ///   -1 (MicroResultFinishTask): FinishTask — advance macro step
@@ -850,8 +787,6 @@ namespace ProjectGuild.Simulation.Core
         private int EvaluateMicroRules(Runner runner, World.WorldNode node,
             bool itemJustProduced = false)
         {
-            // Resolve micro ruleset: prefer Work step's MicroRulesetId → library lookup,
-            // fall back to runner.MicroRuleset for old save compatibility.
             Ruleset microRuleset = null;
             var seq = GetRunnerTaskSequence(runner);
             if (seq != null)
@@ -860,7 +795,6 @@ namespace ProjectGuild.Simulation.Core
                 if (step?.MicroRulesetId != null)
                     microRuleset = FindMicroRulesetInLibrary(step.MicroRulesetId);
             }
-            microRuleset ??= runner.MicroRuleset;
 
             if (microRuleset == null)
                 return MicroResultNoMatch; // let it break
@@ -1139,7 +1073,7 @@ namespace ProjectGuild.Simulation.Core
             string seqName = completedSeq?.Name ?? "";
             runner.LastCompletedTaskSequenceId = completedSeq?.Id;
             runner.TaskSequenceId = null;
-            runner.TaskSequence = null; // legacy sync
+
             runner.State = RunnerState.Idle;
 
             Events.Publish(new TaskSequenceCompleted
@@ -1227,7 +1161,7 @@ namespace ProjectGuild.Simulation.Core
             {
                 // Sequence already exists in library (AssignSequence references it by ID)
                 runner.PendingTaskSequenceId = newSeq?.Id;
-                runner.PendingTaskSequence = newSeq; // legacy sync
+
                 return false;
             }
 
@@ -1267,7 +1201,7 @@ namespace ProjectGuild.Simulation.Core
             if (pending == null) return false;
 
             runner.PendingTaskSequenceId = null;
-            runner.PendingTaskSequence = null; // legacy sync
+
 
             AssignRunner(runner.Id, pending, "deferred macro rule");
             return true;
@@ -1284,7 +1218,6 @@ namespace ProjectGuild.Simulation.Core
                 if (step?.MicroRulesetId != null)
                     ruleset = FindMicroRulesetInLibrary(step.MicroRulesetId);
             }
-            ruleset ??= runner.MicroRuleset;
 
             bool isEmpty = ruleset == null || ruleset.Rules == null || ruleset.Rules.Count == 0;
             runner.ActiveWarning = isEmpty
@@ -1337,15 +1270,15 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>Get the runner's active task sequence from the library.</summary>
         public TaskSequence GetRunnerTaskSequence(Runner runner) =>
-            FindTaskSequenceInLibrary(runner.TaskSequenceId) ?? runner.TaskSequence;
+            FindTaskSequenceInLibrary(runner.TaskSequenceId);
 
         /// <summary>Get the runner's pending task sequence from the library.</summary>
         public TaskSequence GetRunnerPendingTaskSequence(Runner runner) =>
-            FindTaskSequenceInLibrary(runner.PendingTaskSequenceId) ?? runner.PendingTaskSequence;
+            FindTaskSequenceInLibrary(runner.PendingTaskSequenceId);
 
         /// <summary>Get the runner's macro ruleset from the library.</summary>
         public Ruleset GetRunnerMacroRuleset(Runner runner) =>
-            FindMacroRulesetInLibrary(runner.MacroRulesetId) ?? runner.MacroRuleset;
+            FindMacroRulesetInLibrary(runner.MacroRulesetId);
 
         // ─── Runner Commands ──────────────────────────────────────────
 
@@ -1394,14 +1327,14 @@ namespace ProjectGuild.Simulation.Core
                 if (runner.TaskSequenceId == id)
                 {
                     runner.TaskSequenceId = null;
-                    runner.TaskSequence = null; // legacy sync
+        
                     runner.TaskSequenceCurrentStepIndex = 0;
                     runner.State = RunnerState.Idle;
                 }
                 if (runner.PendingTaskSequenceId == id)
                 {
                     runner.PendingTaskSequenceId = null;
-                    runner.PendingTaskSequence = null; // legacy sync
+        
                 }
             }
         }
@@ -1415,7 +1348,7 @@ namespace ProjectGuild.Simulation.Core
                 if (runner.MacroRulesetId == id)
                 {
                     runner.MacroRulesetId = null;
-                    runner.MacroRuleset = null; // legacy sync
+
                 }
             }
         }
@@ -1451,7 +1384,6 @@ namespace ProjectGuild.Simulation.Core
             var runner = FindRunner(runnerId);
             if (runner == null) return;
             runner.MacroRulesetId = rulesetId;
-            runner.MacroRuleset = FindMacroRulesetInLibrary(rulesetId); // legacy sync
         }
 
         /// <summary>Deep-copy a runner's macro ruleset into a new library entry, assign to runner.</summary>
@@ -1464,7 +1396,6 @@ namespace ProjectGuild.Simulation.Core
             clone.Name = (macroRuleset.Name ?? "Macro") + " (copy)";
             CurrentGameState.MacroRulesetLibrary.Add(clone);
             runner.MacroRulesetId = clone.Id;
-            runner.MacroRuleset = clone; // legacy sync
             return clone.Id;
         }
 
@@ -1638,7 +1569,6 @@ namespace ProjectGuild.Simulation.Core
                 {
                     // Sequence is now empty — runner goes idle
                     runner.TaskSequenceId = null;
-                    runner.TaskSequence = null;
                     runner.TaskSequenceCurrentStepIndex = 0;
                     runner.State = RunnerState.Idle;
                     runner.Gathering = null;
@@ -1882,12 +1812,16 @@ namespace ProjectGuild.Simulation.Core
             string triggerReason, string actionDetail, bool wasDeferred,
             DecisionLayer layer = DecisionLayer.Macro)
         {
-            CurrentGameState.DecisionLog.Add(new DecisionLogEntry
+            var targetLog = layer == DecisionLayer.Macro
+                ? CurrentGameState.MacroDecisionLog
+                : CurrentGameState.MicroDecisionLog;
+            targetLog.Add(new DecisionLogEntry
             {
                 TickNumber = CurrentGameState.TickCount,
                 GameTime = CurrentGameState.TotalTimeElapsed,
                 RunnerId = runner.Id,
                 RunnerName = runner.Name,
+                NodeId = runner.CurrentNodeId,
                 Layer = layer,
                 RuleIndex = ruleIndex,
                 RuleLabel = !string.IsNullOrEmpty(rule.Label) ? rule.Label : $"Rule #{ruleIndex}",

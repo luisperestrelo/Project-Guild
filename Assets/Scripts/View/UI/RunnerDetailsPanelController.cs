@@ -318,7 +318,7 @@ namespace ProjectGuild.View.UI
         private void RefreshOverview(Runner runner, GameSimulation sim, SimulationConfig config)
         {
             // Warning banner
-            bool hasWarning = runner.ActiveWarning != null;
+            bool hasWarning = !string.IsNullOrEmpty(runner.ActiveWarning);
             _warningLabel.style.display = hasWarning ? DisplayStyle.Flex : DisplayStyle.None;
             if (hasWarning)
                 _warningLabel.text = runner.ActiveWarning;

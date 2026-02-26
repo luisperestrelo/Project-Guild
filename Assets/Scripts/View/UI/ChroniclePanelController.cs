@@ -72,7 +72,18 @@ namespace ProjectGuild.View.UI
             _newEntriesIndicator = root.Q<Label>("new-entries-indicator");
             _newEntriesIndicator.RegisterCallback<ClickEvent>(_ => ScrollToBottom());
 
-            SetFilter(ChronicleFilter.CurrentNode);
+            // Use default filter from player preferences
+            var defaultFilter = ChronicleFilter.CurrentNode;
+            var prefs = uiManager.Preferences;
+            if (prefs != null)
+            {
+                switch (prefs.ChronicleDefaultScopeFilter)
+                {
+                    case "SelectedRunner": defaultFilter = ChronicleFilter.SelectedRunner; break;
+                    case "Global": defaultFilter = ChronicleFilter.Global; break;
+                }
+            }
+            SetFilter(defaultFilter);
         }
 
         // ─── Unread API (used by LogPanelContainerController) ───

@@ -1,0 +1,282 @@
+/* ─── Options Panel (overlay, centered) ────────────── */
+
+.options-panel-root {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: 500px;
+    max-height: 520px;
+    background-color: rgba(12, 12, 20, 0.96);
+    border-width: 1px;
+    border-color: rgba(80, 80, 100, 0.6);
+    border-radius: 6px;
+    flex-direction: column;
+}
+
+/* ─── Title bar ──────────────────────────────── */
+
+.options-title-bar {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.4);
+}
+
+.options-title {
+    font-size: 16px;
+    color: rgb(220, 180, 60);
+    -unity-font-style: bold;
+}
+
+.options-close-button {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    color: rgb(180, 180, 200);
+    background-color: rgba(40, 40, 55, 0.6);
+    border-width: 1px;
+    border-color: rgba(80, 80, 100, 0.4);
+    border-radius: 3px;
+    -unity-text-align: middle-center;
+}
+
+.options-close-button:hover {
+    background-color: rgba(60, 40, 40, 0.8);
+    border-color: rgba(200, 80, 80, 0.6);
+    color: rgb(220, 100, 100);
+}
+
+/* ─── Content area ───────────────────────────── */
+
+.options-content {
+    flex-grow: 1;
+    padding: 4px 0;
+}
+
+.options-section {
+    padding: 6px 16px 10px 16px;
+}
+
+.options-section-header {
+    font-size: 13px;
+    color: rgb(220, 180, 60);
+    -unity-font-style: bold;
+    margin-bottom: 8px;
+}
+
+.options-subsection-header {
+    font-size: 11px;
+    color: rgb(160, 140, 80);
+    -unity-font-style: bold;
+    margin-top: 6px;
+    margin-bottom: 4px;
+}
+
+.options-divider {
+    height: 1px;
+    background-color: rgba(60, 60, 80, 0.4);
+    margin: 2px 16px;
+}
+
+/* ─── Toggle rows ────────────────────────────── */
+
+.options-toggle-row {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 4px 0;
+}
+
+.options-toggle {
+    margin-top: 2px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.options-toggle-text {
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.options-toggle-label {
+    font-size: 12px;
+    color: rgb(200, 200, 215);
+}
+
+.options-toggle-desc {
+    font-size: 10px;
+    color: rgb(130, 130, 155);
+    margin-top: 1px;
+    white-space: normal;
+}
+
+/* ─── Dropdown rows ──────────────────────────── */
+
+.options-dropdown-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+}
+
+.options-dropdown-label {
+    font-size: 12px;
+    color: rgb(200, 200, 215);
+}
+
+.options-dropdown {
+    width: 160px;
+    font-size: 11px;
+    background-color: rgba(20, 20, 35, 0.8);
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 3px;
+    color: rgb(200, 200, 215);
+}
+
+.options-dropdown:focus {
+    border-color: rgba(220, 180, 60, 0.6);
+}
+
+/* ─── Save / Load section ────────────────────── */
+
+.options-save-status {
+    font-size: 11px;
+    color: rgb(140, 140, 160);
+    margin-bottom: 8px;
+}
+
+.options-button-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.options-button {
+    padding: 5px 14px;
+    margin-right: 6px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    border-width: 1px;
+    border-radius: 3px;
+}
+
+.options-button-save {
+    background-color: rgba(50, 100, 50, 0.8);
+    color: rgb(220, 220, 240);
+    border-color: rgba(80, 160, 80, 0.6);
+}
+
+.options-button-save:hover {
+    background-color: rgba(60, 120, 60, 0.9);
+    border-color: rgba(100, 180, 100, 0.8);
+}
+
+.options-button-load {
+    background-color: rgba(40, 60, 100, 0.8);
+    color: rgb(200, 200, 220);
+    border-color: rgba(70, 100, 160, 0.6);
+}
+
+.options-button-load:hover {
+    background-color: rgba(50, 75, 120, 0.9);
+    border-color: rgba(90, 120, 180, 0.8);
+}
+
+.options-button-load:disabled {
+    background-color: rgba(30, 30, 45, 0.6);
+    color: rgb(100, 100, 120);
+    border-color: rgba(50, 50, 70, 0.4);
+}
+
+.options-button-new {
+    background-color: rgba(100, 60, 30, 0.8);
+    color: rgb(220, 200, 180);
+    border-color: rgba(160, 100, 50, 0.6);
+}
+
+.options-button-new:hover {
+    background-color: rgba(120, 75, 40, 0.9);
+    border-color: rgba(180, 120, 60, 0.8);
+}
+
+/* ─── Confirmation dialog ────────────────────── */
+
+.options-confirm-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    display: none;
+}
+
+.options-confirm-dialog {
+    background-color: rgba(20, 20, 35, 0.98);
+    border-width: 2px;
+    border-color: rgba(220, 180, 60, 0.5);
+    border-radius: 6px;
+    padding: 18px 24px;
+    min-width: 300px;
+    align-items: center;
+}
+
+.options-confirm-message {
+    font-size: 13px;
+    color: rgb(220, 220, 240);
+    margin-bottom: 16px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+
+.options-confirm-buttons {
+    flex-direction: row;
+    justify-content: center;
+}
+
+.options-button-confirm {
+    background-color: rgba(50, 100, 50, 0.8);
+    color: rgb(220, 220, 240);
+    border-color: rgba(80, 160, 80, 0.6);
+    -unity-font-style: bold;
+}
+
+.options-button-confirm:hover {
+    background-color: rgba(60, 120, 60, 0.9);
+    border-color: rgba(100, 180, 100, 0.8);
+}
+
+.options-button-cancel {
+    background-color: rgba(40, 40, 55, 0.8);
+    color: rgb(160, 160, 180);
+    border-color: rgba(70, 70, 90, 0.5);
+}
+
+.options-button-cancel:hover {
+    background-color: rgba(55, 55, 70, 0.9);
+    border-color: rgba(90, 90, 110, 0.7);
+}
+
+/* ─── Options Toggle Button (top-left, next to Automation) ── */
+
+.options-toggle-button {
+    position: absolute;
+    left: 120px;
+    top: 12px;
+    background-color: rgba(25, 25, 40, 0.9);
+    color: rgb(180, 180, 200);
+    border-width: 1px;
+    border-color: rgba(80, 80, 100, 0.4);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.options-toggle-button:hover {
+    background-color: rgba(40, 40, 55, 0.95);
+    border-color: rgba(120, 120, 140, 0.7);
+    color: rgb(220, 220, 240);
+}

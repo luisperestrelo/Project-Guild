@@ -85,7 +85,18 @@ namespace ProjectGuild.View.UI
             _newEntriesIndicator = root.Q<Label>("new-entries-indicator");
             _newEntriesIndicator.RegisterCallback<ClickEvent>(_ => ScrollToBottom());
 
-            SetScopeFilter(DecisionLogScopeFilter.SelectedRunner);
+            // Use default scope filter from player preferences
+            var defaultScope = DecisionLogScopeFilter.SelectedRunner;
+            var prefs = uiManager.Preferences;
+            if (prefs != null)
+            {
+                switch (prefs.DecisionLogDefaultScopeFilter)
+                {
+                    case "CurrentNode": defaultScope = DecisionLogScopeFilter.CurrentNode; break;
+                    case "All": defaultScope = DecisionLogScopeFilter.All; break;
+                }
+            }
+            SetScopeFilter(defaultScope);
             SetLayerFilter(null);
         }
 

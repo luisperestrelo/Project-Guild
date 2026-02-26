@@ -20,6 +20,9 @@
                 <ui:Label name="runner-state-label" class="runner-state" text="Idle at Guild Hall" />
             </ui:VisualElement>
 
+            <!-- Warning banner (shown when runner has ActiveWarning) -->
+            <ui:Label name="overview-warning-label" class="overview-warning-label" />
+
             <!-- Task info -->
             <ui:VisualElement name="task-section" class="overview-section">
                 <ui:Label name="section-label-task" class="section-label" text="Current Task" />

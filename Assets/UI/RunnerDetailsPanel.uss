@@ -98,6 +98,20 @@
     margin-top: 2px;
 }
 
+/* ─── Warning banner ─────────────────────────────── */
+
+.overview-warning-label {
+    font-size: 11px;
+    color: rgb(230, 140, 50);
+    background-color: rgba(180, 100, 30, 0.15);
+    border-width: 1px;
+    border-color: rgba(230, 140, 50, 0.4);
+    border-radius: 3px;
+    padding: 4px 8px;
+    margin-bottom: 8px;
+    display: none;
+}
+
 /* ─── Task / Travel ───────────────────────────────── */
 
 .info-label {
