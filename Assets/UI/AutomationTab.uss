@@ -293,3 +293,23 @@
 .auto-assign-dropdown:focus {
     border-color: rgba(220, 180, 60, 0.6);
 }
+
+/* ─── New button (inline with assign dropdown) ──── */
+
+.auto-new-button {
+    background-color: rgba(40, 50, 40, 0.8);
+    color: rgb(140, 200, 140);
+    border-width: 1px;
+    border-color: rgba(80, 140, 80, 0.4);
+    border-radius: 2px;
+    padding: 2px 8px;
+    margin-left: 4px;
+    font-size: 11px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.auto-new-button:hover {
+    background-color: rgba(50, 65, 50, 0.9);
+    border-color: rgba(100, 180, 100, 0.6);
+}

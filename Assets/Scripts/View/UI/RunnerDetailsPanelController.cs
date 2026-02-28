@@ -70,6 +70,7 @@ namespace ProjectGuild.View.UI
         // Per-runner tracking so switching runners preserves XP bar visibility
         private readonly Dictionary<string, float[]> _perRunnerSkillXp = new();
         private readonly Dictionary<string, float[]> _perRunnerSkillXpChangeTime = new();
+        private readonly Dictionary<string, List<int>> _perRunnerSkillInsertionOrder = new();
         private readonly List<(VisualElement row, Label label, ProgressBar bar)> _xpBarPool = new();
 
         // ─── Skills tab elements ────────────────────────
@@ -534,10 +535,12 @@ namespace ProjectGuild.View.UI
                 }
                 _perRunnerSkillXp[runnerId] = lastKnownXp;
                 _perRunnerSkillXpChangeTime[runnerId] = changeTimes;
+                _perRunnerSkillInsertionOrder[runnerId] = new List<int>();
             }
             var lastChangeTime = _perRunnerSkillXpChangeTime[runnerId];
+            var insertionOrder = _perRunnerSkillInsertionOrder[runnerId];
 
-            // Detect XP changes
+            // Detect XP changes and track insertion order
             for (int i = 0; i < skillCount; i++)
             {
                 float currentXpSignature = runner.Skills[i].Level * 10000f + runner.Skills[i].Xp;
@@ -545,10 +548,13 @@ namespace ProjectGuild.View.UI
                 {
                     lastKnownXp[i] = currentXpSignature;
                     lastChangeTime[i] = now;
+                    // First time this skill changed — record its position
+                    if (!insertionOrder.Contains(i))
+                        insertionOrder.Add(i);
                 }
             }
 
-            // Collect skills with recent XP changes, sorted by most recent
+            // Select the N most recently changed skills, then display in insertion order
             float window = _uiManager.LiveStatsXpDisplayWindowSeconds;
             int maxBars = _uiManager.LiveStatsMaxSkillXpBars;
 
@@ -556,33 +562,52 @@ namespace ProjectGuild.View.UI
             if (_xpBarPool.Count < maxBars)
                 BuildXpBarPool(maxBars);
 
-            // Gather eligible skills as (skillIndex, lastChangeTime)
-            var eligible = new List<(int skillIndex, float lastChange)>();
+            // Gather all recently active skills, pick the N most recent
+            var recentSkills = new List<(int skillIndex, float changeTime)>();
             for (int i = 0; i < skillCount; i++)
             {
                 if (lastChangeTime[i] > 0f && (now - lastChangeTime[i]) < window)
-                    eligible.Add((i, lastChangeTime[i]));
+                    recentSkills.Add((i, lastChangeTime[i]));
             }
-            eligible.Sort((a, b) => b.lastChange.CompareTo(a.lastChange));
+            // Sort by most recent to select the top N
+            recentSkills.Sort((a, b) => b.changeTime.CompareTo(a.changeTime));
+            // Keep only top N, then build a set for fast lookup
+            var selectedSkills = new HashSet<int>();
+            for (int i = 0; i < System.Math.Min(recentSkills.Count, maxBars); i++)
+                selectedSkills.Add(recentSkills[i].skillIndex);
 
-            int barCount = System.Math.Min(eligible.Count, maxBars);
-            for (int i = 0; i < barCount; i++)
+            // Display selected skills in stable insertion order
+            int barIndex = 0;
+            for (int orderIdx = 0; orderIdx < insertionOrder.Count && barIndex < maxBars; orderIdx++)
             {
-                int si = eligible[i].skillIndex;
+                int si = insertionOrder[orderIdx];
+                if (!selectedSkills.Contains(si))
+                    continue;
+
                 var skill = runner.Skills[si];
                 string skillName = ((SkillType)si).ToString();
                 string passionMark = skill.HasPassion ? " <color=#DCB43C>P</color>" : "";
                 float progress = skill.GetLevelProgress(_uiManager.Simulation.Config) * 100f;
 
-                var (row, label, bar) = _xpBarPool[i];
+                // Highlight skills actively gaining XP right now (changed this tick)
+                bool isActive = (now - lastChangeTime[si]) < 0.2f;
+
+                var (row, label, bar) = _xpBarPool[barIndex];
                 label.text = $"{skillName} Lv {skill.Level}{passionMark}";
                 bar.value = progress;
                 bar.title = $"{progress:F0}%";
                 row.style.display = DisplayStyle.Flex;
+
+                // Active skill gets brighter label, inactive gets dimmed
+                label.style.color = isActive
+                    ? new Color(0.9f, 0.85f, 0.6f)
+                    : new Color(0.7f, 0.7f, 0.7f);
+
+                barIndex++;
             }
 
             // Hide unused bars
-            for (int i = barCount; i < _xpBarPool.Count; i++)
+            for (int i = barIndex; i < _xpBarPool.Count; i++)
                 _xpBarPool[i].row.style.display = DisplayStyle.None;
         }
 

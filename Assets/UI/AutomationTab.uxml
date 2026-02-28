@@ -19,6 +19,7 @@
             <ui:VisualElement name="taskseq-assign-row" class="auto-info-row">
                 <ui:Label class="auto-info-key" text="Assign:" />
                 <ui:DropdownField name="taskseq-assign-dropdown" class="auto-assign-dropdown" />
+                <ui:Button name="btn-new-taskseq" class="auto-new-button" text="+ New" />
             </ui:VisualElement>
 
             <ui:VisualElement name="taskseq-loop-row" class="auto-info-row">
@@ -51,6 +52,7 @@
             <ui:VisualElement name="macro-assign-row" class="auto-info-row">
                 <ui:Label class="auto-info-key" text="Assign:" />
                 <ui:DropdownField name="macro-assign-dropdown" class="auto-assign-dropdown" />
+                <ui:Button name="btn-new-macro" class="auto-new-button" text="+ New" />
             </ui:VisualElement>
 
             <ui:VisualElement name="macro-rules-container" class="auto-list-container" />

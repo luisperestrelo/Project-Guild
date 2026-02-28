@@ -33,6 +33,11 @@ namespace ProjectGuild.View.UI
 
         public bool IsOpen { get; private set; }
 
+        // Pending assignment context — set when opened from runner's "+ New" button
+        private string _pendingAssignRunnerId;
+        private string _pendingAssignTabType;
+        private string _pendingAssignItemId;
+
         public AutomationPanelController(VisualElement root, UIManager uiManager)
         {
             _root = root;
@@ -91,6 +96,7 @@ namespace ProjectGuild.View.UI
         {
             IsOpen = false;
             _root.style.display = DisplayStyle.None;
+            ClearPendingAssignment();
         }
 
         public void Toggle()
@@ -128,7 +134,71 @@ namespace ProjectGuild.View.UI
         /// </summary>
         public void OpenToItemFromRunner(string tabType, string itemId, string runnerId)
         {
+            ClearPendingAssignment();
             OpenToItem(tabType, itemId);
+        }
+
+        /// <summary>
+        /// Open the panel for a newly created item that needs to be assigned to a runner.
+        /// Shows a prominent "Assign to [Runner Name]" bar at the top.
+        /// </summary>
+        public void OpenToItemForNewAssignment(string tabType, string itemId, string runnerId)
+        {
+            _pendingAssignRunnerId = runnerId;
+            _pendingAssignTabType = tabType;
+            _pendingAssignItemId = itemId;
+            OpenToItem(tabType, itemId);
+            ShowPendingAssignBar();
+        }
+
+        private void ShowPendingAssignBar()
+        {
+            var sim = _uiManager.Simulation;
+            var runner = sim?.FindRunner(_pendingAssignRunnerId);
+            if (runner == null) return;
+
+            // Add assign button to the editor's footer buttons area
+            VisualElement footerButtons = null;
+            if (_pendingAssignTabType == "taskseq")
+                footerButtons = _contentTaskSeq.Q(className: "editor-footer-buttons");
+            else if (_pendingAssignTabType == "macro")
+                footerButtons = _contentMacro.Q(className: "editor-footer-buttons");
+
+            if (footerButtons != null)
+            {
+                var assignBtn = new Button(() => CompletePendingAssignment());
+                assignBtn.name = "btn-pending-assign";
+                assignBtn.text = $"Assign to {runner.Name}";
+                assignBtn.AddToClassList("editor-footer-button");
+                assignBtn.style.backgroundColor = new UnityEngine.Color(0.2f, 0.4f, 0.2f, 0.9f);
+                assignBtn.style.color = new UnityEngine.Color(0.85f, 1f, 0.85f);
+                assignBtn.style.unityFontStyleAndWeight = UnityEngine.FontStyle.Bold;
+                footerButtons.Insert(0, assignBtn);
+            }
+        }
+
+        private void CompletePendingAssignment()
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            if (_pendingAssignTabType == "taskseq")
+                sim.CommandAssignTaskSequenceToRunner(_pendingAssignRunnerId, _pendingAssignItemId);
+            else if (_pendingAssignTabType == "macro")
+                sim.CommandAssignMacroRulesetToRunner(_pendingAssignRunnerId, _pendingAssignItemId);
+
+            ClearPendingAssignment();
+            Close();
+        }
+
+        private void ClearPendingAssignment()
+        {
+            _pendingAssignRunnerId = null;
+            _pendingAssignTabType = null;
+            _pendingAssignItemId = null;
+            // Remove the footer button if it exists
+            var footerBtn = _panelRoot.Q("btn-pending-assign");
+            footerBtn?.RemoveFromHierarchy();
         }
 
         private void SwitchTab(string tabName)

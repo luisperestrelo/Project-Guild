@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Automation;
@@ -58,6 +59,8 @@ namespace ProjectGuild.View.UI
         private readonly Label _macroUsageLabel;
         private readonly VisualElement _macroRulesContainer;
         private readonly Button _btnEditMacro;
+        private readonly Button _btnNewTaskSeq;
+        private readonly Button _btnNewMacro;
         private readonly DropdownField _macroAssignDropdown;
 
         // ─── Macro assign dropdown state ──────
@@ -124,6 +127,12 @@ namespace ProjectGuild.View.UI
             _macroRulesContainer = root.Q("macro-rules-container");
             _btnEditMacro = root.Q<Button>("btn-edit-macro");
             _btnEditMacro.clicked += OnEditMacroClicked;
+
+            // "+ New" buttons
+            _btnNewTaskSeq = root.Q<Button>("btn-new-taskseq");
+            _btnNewMacro = root.Q<Button>("btn-new-macro");
+            _btnNewTaskSeq.clicked += OnNewTaskSeqClicked;
+            _btnNewMacro.clicked += OnNewMacroClicked;
 
             // Macro assign dropdown
             _macroAssignDropdown = root.Q<DropdownField>("macro-assign-dropdown");
@@ -803,6 +812,39 @@ namespace ProjectGuild.View.UI
             if (ruleset?.Id == null) return;
 
             _uiManager.OpenAutomationPanelToItemFromRunner("macro", ruleset.Id, _currentRunnerId);
+        }
+
+        private void OnNewTaskSeqClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            var seq = new TaskSequence
+            {
+                Name = "New Sequence",
+                Loop = true,
+                Steps = new List<TaskStep>(),
+            };
+            string id = sim.CommandCreateTaskSequence(seq);
+            // Don't assign yet — the sequence is empty. The library panel will show
+            // an "Assign to [Runner]" button that assigns when the user is done editing.
+            _uiManager.OpenAutomationPanelToItemForNewAssignment("taskseq", id, _currentRunnerId);
+        }
+
+        private void OnNewMacroClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            var ruleset = new Ruleset
+            {
+                Name = "New Macro Ruleset",
+                Category = RulesetCategory.General,
+            };
+            string id = sim.CommandCreateMacroRuleset(ruleset);
+            _uiManager.OpenAutomationPanelToItemForNewAssignment("macro", id, _currentRunnerId);
         }
     }
 }

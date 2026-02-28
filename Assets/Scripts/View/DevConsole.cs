@@ -37,6 +37,15 @@ namespace ProjectGuild.View
         private bool _hudVisible = true;
         private bool _eventLogLive;
         private int _lastSeenEventLogCount;
+        private bool _isFastForwarding;
+
+        // Command history
+        private readonly List<string> _commandHistory = new();
+        private int _historyIndex = -1;
+        private string _historyStash = "";
+
+        // Spawn preset counters
+        private readonly Dictionary<string, int> _presetCounters = new();
 
         // Drag state
         private VisualElement _titleBar;
@@ -258,10 +267,43 @@ namespace ProjectGuild.View
                 string input = _inputField.value.Trim();
                 if (!string.IsNullOrEmpty(input))
                 {
+                    _commandHistory.Add(input);
                     Print($"<color=#DCB43C>> {input}</color>");
                     ProcessCommand(input);
                 }
+                _historyIndex = -1;
+                _historyStash = "";
                 _inputField.value = "";
+            }
+            else if (evt.keyCode == KeyCode.UpArrow)
+            {
+                evt.StopImmediatePropagation();
+                if (_commandHistory.Count == 0) return;
+                if (_historyIndex == -1)
+                {
+                    _historyStash = _inputField.value;
+                    _historyIndex = _commandHistory.Count - 1;
+                }
+                else if (_historyIndex > 0)
+                {
+                    _historyIndex--;
+                }
+                _inputField.value = _commandHistory[_historyIndex];
+            }
+            else if (evt.keyCode == KeyCode.DownArrow)
+            {
+                evt.StopImmediatePropagation();
+                if (_historyIndex == -1) return;
+                if (_historyIndex < _commandHistory.Count - 1)
+                {
+                    _historyIndex++;
+                    _inputField.value = _commandHistory[_historyIndex];
+                }
+                else
+                {
+                    _historyIndex = -1;
+                    _inputField.value = _historyStash;
+                }
             }
             else if (evt.keyCode == KeyCode.Escape)
             {
@@ -407,6 +449,7 @@ namespace ProjectGuild.View
                 case "tick": HandleTick(parts); break;
                 case "advance": HandleAdvance(parts); break;
                 case "time": PrintTimeInfo(); break;
+                case "pause": HandlePause(); break;
                 case "hud": HandleHud(parts); break;
                 case "runners": HandleRunners(); break;
                 case "inspect": HandleInspect(parts); break;
@@ -441,8 +484,18 @@ namespace ProjectGuild.View
             Print("<color=#DCB43C>--- Spawning ---</color>");
             Print("  /spawn random                     Random runner at hub");
             Print("  /spawn tutorial                   Tutorial-biased runner");
+            Print("  /spawn gatherer [N] [P]           All gathering skills (default 50)");
+            Print("  /spawn crafter [N] [P]            Production skills");
+            Print("  /spawn fighter [N] [P]            Melee combat skills");
+            Print("  /spawn mage [N] [P]               Magic combat skills");
+            Print("  /spawn healer [N] [P]             Restoration + HP");
+            Print("  /spawn tank [N] [P]               Defence + HP + Melee");
+            Print("  /spawn fastgatherer [N] [P]       Gathering + Athletics");
+            Print("  /spawn fastcrafter [N] [P]        Production + Athletics");
+            Print("  /spawn jack [N] [P]               All skills");
             Print("  /spawn mining 50 P woodcutting 30 Custom stats (P = passion)");
             Print("  /spawn \"Name\" mining 50 P         Named + custom stats");
+            Print("  /spawn gatherer \"Name\" 50 P       Named preset");
             Print("");
             Print("<color=#DCB43C>--- Inspection ---</color>");
             Print("  /inspect [name]           Full runner state dump");
@@ -473,6 +526,7 @@ namespace ProjectGuild.View
             Print("  /tick                     Show current tick");
             Print("  /tick <N>                 Fast-forward N ticks");
             Print("  /advance 30s|5m|2h        Advance game time");
+            Print("  /pause                    Toggle simulation pause");
             Print("  /time                     Show game time");
             Print("");
             Print("<color=#DCB43C>--- Event Log ---</color>");
@@ -495,7 +549,8 @@ namespace ProjectGuild.View
 
             if (parts.Length < 2)
             {
-                Print("<color=#CC4444>Usage: /spawn random | /spawn tutorial | /spawn [\"name\"] skill level [P] ...</color>");
+                Print("<color=#CC4444>Usage: /spawn random | tutorial | gatherer | crafter | fighter | mage | healer | tank | fastgatherer | fastcrafter | jack [N] [P]</color>");
+                Print("<color=#CC4444>       /spawn [\"name\"] skill level [P] ...  (custom)</color>");
                 return;
             }
 
@@ -528,8 +583,94 @@ namespace ProjectGuild.View
                 return;
             }
 
+            // Preset spawns
+            var presets = new Dictionary<string, SkillType[]>
+            {
+                ["gatherer"] = new[] { SkillType.Mining, SkillType.Woodcutting, SkillType.Fishing, SkillType.Foraging },
+                ["crafter"] = new[] { SkillType.Engineering, SkillType.PotionMaking, SkillType.Cooking },
+                ["fighter"] = new[] { SkillType.Melee, SkillType.Ranged, SkillType.Defence, SkillType.Hitpoints },
+                ["mage"] = new[] { SkillType.Magic, SkillType.Restoration, SkillType.Execution, SkillType.Hitpoints },
+                ["healer"] = new[] { SkillType.Restoration, SkillType.Hitpoints },
+                ["tank"] = new[] { SkillType.Defence, SkillType.Hitpoints, SkillType.Melee },
+                ["fastgatherer"] = new[] { SkillType.Mining, SkillType.Woodcutting, SkillType.Fishing, SkillType.Foraging, SkillType.Athletics },
+                ["fastcrafter"] = new[] { SkillType.Engineering, SkillType.PotionMaking, SkillType.Cooking, SkillType.Athletics },
+                ["jack"] = new[] { SkillType.Melee, SkillType.Ranged, SkillType.Defence, SkillType.Hitpoints, SkillType.Magic, SkillType.Restoration, SkillType.Execution, SkillType.Mining, SkillType.Woodcutting, SkillType.Fishing, SkillType.Foraging, SkillType.Engineering, SkillType.PotionMaking, SkillType.Cooking, SkillType.Athletics },
+            };
+
+            if (presets.TryGetValue(sub, out var presetSkills))
+            {
+                HandleSpawnPreset(parts, sub, presetSkills);
+                return;
+            }
+
             // Custom spawn: /spawn [\"name\"] skill level [P] skill level [P] ...
             HandleSpawnCustom(parts);
+        }
+
+        private void HandleSpawnPreset(string[] parts, string presetName, SkillType[] skills)
+        {
+            string hubId = Sim.CurrentGameState.Map.HubNodeId;
+            int idx = 2;
+
+            // Optional name: /spawn gatherer "Bob" 50 P
+            string forcedName = null;
+            if (idx < parts.Length && parts[idx].StartsWith("\""))
+            {
+                var nameParts = new List<string>();
+                for (; idx < parts.Length; idx++)
+                {
+                    string cleaned = parts[idx].Trim('"', ',', ' ');
+                    if (cleaned.Length > 0) nameParts.Add(cleaned);
+                    if (parts[idx].TrimEnd(',', ' ').EndsWith("\"")) { idx++; break; }
+                }
+                forcedName = string.Join(" ", nameParts);
+            }
+            else if (idx < parts.Length && !int.TryParse(parts[idx], out _)
+                     && parts[idx].ToUpperInvariant() != "P")
+            {
+                // Unquoted single-word name: /spawn gatherer Bob 50
+                forcedName = parts[idx];
+                idx++;
+            }
+
+            // Optional level: /spawn gatherer 50 or /spawn gatherer 50 P
+            int level = 50;
+            bool passion = false;
+            if (idx < parts.Length && int.TryParse(parts[idx], out int parsedLevel))
+            {
+                level = Math.Clamp(parsedLevel, 1, 99);
+                idx++;
+            }
+            if (idx < parts.Length && parts[idx].ToUpperInvariant() == "P")
+            {
+                passion = true;
+                idx++;
+            }
+
+            // Auto-generate name if not provided
+            if (forcedName == null)
+            {
+                string capitalizedPreset = char.ToUpper(presetName[0]) + presetName.Substring(1);
+                if (!_presetCounters.TryGetValue(presetName, out int counter))
+                    counter = 0;
+                counter++;
+                _presetCounters[presetName] = counter;
+                forcedName = $"{capitalizedPreset} #{counter}";
+            }
+
+            var runner = RunnerFactory.Create(new System.Random(), Sim.Config, hubId);
+            runner.Name = forcedName;
+
+            foreach (var skill in skills)
+            {
+                int i = (int)skill;
+                runner.Skills[i].Level = level;
+                if (passion) runner.Skills[i].HasPassion = true;
+            }
+
+            Sim.AddRunner(runner);
+            Print($"Spawned <color=#7CCD7C>{forcedName}</color> ({presetName}, Lv{level}{(passion ? " P" : "")}) at {hubId}");
+            PrintRunnerSkillSummary(runner);
         }
 
         private void HandleSpawnCustom(string[] parts)
@@ -1148,8 +1289,10 @@ namespace ProjectGuild.View
             {
                 long startTick = Sim.CurrentGameState.TickCount;
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                _isFastForwarding = true;
                 for (int i = 0; i < count; i++)
                     Sim.Tick();
+                _isFastForwarding = false;
                 stopwatch.Stop();
                 long endTick = Sim.CurrentGameState.TickCount;
 
@@ -1192,8 +1335,10 @@ namespace ProjectGuild.View
             int tickCount = Math.Max(1, (int)(totalSeconds / Sim.TickDeltaTime));
             long startTick = Sim.CurrentGameState.TickCount;
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            _isFastForwarding = true;
             for (int i = 0; i < tickCount; i++)
                 Sim.Tick();
+            _isFastForwarding = false;
             stopwatch.Stop();
             long endTick = Sim.CurrentGameState.TickCount;
 
@@ -1212,6 +1357,15 @@ namespace ProjectGuild.View
             int minutes = (totalSeconds % 3600) / 60;
             int secs = totalSeconds % 60;
             Print($"Game time: {hours}:{minutes:D2}:{secs:D2} ({ticks} ticks)");
+        }
+
+        private void HandlePause()
+        {
+            _simulationRunner.IsPaused = !_simulationRunner.IsPaused;
+            string state = _simulationRunner.IsPaused
+                ? "<color=#CC4444>PAUSED</color>"
+                : "<color=#7CCD7C>RESUMED</color>";
+            Print($"Simulation {state}");
         }
 
         // ─── Library Inspection ────────────────────────────────────
@@ -1458,6 +1612,8 @@ namespace ProjectGuild.View
 
         private void OnTick(SimulationTickCompleted e)
         {
+            if (_isFastForwarding) return;
+
             if (_hudVisible && _hudLabel != null)
             {
                 long ticks = Sim.CurrentGameState.TickCount;

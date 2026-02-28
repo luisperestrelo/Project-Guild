@@ -602,6 +602,11 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         private void ExecuteCurrentStep(Runner runner)
         {
+            ExecuteCurrentStepInternal(runner, 0);
+        }
+
+        private void ExecuteCurrentStepInternal(Runner runner, int recursionGuard)
+        {
             if (runner.State != RunnerState.Idle) return;
 
             // Evaluate macro rules before executing the next step.
@@ -612,13 +617,19 @@ namespace ProjectGuild.Simulation.Core
             var seq = GetRunnerTaskSequence(runner);
             if (seq == null) return;
 
+            if (seq.Steps == null || seq.Steps.Count == 0)
+            {
+                runner.ActiveWarning = "Task sequence has no steps. Runner is stuck.";
+                return;
+            }
+
             var step = GetCurrentStep(runner, seq);
             if (step == null) return;
 
             switch (step.Type)
             {
                 case TaskStepType.TravelTo:
-                    ExecuteTravelStep(runner, step, seq);
+                    ExecuteTravelStep(runner, step, seq, recursionGuard);
                     break;
 
                 case TaskStepType.Work:
@@ -631,17 +642,25 @@ namespace ProjectGuild.Simulation.Core
             }
         }
 
-        private void ExecuteTravelStep(Runner runner, TaskStep step, TaskSequence seq)
+        private void ExecuteTravelStep(Runner runner, TaskStep step, TaskSequence seq, int recursionGuard = 0)
         {
             // Already at target? Step is done — advance past it and handle next.
             // But if there's a redirect position, the runner was interrupted mid-travel
             // and isn't actually at CurrentNodeId — they need to travel.
             if (runner.CurrentNodeId == step.TargetNodeId && !runner.RedirectWorldX.HasValue)
             {
+                // Guard against infinite recursion when all steps target the current node
+                if (recursionGuard >= seq.Steps.Count)
+                {
+                    // Every step in the sequence has been skipped — runner is stuck
+                    runner.ActiveWarning = "All travel steps target the current node. Runner has nothing to do.";
+                    return;
+                }
+
                 if (AdvanceRunnerStepIndex(runner, seq))
                 {
                     PublishStepAdvanced(runner, seq);
-                    ExecuteCurrentStep(runner); // recurse for next step
+                    ExecuteCurrentStepInternal(runner, recursionGuard + 1);
                 }
                 else
                 {

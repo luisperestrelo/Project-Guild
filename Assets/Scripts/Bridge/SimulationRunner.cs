@@ -46,6 +46,8 @@ namespace ProjectGuild.Bridge
         public IReadOnlyDictionary<string, Sprite> ItemIcons => _itemIcons;
         private readonly Dictionary<string, Sprite> _itemIcons = new();
 
+        public bool IsPaused { get; set; }
+
         private float _tickAccumulator;
         private float _tickInterval;
 
@@ -88,7 +90,7 @@ namespace ProjectGuild.Bridge
 
         private void Update()
         {
-            if (Simulation == null) return;
+            if (Simulation == null || IsPaused) return;
 
             _tickAccumulator += Time.deltaTime;
 

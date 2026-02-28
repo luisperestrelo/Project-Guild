@@ -336,6 +336,15 @@ namespace ProjectGuild.View.UI
             _automationPanelController?.OpenToItemFromRunner(tabType, itemId, runnerId);
         }
 
+        /// <summary>
+        /// Open the Automation panel for a newly created item that should be assigned
+        /// to a runner when the user finishes editing. Shows an "Assign to [Runner]" button.
+        /// </summary>
+        public void OpenAutomationPanelToItemForNewAssignment(string tabType, string itemId, string runnerId)
+        {
+            _automationPanelController?.OpenToItemForNewAssignment(tabType, itemId, runnerId);
+        }
+
         // ─── Logbook ─────────────────────────────────────────
 
         /// <summary>
