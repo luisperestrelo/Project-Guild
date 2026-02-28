@@ -45,6 +45,24 @@ namespace ProjectGuild.Simulation.Automation
     [Serializable]
     public class TaskSequence
     {
+        public TaskSequence DeepCopy()
+        {
+            var copy = new TaskSequence
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = Name,
+                Loop = Loop,
+                TargetNodeId = TargetNodeId,
+                Steps = new List<TaskStep>(),
+            };
+            if (Steps != null)
+            {
+                foreach (var step in Steps)
+                    copy.Steps.Add(new TaskStep(step.Type, step.TargetNodeId, step.MicroRulesetId));
+            }
+            return copy;
+        }
+
         /// <summary>Unique identifier for library lookups. Null when not in a library.</summary>
         public string Id;
 

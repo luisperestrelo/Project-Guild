@@ -37,7 +37,7 @@
 
 .sub-content {
     flex-grow: 1;
-    padding: 6px 8px;
+    padding: 2px 8px 6px 8px;
 }
 
 .sub-content-hidden {
@@ -53,16 +53,29 @@
     border-bottom-color: rgba(60, 60, 80, 0.2);
 }
 
+
 .auto-name-label {
     font-size: 13px;
     color: rgb(220, 220, 240);
     -unity-font-style: bold;
 }
 
+.auto-loop-tag {
+    font-size: 10px;
+    -unity-font-style: normal;
+    color: rgb(140, 180, 140);
+}
+
 .auto-usage-label {
     font-size: 10px;
     color: rgb(140, 140, 160);
     margin-top: 1px;
+}
+
+.auto-change-button {
+    flex-shrink: 0;
+    margin-top: 3px;
+    margin-bottom: 2px;
 }
 
 /* ─── Info rows ───────────────────────────────────── */
@@ -164,7 +177,6 @@
 
 .auto-step-micro-link:hover {
     color: rgb(180, 210, 240);
-    -unity-text-decoration: underline;
 }
 
 /* ─── Rule rows ───────────────────────────────────── */
@@ -274,42 +286,55 @@
     border-color: rgba(220, 180, 60, 0.6);
 }
 
-/* ─── Assign dropdown ────────────────────────────── */
+/* ─── Change button (header, more prominent) ─────── */
 
-.auto-assign-dropdown {
-    flex-grow: 1;
-    font-size: 11px;
-    background-color: rgba(25, 25, 40, 0.7);
-    border-color: rgba(70, 70, 90, 0.5);
-    border-radius: 2px;
-    height: 22px;
-    color: rgb(200, 200, 215);
+.auto-change-button {
+    padding: 4px 14px;
+    font-size: 12px;
+    align-self: flex-start;
+    color: rgb(140, 190, 220);
+    border-color: rgba(80, 140, 180, 0.5);
+    background-color: rgba(30, 45, 60, 0.8);
 }
 
-.auto-assign-dropdown:hover {
-    border-color: rgba(100, 100, 120, 0.7);
+.auto-change-button:hover {
+    border-color: rgba(100, 170, 220, 0.7);
+    background-color: rgba(40, 55, 75, 0.9);
 }
 
-.auto-assign-dropdown:focus {
-    border-color: rgba(220, 180, 60, 0.6);
-}
-
-/* ─── New button (inline with assign dropdown) ──── */
+/* ─── New button ─────────────────────────────────── */
 
 .auto-new-button {
     background-color: rgba(40, 50, 40, 0.8);
     color: rgb(140, 200, 140);
-    border-width: 1px;
     border-color: rgba(80, 140, 80, 0.4);
-    border-radius: 2px;
-    padding: 2px 8px;
-    margin-left: 4px;
-    font-size: 11px;
-    height: 22px;
-    flex-shrink: 0;
 }
 
 .auto-new-button:hover {
     background-color: rgba(50, 65, 50, 0.9);
     border-color: rgba(100, 180, 100, 0.6);
+}
+
+/* ─── Duplicate button ──────────────────────────── */
+
+.auto-duplicate-button {
+    background-color: rgba(35, 40, 55, 0.8);
+    color: rgb(140, 170, 210);
+    border-color: rgba(70, 110, 160, 0.4);
+}
+
+.auto-duplicate-button:hover {
+    background-color: rgba(40, 50, 70, 0.9);
+    border-color: rgba(90, 140, 200, 0.6);
+}
+
+/* ─── Danger button (clear/remove) ──────────────── */
+
+.auto-danger-button {
+    color: rgb(200, 130, 130);
+    border-color: rgba(180, 80, 80, 0.3);
+}
+
+.auto-danger-button:hover {
+    border-color: rgba(200, 100, 100, 0.6);
 }

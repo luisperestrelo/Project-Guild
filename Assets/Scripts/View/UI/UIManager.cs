@@ -345,6 +345,15 @@ namespace ProjectGuild.View.UI
             _automationPanelController?.OpenToItemForNewAssignment(tabType, itemId, runnerId);
         }
 
+        /// <summary>
+        /// Open the Automation panel in list/browse mode with "Assign to [Runner]" context.
+        /// Used by CHANGE button — player wants to pick a different item from the library.
+        /// </summary>
+        public void OpenAutomationPanelForChangeAssignment(string tabType, string runnerId)
+        {
+            _automationPanelController?.OpenForChangeAssignment(tabType, runnerId);
+        }
+
         // ─── Logbook ─────────────────────────────────────────
 
         /// <summary>

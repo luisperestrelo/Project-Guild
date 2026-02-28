@@ -33,10 +33,9 @@ namespace ProjectGuild.View.UI
 
         public bool IsOpen { get; private set; }
 
-        // Pending assignment context — set when opened from runner's "+ New" button
+        // Pending assignment context — set when opened from a runner's automation tab.
+        // Only the runner ID matters; the active tab determines what type to assign.
         private string _pendingAssignRunnerId;
-        private string _pendingAssignTabType;
-        private string _pendingAssignItemId;
 
         public AutomationPanelController(VisualElement root, UIManager uiManager)
         {
@@ -130,38 +129,57 @@ namespace ProjectGuild.View.UI
 
         /// <summary>
         /// Open the panel to a specific item from a runner context.
-        /// The editor's shared banner handles the "affects N runners" warning.
+        /// Shows "Assign to [Runner]" so the player can reassign from any entry point.
         /// </summary>
         public void OpenToItemFromRunner(string tabType, string itemId, string runnerId)
         {
-            ClearPendingAssignment();
+            _pendingAssignRunnerId = runnerId;
             OpenToItem(tabType, itemId);
+            ShowAssignButtonOnActiveTab();
         }
 
         /// <summary>
         /// Open the panel for a newly created item that needs to be assigned to a runner.
-        /// Shows a prominent "Assign to [Runner Name]" bar at the top.
+        /// Shows a prominent "Assign to [Runner Name]" button in the footer.
         /// </summary>
         public void OpenToItemForNewAssignment(string tabType, string itemId, string runnerId)
         {
             _pendingAssignRunnerId = runnerId;
-            _pendingAssignTabType = tabType;
-            _pendingAssignItemId = itemId;
             OpenToItem(tabType, itemId);
-            ShowPendingAssignBar();
+            ShowAssignButtonOnActiveTab();
         }
 
-        private void ShowPendingAssignBar()
+        /// <summary>
+        /// Open the panel to the list view for browsing/picking, with "Assign to [Runner]" context.
+        /// Used by CHANGE button — player wants to pick a different existing item.
+        /// </summary>
+        public void OpenForChangeAssignment(string tabType, string runnerId)
         {
+            _pendingAssignRunnerId = runnerId;
+            Open();
+            SwitchTab(tabType);
+            ShowAssignButtonOnActiveTab();
+        }
+
+        // ─── Assign To Button ─────────────────────────────────
+
+        private void ShowAssignButtonOnActiveTab()
+        {
+            // Remove any existing button first
+            RemoveAssignButton();
+
+            if (string.IsNullOrEmpty(_pendingAssignRunnerId)) return;
+            // No Assign To on Micro tab (micro rulesets are per-Work-step, not per-runner)
+            if (_activeTab == "micro") return;
+
             var sim = _uiManager.Simulation;
             var runner = sim?.FindRunner(_pendingAssignRunnerId);
             if (runner == null) return;
 
-            // Add assign button to the editor's footer buttons area
             VisualElement footerButtons = null;
-            if (_pendingAssignTabType == "taskseq")
+            if (_activeTab == "taskseq")
                 footerButtons = _contentTaskSeq.Q(className: "editor-footer-buttons");
-            else if (_pendingAssignTabType == "macro")
+            else if (_activeTab == "macro")
                 footerButtons = _contentMacro.Q(className: "editor-footer-buttons");
 
             if (footerButtons != null)
@@ -177,15 +195,31 @@ namespace ProjectGuild.View.UI
             }
         }
 
+        private void RemoveAssignButton()
+        {
+            // Could be on any tab's footer — search all
+            _contentTaskSeq.Q("btn-pending-assign")?.RemoveFromHierarchy();
+            _contentMacro.Q("btn-pending-assign")?.RemoveFromHierarchy();
+        }
+
         private void CompletePendingAssignment()
         {
             var sim = _uiManager.Simulation;
-            if (sim == null) return;
+            if (sim == null || string.IsNullOrEmpty(_pendingAssignRunnerId)) return;
 
-            if (_pendingAssignTabType == "taskseq")
-                sim.CommandAssignTaskSequenceToRunner(_pendingAssignRunnerId, _pendingAssignItemId);
-            else if (_pendingAssignTabType == "macro")
-                sim.CommandAssignMacroRulesetToRunner(_pendingAssignRunnerId, _pendingAssignItemId);
+            // Use whatever is currently selected on the active tab
+            string itemId = null;
+            if (_activeTab == "taskseq")
+                itemId = _taskSeqEditor.SelectedId;
+            else if (_activeTab == "macro")
+                itemId = _macroEditor.SelectedId;
+
+            if (string.IsNullOrEmpty(itemId)) return;
+
+            if (_activeTab == "taskseq")
+                sim.CommandAssignTaskSequenceToRunner(_pendingAssignRunnerId, itemId);
+            else if (_activeTab == "macro")
+                sim.CommandAssignMacroRulesetToRunner(_pendingAssignRunnerId, itemId);
 
             ClearPendingAssignment();
             Close();
@@ -194,12 +228,10 @@ namespace ProjectGuild.View.UI
         private void ClearPendingAssignment()
         {
             _pendingAssignRunnerId = null;
-            _pendingAssignTabType = null;
-            _pendingAssignItemId = null;
-            // Remove the footer button if it exists
-            var footerBtn = _panelRoot.Q("btn-pending-assign");
-            footerBtn?.RemoveFromHierarchy();
+            RemoveAssignButton();
         }
+
+        // ─── Tab Switching ────────────────────────────────────
 
         private void SwitchTab(string tabName)
         {
@@ -214,6 +246,10 @@ namespace ProjectGuild.View.UI
             _contentMicro.style.display = tabName == "micro" ? DisplayStyle.Flex : DisplayStyle.None;
 
             RefreshActiveTab();
+
+            // Move Assign To button to the new tab if runner context exists
+            if (!string.IsNullOrEmpty(_pendingAssignRunnerId))
+                ShowAssignButtonOnActiveTab();
         }
 
         private void RefreshActiveTab()

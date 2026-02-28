@@ -23,6 +23,7 @@ namespace ProjectGuild.View.UI
         private readonly Toggle _toggleAutoExpand;
         private readonly DropdownField _chronicleScopeDropdown;
         private readonly DropdownField _decisionLogScopeDropdown;
+        private readonly Toggle _toggleSkipDeleteConfirm;
 
         // ─── Save/Load controls ──────────────────────────
         private readonly Label _saveStatusLabel;
@@ -72,6 +73,8 @@ namespace ProjectGuild.View.UI
             _decisionLogScopeDropdown = root.Q<DropdownField>("dropdown-decision-log-scope");
             _decisionLogScopeDropdown.choices = DecisionLogFilterChoices;
 
+            _toggleSkipDeleteConfirm = root.Q<Toggle>("toggle-skip-delete-confirm");
+
             // Save/Load
             _saveStatusLabel = root.Q<Label>("save-status-label");
             _loadButton = root.Q<Button>("btn-load-game");
@@ -94,6 +97,7 @@ namespace ProjectGuild.View.UI
             _toggleAutoNavSelection.RegisterValueChangedCallback(OnToggleChanged);
             _toggleAutoNavArrival.RegisterValueChangedCallback(OnToggleChanged);
             _toggleAutoExpand.RegisterValueChangedCallback(OnToggleChanged);
+            _toggleSkipDeleteConfirm.RegisterValueChangedCallback(OnToggleChanged);
             _chronicleScopeDropdown.RegisterValueChangedCallback(OnDropdownChanged);
             _decisionLogScopeDropdown.RegisterValueChangedCallback(OnDropdownChanged);
 
@@ -146,6 +150,7 @@ namespace ProjectGuild.View.UI
             _toggleAutoNavSelection.SetValueWithoutNotify(prefs.LogbookAutoNavigateOnSelection);
             _toggleAutoNavArrival.SetValueWithoutNotify(prefs.LogbookAutoNavigateOnArrival);
             _toggleAutoExpand.SetValueWithoutNotify(prefs.LogbookAutoExpandOnNavigation);
+            _toggleSkipDeleteConfirm.SetValueWithoutNotify(prefs.SkipDeleteConfirmation);
 
             // Chronicle scope
             int chronicleIdx = ChronicleFilterValues.IndexOf(prefs.ChronicleDefaultScopeFilter);
@@ -165,6 +170,7 @@ namespace ProjectGuild.View.UI
             prefs.LogbookAutoNavigateOnSelection = _toggleAutoNavSelection.value;
             prefs.LogbookAutoNavigateOnArrival = _toggleAutoNavArrival.value;
             prefs.LogbookAutoExpandOnNavigation = _toggleAutoExpand.value;
+            prefs.SkipDeleteConfirmation = _toggleSkipDeleteConfirm.value;
 
             // Chronicle scope
             int chronicleIdx = ChronicleFilterChoices.IndexOf(_chronicleScopeDropdown.value);

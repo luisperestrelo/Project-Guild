@@ -137,7 +137,9 @@ namespace ProjectGuild.View.UI
                             if (seq.Id == action.StringParam)
                                 return $"Use {seq.Name ?? seq.Id}";
                     }
-                    return $"Use {action.StringParam ?? "?"}";
+                    return string.IsNullOrEmpty(action.StringParam)
+                        ? "Use ?"
+                        : "<color=#CC4444>\u26A0 [Deleted Sequence]</color> <color=#999999>\u2014 goes Idle</color>";
 
                 case ActionType.GatherHere:
                     if (!string.IsNullOrEmpty(action.StringParam))

@@ -35,38 +35,30 @@ namespace ProjectGuild.View.UI
         // ─── Task Sequence sub-tab (persistent UXML elements) ──────
         private readonly Label _taskSeqNameLabel;
         private readonly Label _taskSeqUsageLabel;
-        private readonly Label _taskSeqLoopValue;
         private readonly Label _suspensionLabel;
         private readonly VisualElement _stepsContainer;
         private readonly VisualElement _pendingSection;
         private readonly Label _pendingLabel;
+        private readonly Button _btnEditTaskSeq;
+        private readonly Button _btnChangeTaskSeq;
+        private readonly Button _btnNewTaskSeq;
+        private readonly Button _btnCopyTaskSeq;
         private readonly Button _btnClearTask;
         private readonly Button _btnResumeMacros;
-        private readonly Button _btnEditTaskSeq;
-        private readonly DropdownField _taskSeqAssignDropdown;
 
         // ─── Task Sequence cached step rows ──────
         private string _cachedTaskSeqShapeKey;
         private readonly List<(VisualElement row, Label indicator, Label index, Label text, Label microLink)> _stepRowCache = new();
-
-        // ─── Task Sequence assign dropdown state ──────
-        private readonly List<string> _taskSeqChoiceIds = new();
-        private bool _taskSeqAssignSuppressCallback;
-        private string _cachedTaskSeqDropdownKey;
 
         // ─── Macro sub-tab (persistent UXML elements) ──────
         private readonly Label _macroNameLabel;
         private readonly Label _macroUsageLabel;
         private readonly VisualElement _macroRulesContainer;
         private readonly Button _btnEditMacro;
-        private readonly Button _btnNewTaskSeq;
+        private readonly Button _btnChangeMacro;
         private readonly Button _btnNewMacro;
-        private readonly DropdownField _macroAssignDropdown;
-
-        // ─── Macro assign dropdown state ──────
-        private readonly List<string> _macroChoiceIds = new();
-        private bool _macroAssignSuppressCallback;
-        private string _cachedMacroDropdownKey;
+        private readonly Button _btnCopyMacro;
+        private readonly Button _btnClearMacro;
 
         // ─── Macro cached rule rows ──────
         private string _cachedMacroShapeKey;
@@ -104,39 +96,43 @@ namespace ProjectGuild.View.UI
             // Task Sequence elements
             _taskSeqNameLabel = root.Q<Label>("taskseq-name-label");
             _taskSeqUsageLabel = root.Q<Label>("taskseq-usage-label");
-            _taskSeqLoopValue = root.Q<Label>("taskseq-loop-value");
             _suspensionLabel = root.Q<Label>("taskseq-suspension-label");
             _stepsContainer = root.Q("taskseq-steps-container");
             _pendingSection = root.Q("taskseq-pending-section");
             _pendingLabel = root.Q<Label>("taskseq-pending-label");
+
+            // Task Sequence action buttons
+            _btnEditTaskSeq = root.Q<Button>("btn-edit-taskseq");
+            _btnChangeTaskSeq = root.Q<Button>("btn-change-taskseq");
+            _btnNewTaskSeq = root.Q<Button>("btn-new-taskseq");
+            _btnCopyTaskSeq = root.Q<Button>("btn-copy-taskseq");
             _btnClearTask = root.Q<Button>("btn-clear-task");
             _btnResumeMacros = root.Q<Button>("btn-resume-macros");
-            _btnEditTaskSeq = root.Q<Button>("btn-edit-taskseq");
 
+            _btnEditTaskSeq.clicked += OnEditTaskSeqClicked;
+            _btnChangeTaskSeq.clicked += OnChangeTaskSeqClicked;
+            _btnNewTaskSeq.clicked += OnNewTaskSeqClicked;
+            _btnCopyTaskSeq.clicked += OnCopyTaskSeqClicked;
             _btnClearTask.clicked += OnClearTaskClicked;
             _btnResumeMacros.clicked += OnResumeMacrosClicked;
-            _btnEditTaskSeq.clicked += OnEditTaskSeqClicked;
-
-            // Task Sequence assign dropdown
-            _taskSeqAssignDropdown = root.Q<DropdownField>("taskseq-assign-dropdown");
-            _taskSeqAssignDropdown.RegisterValueChangedCallback(OnTaskSeqAssignChanged);
 
             // Macro elements
             _macroNameLabel = root.Q<Label>("macro-name-label");
             _macroUsageLabel = root.Q<Label>("macro-usage-label");
             _macroRulesContainer = root.Q("macro-rules-container");
+
+            // Macro action buttons
             _btnEditMacro = root.Q<Button>("btn-edit-macro");
-            _btnEditMacro.clicked += OnEditMacroClicked;
-
-            // "+ New" buttons
-            _btnNewTaskSeq = root.Q<Button>("btn-new-taskseq");
+            _btnChangeMacro = root.Q<Button>("btn-change-macro");
             _btnNewMacro = root.Q<Button>("btn-new-macro");
-            _btnNewTaskSeq.clicked += OnNewTaskSeqClicked;
-            _btnNewMacro.clicked += OnNewMacroClicked;
+            _btnCopyMacro = root.Q<Button>("btn-copy-macro");
+            _btnClearMacro = root.Q<Button>("btn-clear-macro");
 
-            // Macro assign dropdown
-            _macroAssignDropdown = root.Q<DropdownField>("macro-assign-dropdown");
-            _macroAssignDropdown.RegisterValueChangedCallback(OnMacroAssignChanged);
+            _btnEditMacro.clicked += OnEditMacroClicked;
+            _btnChangeMacro.clicked += OnChangeMacroClicked;
+            _btnNewMacro.clicked += OnNewMacroClicked;
+            _btnCopyMacro.clicked += OnCopyMacroClicked;
+            _btnClearMacro.clicked += OnClearMacroClicked;
 
             // Micro elements
             _microNoTaskLabel = root.Q<Label>("micro-no-task-label");
@@ -150,8 +146,6 @@ namespace ProjectGuild.View.UI
             _cachedTaskSeqShapeKey = null;
             _cachedMacroShapeKey = null;
             _cachedMicroShapeKey = null;
-            _cachedTaskSeqDropdownKey = null;
-            _cachedMacroDropdownKey = null;
             Refresh();
         }
 
@@ -186,6 +180,11 @@ namespace ProjectGuild.View.UI
             var runner = sim.FindRunner(_currentRunnerId);
             if (runner == null) return;
 
+            // Config warning on Macro sub-tab button (reads stored state, not computed per-tick)
+            bool hasBrokenMacro = !string.IsNullOrEmpty(runner.MacroConfigWarning);
+            _subTabMacro.text = hasBrokenMacro ? "Macro \u26A0" : "Macro";
+            _subTabMacro.enableRichText = true;
+
             switch (_activeSubTab)
             {
                 case "taskseq":
@@ -206,20 +205,14 @@ namespace ProjectGuild.View.UI
         {
             var state = sim.CurrentGameState;
             var seq = sim.GetRunnerTaskSequence(runner);
+            bool hasSeq = seq != null;
 
-            // Assign dropdown — always populated (this is how the player assigns one)
-            PopulateTaskSeqAssignDropdown(runner, sim);
-
-            if (seq == null)
+            if (!hasSeq)
             {
                 _taskSeqNameLabel.text = "No active task";
                 _taskSeqUsageLabel.text = "";
-                _taskSeqLoopValue.text = "-";
                 _suspensionLabel.style.display = DisplayStyle.None;
                 _pendingSection.style.display = DisplayStyle.None;
-                _btnClearTask.style.display = DisplayStyle.None;
-                _btnResumeMacros.style.display = DisplayStyle.None;
-                _btnEditTaskSeq.style.display = DisplayStyle.None;
 
                 if (_stepRowCache.Count > 0)
                 {
@@ -227,17 +220,29 @@ namespace ProjectGuild.View.UI
                     _stepRowCache.Clear();
                 }
                 _cachedTaskSeqShapeKey = null;
-                return;
             }
 
-            // Header (always update in-place)
-            _taskSeqNameLabel.text = seq.Name ?? seq.Id ?? "Task Sequence";
+            // Button visibility: EDIT, COPY, CLEAR only when something is assigned
+            _btnEditTaskSeq.style.display = hasSeq ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnCopyTaskSeq.style.display = hasSeq ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnClearTask.style.display = hasSeq ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnResumeMacros.style.display = hasSeq && runner.MacroSuspendedUntilLoop
+                ? DisplayStyle.Flex : DisplayStyle.None;
+            // CHANGE and + NEW always visible
+            _btnChangeTaskSeq.style.display = DisplayStyle.Flex;
+            _btnNewTaskSeq.style.display = DisplayStyle.Flex;
+
+            if (!hasSeq) return;
+
+            // Header (always update in-place) — loop status inline with name
+            string seqName = seq.Name ?? seq.Id ?? "Task Sequence";
+            string loopTag = seq.Loop ? "Looping" : "Once";
+            _taskSeqNameLabel.text = $"{seqName} <color=#8CB48C>({loopTag})</color>";
+            _taskSeqNameLabel.enableRichText = true;
             int usageCount = sim.CountRunnersUsingTaskSequence(seq.Id);
             _taskSeqUsageLabel.text = usageCount > 1
                 ? $"Used by {usageCount} runners"
                 : "Used by this runner only";
-
-            _taskSeqLoopValue.text = seq.Loop ? "Yes" : "No";
 
             // Macro suspension indicator
             if (runner.MacroSuspendedUntilLoop)
@@ -344,11 +349,6 @@ namespace ProjectGuild.View.UI
                 _pendingSection.style.display = DisplayStyle.None;
             }
 
-            // Action buttons
-            _btnClearTask.style.display = DisplayStyle.Flex;
-            _btnResumeMacros.style.display = runner.MacroSuspendedUntilLoop
-                ? DisplayStyle.Flex : DisplayStyle.None;
-            _btnEditTaskSeq.style.display = DisplayStyle.Flex;
         }
 
         // ─── Macro Rules Sub-Tab ────────────────────────
@@ -357,15 +357,12 @@ namespace ProjectGuild.View.UI
         {
             var state = sim.CurrentGameState;
             var ruleset = sim.GetRunnerMacroRuleset(runner);
+            bool hasRuleset = ruleset != null;
 
-            // Assign dropdown — always populated
-            PopulateMacroAssignDropdown(runner, sim);
-
-            if (ruleset == null)
+            if (!hasRuleset)
             {
                 _macroNameLabel.text = "No macro ruleset";
                 _macroUsageLabel.text = "";
-                _btnEditMacro.style.display = DisplayStyle.None;
 
                 if (_macroRuleRowCache.Count > 0)
                 {
@@ -373,8 +370,17 @@ namespace ProjectGuild.View.UI
                     _macroRuleRowCache.Clear();
                 }
                 _cachedMacroShapeKey = null;
-                return;
             }
+
+            // Button visibility: EDIT, COPY, CLEAR only when something is assigned
+            _btnEditMacro.style.display = hasRuleset ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnCopyMacro.style.display = hasRuleset ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnClearMacro.style.display = hasRuleset ? DisplayStyle.Flex : DisplayStyle.None;
+            // CHANGE and + NEW always visible
+            _btnChangeMacro.style.display = DisplayStyle.Flex;
+            _btnNewMacro.style.display = DisplayStyle.Flex;
+
+            if (!hasRuleset) return;
 
             // Header (always update in-place)
             _macroNameLabel.text = ruleset.Name ?? ruleset.Id ?? "Macro Ruleset";
@@ -419,6 +425,7 @@ namespace ProjectGuild.View.UI
                         var textLabel = new Label();
                         textLabel.AddToClassList("auto-rule-text");
                         textLabel.pickingMode = PickingMode.Ignore;
+                        textLabel.enableRichText = true;
                         row.Add(textLabel);
 
                         var timingLabel = new Label();
@@ -453,7 +460,6 @@ namespace ProjectGuild.View.UI
                 }
             }
 
-            _btnEditMacro.style.display = DisplayStyle.Flex;
         }
 
         // ─── Micro Rules Sub-Tab ────────────────────────
@@ -539,6 +545,7 @@ namespace ProjectGuild.View.UI
                             var textLabel = new Label();
                             textLabel.AddToClassList("auto-rule-text");
                             textLabel.pickingMode = PickingMode.Ignore;
+                            textLabel.enableRichText = true;
                             row.Add(textLabel);
 
                             section.Add(row);
@@ -668,100 +675,54 @@ namespace ProjectGuild.View.UI
             public readonly List<(VisualElement row, Label index, Label enabled, Label text)> ruleRows = new();
         }
 
-        // ─── Assign Dropdown Helpers ──────────────────────
+        // ─── Change Handlers ──────────────────────────────
 
-        private void PopulateTaskSeqAssignDropdown(Runner runner, GameSimulation sim)
+        private void OnChangeTaskSeqClicked()
         {
-            // Shape-key: library count + runner's current assignment
-            // Only rebuild choices when the library or assignment changes
-            int libCount = sim.CurrentGameState.TaskSequenceLibrary?.Count ?? 0;
-            string dropdownKey = $"{libCount}|{runner.TaskSequenceId}";
-
-            if (dropdownKey != _cachedTaskSeqDropdownKey)
-            {
-                _cachedTaskSeqDropdownKey = dropdownKey;
-
-                var choices = new List<string> { "(None)" };
-                _taskSeqChoiceIds.Clear();
-                _taskSeqChoiceIds.Add(null);
-
-                foreach (var seq in sim.CurrentGameState.TaskSequenceLibrary)
-                {
-                    choices.Add(seq.Name ?? seq.Id ?? "Unnamed");
-                    _taskSeqChoiceIds.Add(seq.Id);
-                }
-                _taskSeqAssignDropdown.choices = choices;
-
-                // Set current value without triggering callback
-                int currentIdx = runner.TaskSequenceId != null
-                    ? _taskSeqChoiceIds.IndexOf(runner.TaskSequenceId)
-                    : 0;
-                if (currentIdx < 0) currentIdx = 0;
-                _taskSeqAssignSuppressCallback = true;
-                _taskSeqAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
-                _taskSeqAssignSuppressCallback = false;
-            }
+            if (_currentRunnerId == null) return;
+            _uiManager.OpenAutomationPanelForChangeAssignment("taskseq", _currentRunnerId);
         }
 
-        private void PopulateMacroAssignDropdown(Runner runner, GameSimulation sim)
+        private void OnChangeMacroClicked()
         {
-            // Shape-key: library count + runner's current assignment
-            // Only rebuild choices when the library or assignment changes
-            int libCount = sim.CurrentGameState.MacroRulesetLibrary?.Count ?? 0;
-            string dropdownKey = $"{libCount}|{runner.MacroRulesetId}";
-
-            if (dropdownKey != _cachedMacroDropdownKey)
-            {
-                _cachedMacroDropdownKey = dropdownKey;
-
-                var choices = new List<string> { "(None)" };
-                _macroChoiceIds.Clear();
-                _macroChoiceIds.Add(null);
-
-                foreach (var ruleset in sim.CurrentGameState.MacroRulesetLibrary)
-                {
-                    choices.Add(ruleset.Name ?? ruleset.Id ?? "Unnamed");
-                    _macroChoiceIds.Add(ruleset.Id);
-                }
-                _macroAssignDropdown.choices = choices;
-
-                int currentIdx = runner.MacroRulesetId != null
-                    ? _macroChoiceIds.IndexOf(runner.MacroRulesetId)
-                    : 0;
-                if (currentIdx < 0) currentIdx = 0;
-                _macroAssignSuppressCallback = true;
-                _macroAssignDropdown.SetValueWithoutNotify(choices[currentIdx]);
-                _macroAssignSuppressCallback = false;
-            }
+            if (_currentRunnerId == null) return;
+            _uiManager.OpenAutomationPanelForChangeAssignment("macro", _currentRunnerId);
         }
 
-        private void OnTaskSeqAssignChanged(ChangeEvent<string> evt)
-        {
-            if (_taskSeqAssignSuppressCallback || _currentRunnerId == null) return;
-            int idx = _taskSeqAssignDropdown.index;
-            if (idx < 0 || idx >= _taskSeqChoiceIds.Count) return;
+        // ─── Copy Handlers ──────────────────────────────
 
-            string seqId = _taskSeqChoiceIds[idx];
+        private void OnCopyTaskSeqClicked()
+        {
+            if (_currentRunnerId == null) return;
             var sim = _uiManager.Simulation;
-            if (sim == null) return;
+            var runner = sim?.FindRunner(_currentRunnerId);
+            if (runner == null || string.IsNullOrEmpty(runner.TaskSequenceId)) return;
 
-            if (seqId == null)
-                sim.ClearTaskSequence(_currentRunnerId);
-            else
-                sim.CommandAssignTaskSequenceToRunner(_currentRunnerId, seqId);
+            string cloneId = sim.CommandCloneTaskSequence(runner.TaskSequenceId);
+            if (cloneId == null) return;
+
+            _uiManager.OpenAutomationPanelToItemForNewAssignment("taskseq", cloneId, _currentRunnerId);
         }
 
-        private void OnMacroAssignChanged(ChangeEvent<string> evt)
+        private void OnCopyMacroClicked()
         {
-            if (_macroAssignSuppressCallback || _currentRunnerId == null) return;
-            int idx = _macroAssignDropdown.index;
-            if (idx < 0 || idx >= _macroChoiceIds.Count) return;
-
-            string rulesetId = _macroChoiceIds[idx];
+            if (_currentRunnerId == null) return;
             var sim = _uiManager.Simulation;
-            if (sim == null) return;
+            var runner = sim?.FindRunner(_currentRunnerId);
+            if (runner == null || string.IsNullOrEmpty(runner.MacroRulesetId)) return;
 
-            sim.CommandAssignMacroRulesetToRunner(_currentRunnerId, rulesetId);
+            string cloneId = sim.CommandCloneMacroRuleset(runner.MacroRulesetId);
+            if (cloneId == null) return;
+
+            _uiManager.OpenAutomationPanelToItemForNewAssignment("macro", cloneId, _currentRunnerId);
+        }
+
+        // ─── Clear Handlers ──────────────────────────────
+
+        private void OnClearMacroClicked()
+        {
+            if (_currentRunnerId == null) return;
+            _uiManager.Simulation?.CommandAssignMacroRulesetToRunner(_currentRunnerId, null);
         }
 
         // ─── Shared Helpers ─────────────────────────────

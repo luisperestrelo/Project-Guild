@@ -49,6 +49,7 @@ namespace ProjectGuild.View.UI
         private bool _editorShellBuilt;
 
         private string _selectedId;
+        public string SelectedId => _selectedId;
         private string _searchFilter = "";
         private string _cachedRulesShapeKey;
 
@@ -112,10 +113,14 @@ namespace ProjectGuild.View.UI
                 item.AddToClassList("list-item");
                 if (ruleset.Id == _selectedId) item.AddToClassList("list-item-selected");
 
+                var textContainer = new VisualElement();
+                textContainer.AddToClassList("list-item-text");
+                textContainer.pickingMode = PickingMode.Ignore;
+
                 var nameLabel = new Label(name);
                 nameLabel.AddToClassList("list-item-name");
                 nameLabel.pickingMode = PickingMode.Ignore;
-                item.Add(nameLabel);
+                textContainer.Add(nameLabel);
 
                 int usageCount = sim.CountRunnersUsingMacroRuleset(ruleset.Id);
                 string infoText = $"{ruleset.Rules.Count} rule{(ruleset.Rules.Count != 1 ? "s" : "")}";
@@ -123,10 +128,36 @@ namespace ProjectGuild.View.UI
                 var infoLabel = new Label(infoText);
                 infoLabel.AddToClassList("list-item-info");
                 infoLabel.pickingMode = PickingMode.Ignore;
-                item.Add(infoLabel);
+                textContainer.Add(infoLabel);
+
+                item.Add(textContainer);
+
+                // Hover-reveal action icons
+                var actions = new VisualElement();
+                actions.AddToClassList("list-item-actions");
 
                 string capturedId = ruleset.Id;
-                item.RegisterCallback<ClickEvent>(evt => SelectItem(capturedId));
+
+                var dupeBtn = new Button(() => DuplicateItem(capturedId));
+                dupeBtn.text = "\u29C9"; // ⧉
+                dupeBtn.AddToClassList("list-item-icon-btn");
+                dupeBtn.tooltip = "Duplicate";
+                actions.Add(dupeBtn);
+
+                var delBtn = new Button(() => DeleteItemWithConfirmation(capturedId));
+                delBtn.text = "\u2715"; // ✕
+                delBtn.AddToClassList("list-item-icon-btn");
+                delBtn.AddToClassList("list-item-icon-delete");
+                delBtn.tooltip = "Delete";
+                actions.Add(delBtn);
+
+                item.Add(actions);
+
+                item.RegisterCallback<ClickEvent>(evt =>
+                {
+                    if (evt.target is Button) return;
+                    SelectItem(capturedId);
+                });
 
                 _listScroll.Add(item);
                 _listItemCache[ruleset.Id] = (item, nameLabel, infoLabel);
@@ -157,7 +188,7 @@ namespace ProjectGuild.View.UI
             _bannerText.AddToClassList("shared-banner-text");
             _banner.Add(_bannerText);
             _cloneBannerBtn = new Button();
-            _cloneBannerBtn.text = "Clone to create a personal copy";
+            _cloneBannerBtn.text = "Duplicate to create a personal copy";
             _cloneBannerBtn.AddToClassList("shared-banner-button");
             _cloneBannerBtn.clicked += OnCloneBannerClicked;
             _banner.Add(_cloneBannerBtn);
@@ -211,8 +242,8 @@ namespace ProjectGuild.View.UI
             _assignToBtn.AddToClassList("editor-footer-button");
             footerButtons.Add(_assignToBtn);
 
-            _cloneBtn = new Button(OnCloneClicked);
-            _cloneBtn.text = "Clone";
+            _cloneBtn = new Button(OnDuplicateClicked);
+            _cloneBtn.text = "Duplicate";
             _cloneBtn.AddToClassList("editor-footer-button");
             footerButtons.Add(_cloneBtn);
 
@@ -221,7 +252,7 @@ namespace ProjectGuild.View.UI
             _resetBtn.AddToClassList("editor-footer-button");
             footerButtons.Add(_resetBtn);
 
-            _deleteBtn = new Button(OnDeleteClicked);
+            _deleteBtn = new Button(() => DeleteItemWithConfirmation(_selectedId));
             _deleteBtn.text = "Delete";
             _deleteBtn.AddToClassList("editor-footer-button");
             _deleteBtn.AddToClassList("editor-delete-button");
@@ -397,15 +428,15 @@ namespace ProjectGuild.View.UI
 
         private void OnCloneBannerClicked()
         {
-            OnCloneClicked();
+            DuplicateItem(_selectedId);
         }
 
-        private void OnCloneClicked()
+        private void DuplicateItem(string sourceId)
         {
             var sim = _uiManager.Simulation;
-            if (sim == null || _selectedId == null) return;
+            if (sim == null || string.IsNullOrEmpty(sourceId)) return;
 
-            string newId = sim.CommandCloneMacroRuleset(_selectedId);
+            string newId = sim.CommandCloneMacroRuleset(sourceId);
             if (newId != null)
             {
                 _selectedId = newId;
@@ -414,6 +445,8 @@ namespace ProjectGuild.View.UI
                 RefreshEditor();
             }
         }
+
+        private void OnDuplicateClicked() => DuplicateItem(_selectedId);
 
         private void OnResetClicked()
         {
@@ -425,16 +458,47 @@ namespace ProjectGuild.View.UI
             RefreshEditor();
         }
 
-        private void OnDeleteClicked()
+        private void DeleteItem(string id)
         {
             var sim = _uiManager.Simulation;
-            if (sim == null || _selectedId == null) return;
+            if (sim == null || string.IsNullOrEmpty(id)) return;
 
-            sim.CommandDeleteMacroRuleset(_selectedId);
-            _selectedId = null;
+            sim.CommandDeleteMacroRuleset(id);
+            if (_selectedId == id) _selectedId = null;
             _cachedRulesShapeKey = null;
             RebuildList();
             RefreshEditor();
+        }
+
+        private void DeleteItemWithConfirmation(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+
+            var prefs = _uiManager.Preferences;
+            if (prefs != null && prefs.SkipDeleteConfirmation)
+            {
+                DeleteItem(id);
+                return;
+            }
+
+            var sim = _uiManager.Simulation;
+            var ruleset = sim?.FindMacroRulesetInLibrary(id);
+            if (ruleset == null) return;
+
+            var runnerNames = sim.GetRunnerNamesUsingMacroRuleset(id);
+            string warning;
+            if (runnerNames.Count > 0)
+            {
+                string list = string.Join("\n", runnerNames.ConvertAll(n => $"  - {n}"));
+                warning = $"Delete \"{ruleset.Name}\"?\nThe following runners will lose their macro rules:\n{list}";
+            }
+            else
+            {
+                warning = $"Delete \"{ruleset.Name}\"?";
+            }
+
+            var panelRoot = _root.panel.visualTree.Q("automation-panel-root") ?? _root;
+            UIDialogs.ShowDeleteConfirmation(panelRoot, warning, prefs, () => DeleteItem(id));
         }
     }
 }

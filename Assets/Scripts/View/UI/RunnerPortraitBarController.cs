@@ -88,7 +88,7 @@ namespace ProjectGuild.View.UI
             portraitRoot.RegisterCallback<PointerCaptureOutEvent>(evt =>
                 OnPointerCaptureOut());
 
-            // Warning badge tooltip
+            // Warning badge tooltip (operational — runner stuck)
             var warningBadge = instance.Q("portrait-warning-badge");
             if (warningBadge != null)
             {
@@ -97,6 +97,18 @@ namespace ProjectGuild.View.UI
                 {
                     var r = _uiManager.Simulation?.FindRunner(capturedId);
                     return r?.ActiveWarning;
+                });
+            }
+
+            // Config badge tooltip (broken macro references)
+            var configBadge = instance.Q("portrait-config-badge");
+            if (configBadge != null)
+            {
+                string capturedId = runnerId;
+                _uiManager.RegisterTooltip(configBadge, () =>
+                {
+                    var r = _uiManager.Simulation?.FindRunner(capturedId);
+                    return r?.MacroConfigWarning;
                 });
             }
 
@@ -148,6 +160,14 @@ namespace ProjectGuild.View.UI
                     bool hasWarning = !string.IsNullOrEmpty(runner.ActiveWarning);
                     warningBadge.style.display = hasWarning ? DisplayStyle.Flex : DisplayStyle.None;
                     warningBadge.pickingMode = hasWarning ? PickingMode.Position : PickingMode.Ignore;
+                }
+
+                var configBadge = kvp.Value.Q("portrait-config-badge");
+                if (configBadge != null)
+                {
+                    bool hasConfigWarning = !string.IsNullOrEmpty(runner.MacroConfigWarning);
+                    configBadge.style.display = hasConfigWarning ? DisplayStyle.Flex : DisplayStyle.None;
+                    configBadge.pickingMode = hasConfigWarning ? PickingMode.Position : PickingMode.Ignore;
                 }
             }
 

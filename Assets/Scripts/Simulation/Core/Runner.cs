@@ -106,6 +106,13 @@ namespace ProjectGuild.Simulation.Core
         public string ActiveWarning;
 
         /// <summary>
+        /// Human-readable config warning when the runner's macro ruleset has broken references
+        /// (e.g., rules pointing to deleted task sequences). Null = no warning.
+        /// Set/cleared by RefreshMacroConfigWarnings() at relevant command trigger points.
+        /// </summary>
+        public string MacroConfigWarning;
+
+        /// <summary>
         /// ID reference into MacroRulesetLibrary.
         /// </summary>
         public string MacroRulesetId;

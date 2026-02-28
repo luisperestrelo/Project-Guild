@@ -20,6 +20,9 @@ namespace ProjectGuild.Bridge
         public bool LogbookAutoNavigateOnArrival = true;
         public bool LogbookAutoExpandOnNavigation = false;
 
+        // ─── Automation ──────────────────────────────────
+        public bool SkipDeleteConfirmation = false;
+
         // ─── Default scope filters ──────────────────────
         // Stored as strings to avoid coupling to view-layer enums.
         // Valid values: "CurrentNode", "SelectedRunner", "Global"/"All"

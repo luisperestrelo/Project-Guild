@@ -53,6 +53,17 @@
                     <ui:Label text="Decision Log default scope" class="options-dropdown-label" />
                     <ui:DropdownField name="dropdown-decision-log-scope" class="options-dropdown" />
                 </ui:VisualElement>
+
+                <!-- Automation -->
+                <ui:Label text="Automation" class="options-subsection-header" />
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-skip-delete-confirm" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Skip delete confirmations" class="options-toggle-label" />
+                        <ui:Label text="Delete library items without asking for confirmation" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:VisualElement>
 
             <!-- Divider -->

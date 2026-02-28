@@ -44,6 +44,7 @@ namespace ProjectGuild.View.UI
         private readonly Button _btnDelete;
 
         private string _selectedId;
+        public string SelectedId => _selectedId;
         private string _searchFilter = "";
         private string _cachedStepsShapeKey;
 
@@ -94,8 +95,8 @@ namespace ProjectGuild.View.UI
                 _uiManager.Simulation?.CommandSetTaskSequenceLoop(_selectedId, evt.newValue);
             });
             _btnAddStep.clicked += OnAddStepClicked;
-            _btnClone.clicked += OnCloneClicked;
-            _btnDelete.clicked += OnDeleteClicked;
+            _btnClone.clicked += OnDuplicateClicked;
+            _btnDelete.clicked += () => DeleteItemWithConfirmation(_selectedId);
             _btnCloneBanner.clicked += OnCloneBannerClicked;
         }
 
@@ -140,10 +141,14 @@ namespace ProjectGuild.View.UI
                 item.AddToClassList("list-item");
                 if (seq.Id == _selectedId) item.AddToClassList("list-item-selected");
 
+                var textContainer = new VisualElement();
+                textContainer.AddToClassList("list-item-text");
+                textContainer.pickingMode = PickingMode.Ignore;
+
                 var nameLabel = new Label(name);
                 nameLabel.AddToClassList("list-item-name");
                 nameLabel.pickingMode = PickingMode.Ignore;
-                item.Add(nameLabel);
+                textContainer.Add(nameLabel);
 
                 int usageCount = sim.CountRunnersUsingTaskSequence(seq.Id);
                 string infoText = seq.Loop ? "Loop" : "Once";
@@ -151,10 +156,37 @@ namespace ProjectGuild.View.UI
                 var infoLabel = new Label(infoText);
                 infoLabel.AddToClassList("list-item-info");
                 infoLabel.pickingMode = PickingMode.Ignore;
-                item.Add(infoLabel);
+                textContainer.Add(infoLabel);
+
+                item.Add(textContainer);
+
+                // Hover-reveal action icons
+                var actions = new VisualElement();
+                actions.AddToClassList("list-item-actions");
 
                 string capturedId = seq.Id;
-                item.RegisterCallback<ClickEvent>(evt => SelectItem(capturedId));
+
+                var dupeBtn = new Button(() => DuplicateItem(capturedId));
+                dupeBtn.text = "\u29C9"; // ⧉
+                dupeBtn.AddToClassList("list-item-icon-btn");
+                dupeBtn.tooltip = "Duplicate";
+                actions.Add(dupeBtn);
+
+                var delBtn = new Button(() => DeleteItemWithConfirmation(capturedId));
+                delBtn.text = "\u2715"; // ✕
+                delBtn.AddToClassList("list-item-icon-btn");
+                delBtn.AddToClassList("list-item-icon-delete");
+                delBtn.tooltip = "Delete";
+                actions.Add(delBtn);
+
+                item.Add(actions);
+
+                item.RegisterCallback<ClickEvent>(evt =>
+                {
+                    // Don't select when clicking action buttons
+                    if (evt.target is Button) return;
+                    SelectItem(capturedId);
+                });
 
                 _listScroll.Add(item);
                 _listItemCache[seq.Id] = (item, nameLabel, infoLabel);
@@ -471,49 +503,74 @@ namespace ProjectGuild.View.UI
             _btnAssignTo.parent.Insert(idx + 1, popup);
         }
 
-        private void OnCloneClicked()
+        private void DuplicateItem(string sourceId)
         {
             var sim = _uiManager.Simulation;
-            if (sim == null || _selectedId == null) return;
+            if (sim == null || string.IsNullOrEmpty(sourceId)) return;
 
-            var source = sim.FindTaskSequenceInLibrary(_selectedId);
-            if (source == null) return;
+            string newId = sim.CommandCloneTaskSequence(sourceId);
+            if (newId == null) return;
 
-            // Deep copy
-            var clone = new TaskSequence
-            {
-                Name = (source.Name ?? "Sequence") + " (copy)",
-                TargetNodeId = source.TargetNodeId,
-                Loop = source.Loop,
-                Steps = new List<TaskStep>(),
-            };
-            if (source.Steps != null)
-            {
-                foreach (var step in source.Steps)
-                    clone.Steps.Add(new TaskStep(step.Type, step.TargetNodeId, step.MicroRulesetId));
-            }
-
-            string newId = sim.CommandCreateTaskSequence(clone);
             _selectedId = newId;
             RebuildList();
             RefreshEditor();
         }
 
-        private void OnDeleteClicked()
+        private void OnDuplicateClicked() => DuplicateItem(_selectedId);
+
+        private void DeleteItem(string id)
         {
             var sim = _uiManager.Simulation;
-            if (sim == null || _selectedId == null) return;
+            if (sim == null || string.IsNullOrEmpty(id)) return;
 
-            sim.CommandDeleteTaskSequence(_selectedId);
-            _selectedId = null;
+            sim.CommandDeleteTaskSequence(id);
+            if (_selectedId == id) _selectedId = null;
             RebuildList();
             RefreshEditor();
         }
 
+        private void DeleteItemWithConfirmation(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+
+            var prefs = _uiManager.Preferences;
+            if (prefs != null && prefs.SkipDeleteConfirmation)
+            {
+                DeleteItem(id);
+                return;
+            }
+
+            var sim = _uiManager.Simulation;
+            var seq = sim?.FindTaskSequenceInLibrary(id);
+            if (seq == null) return;
+
+            var runnerNames = sim.GetRunnerNamesUsingTaskSequence(id);
+            var macroRefs = sim.GetMacroRulesReferencingTaskSequence(id);
+
+            var warningParts = new List<string>();
+            warningParts.Add($"Delete \"{seq.Name}\"?");
+
+            if (runnerNames.Count > 0)
+            {
+                string list = string.Join("\n", runnerNames.ConvertAll(n => $"  - {n}"));
+                warningParts.Add($"The following runners will lose their current task:\n{list}");
+            }
+
+            if (macroRefs.Count > 0)
+            {
+                string list = string.Join("\n", macroRefs.ConvertAll(r => $"  - {r.rulesetName} \u2192 {r.ruleLabel}"));
+                warningParts.Add($"The following macro rules reference this sequence:\n{list}");
+            }
+
+            string warning = string.Join("\n\n", warningParts);
+
+            var panelRoot = _root.panel.visualTree.Q("automation-panel-root") ?? _root;
+            UIDialogs.ShowDeleteConfirmation(panelRoot, warning, prefs, () => DeleteItem(id));
+        }
+
         private void OnCloneBannerClicked()
         {
-            // Clone and select the copy (used from the shared template banner)
-            OnCloneClicked();
+            DuplicateItem(_selectedId);
         }
     }
 }

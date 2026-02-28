@@ -56,6 +56,7 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState = state;
             CurrentGameState.Map?.Initialize();
             DefaultRulesets.EnsureInLibrary(CurrentGameState);
+            RefreshMacroConfigWarnings();
         }
 
         /// <summary>
@@ -1316,6 +1317,8 @@ namespace ProjectGuild.Simulation.Core
             if (string.IsNullOrEmpty(template.Id))
                 template.Id = Guid.NewGuid().ToString();
             CurrentGameState.TaskSequenceLibrary.Add(template);
+            // A new sequence could resolve previously-broken macro rule references
+            RefreshMacroConfigWarnings();
             return template.Id;
         }
 
@@ -1346,16 +1349,17 @@ namespace ProjectGuild.Simulation.Core
                 if (runner.TaskSequenceId == id)
                 {
                     runner.TaskSequenceId = null;
-        
+
                     runner.TaskSequenceCurrentStepIndex = 0;
                     runner.State = RunnerState.Idle;
                 }
                 if (runner.PendingTaskSequenceId == id)
                 {
                     runner.PendingTaskSequenceId = null;
-        
+
                 }
             }
+            RefreshMacroConfigWarnings();
         }
 
         /// <summary>Remove a macro ruleset from the library. Sets runner refs to null.</summary>
@@ -1367,9 +1371,9 @@ namespace ProjectGuild.Simulation.Core
                 if (runner.MacroRulesetId == id)
                 {
                     runner.MacroRulesetId = null;
-
                 }
             }
+            RefreshMacroConfigWarnings();
         }
 
         /// <summary>Remove a micro ruleset from the library. Clears Work step refs.</summary>
@@ -1403,6 +1407,7 @@ namespace ProjectGuild.Simulation.Core
             var runner = FindRunner(runnerId);
             if (runner == null) return;
             runner.MacroRulesetId = rulesetId;
+            runner.MacroConfigWarning = ComputeMacroConfigWarning(runner);
         }
 
         /// <summary>Deep-copy a runner's macro ruleset into a new library entry, assign to runner.</summary>
@@ -1415,6 +1420,18 @@ namespace ProjectGuild.Simulation.Core
             clone.Name = (macroRuleset.Name ?? "Macro") + " (copy)";
             CurrentGameState.MacroRulesetLibrary.Add(clone);
             runner.MacroRulesetId = clone.Id;
+            runner.MacroConfigWarning = ComputeMacroConfigWarning(runner);
+            return clone.Id;
+        }
+
+        /// <summary>Deep-copy a task sequence into a new library entry. Returns new Id.</summary>
+        public string CommandCloneTaskSequence(string sourceSequenceId)
+        {
+            var source = FindTaskSequenceInLibrary(sourceSequenceId);
+            if (source == null) return null;
+            var clone = source.DeepCopy();
+            clone.Name = (source.Name ?? "Sequence") + " (copy)";
+            CurrentGameState.TaskSequenceLibrary.Add(clone);
             return clone.Id;
         }
 
@@ -1459,23 +1476,26 @@ namespace ProjectGuild.Simulation.Core
         /// <summary>Add a rule to a ruleset at the given index (-1 = append).</summary>
         public void CommandAddRuleToRuleset(string rulesetId, Rule rule, int insertIndex = -1)
         {
-            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            var (ruleset, isMacro) = FindRulesetInAnyLibrary(rulesetId);
             if (ruleset == null) return;
 
             if (insertIndex < 0 || insertIndex >= ruleset.Rules.Count)
                 ruleset.Rules.Add(rule);
             else
                 ruleset.Rules.Insert(insertIndex, rule);
+
+            if (isMacro) RefreshMacroConfigWarnings();
         }
 
         /// <summary>Remove a rule from a ruleset by index.</summary>
         public void CommandRemoveRuleFromRuleset(string rulesetId, int ruleIndex)
         {
-            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            var (ruleset, isMacro) = FindRulesetInAnyLibrary(rulesetId);
             if (ruleset == null) return;
             if (ruleIndex < 0 || ruleIndex >= ruleset.Rules.Count) return;
 
             ruleset.Rules.RemoveAt(ruleIndex);
+            if (isMacro) RefreshMacroConfigWarnings();
         }
 
         /// <summary>Move a rule within a ruleset (reorder).</summary>
@@ -1505,11 +1525,12 @@ namespace ProjectGuild.Simulation.Core
         /// <summary>Replace a rule at the given index with an updated version.</summary>
         public void CommandUpdateRule(string rulesetId, int ruleIndex, Rule updatedRule)
         {
-            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            var (ruleset, isMacro) = FindRulesetInAnyLibrary(rulesetId);
             if (ruleset == null) return;
             if (ruleIndex < 0 || ruleIndex >= ruleset.Rules.Count) return;
 
             ruleset.Rules[ruleIndex] = updatedRule;
+            if (isMacro) RefreshMacroConfigWarnings();
         }
 
         /// <summary>Reset a ruleset to the default rules for its type (macro or micro).</summary>
@@ -1524,6 +1545,10 @@ namespace ProjectGuild.Simulation.Core
             {
                 var defaults = DefaultRulesets.CreateDefaultMicro();
                 ruleset.Rules.AddRange(defaults.Rules);
+            }
+            else
+            {
+                RefreshMacroConfigWarnings();
             }
         }
 
@@ -1736,6 +1761,50 @@ namespace ProjectGuild.Simulation.Core
             foreach (var runner in CurrentGameState.Runners)
                 if (runner.TaskSequenceId == seqId) names.Add(runner.Name);
             return names;
+        }
+
+        /// <summary>Find macro rules that reference a task sequence ID. Returns (rulesetName, ruleLabel) pairs.</summary>
+        public List<(string rulesetName, string ruleLabel)> GetMacroRulesReferencingTaskSequence(string seqId)
+        {
+            var results = new List<(string, string)>();
+            if (string.IsNullOrEmpty(seqId)) return results;
+            foreach (var ruleset in CurrentGameState.MacroRulesetLibrary)
+            {
+                foreach (var rule in ruleset.Rules)
+                {
+                    if (rule.Action?.Type == ActionType.AssignSequence && rule.Action.StringParam == seqId)
+                        results.Add((ruleset.Name ?? ruleset.Id, rule.Label ?? "Unnamed rule"));
+                }
+            }
+            return results;
+        }
+
+        /// <summary>
+        /// Recompute MacroConfigWarning for all runners whose macro rulesets might
+        /// have broken references (rules pointing to deleted task sequences).
+        /// Called from command methods that can change the validity of macro rule targets.
+        /// </summary>
+        public void RefreshMacroConfigWarnings()
+        {
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                runner.MacroConfigWarning = ComputeMacroConfigWarning(runner);
+            }
+        }
+
+        private string ComputeMacroConfigWarning(Runner runner)
+        {
+            if (string.IsNullOrEmpty(runner.MacroRulesetId)) return null;
+            var ruleset = FindMacroRulesetInLibrary(runner.MacroRulesetId);
+            if (ruleset == null) return null;
+            foreach (var rule in ruleset.Rules)
+            {
+                if (rule.Action?.Type == ActionType.AssignSequence &&
+                    !string.IsNullOrEmpty(rule.Action.StringParam) &&
+                    FindTaskSequenceInLibrary(rule.Action.StringParam) == null)
+                    return "Macro ruleset has rules referencing deleted sequences";
+            }
+            return null;
         }
 
         /// <summary>Get names of runners using a macro ruleset.</summary>
