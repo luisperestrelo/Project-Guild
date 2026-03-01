@@ -62,5 +62,57 @@ namespace ProjectGuild.View.UI
             overlay.Add(box);
             parent.Add(overlay);
         }
+
+        /// <summary>
+        /// Shows a modal cancel-creation confirmation overlay.
+        /// Used when the player cancels creating a new item during navigation stack flow.
+        /// </summary>
+        public static void ShowCancelCreationConfirmation(
+            VisualElement parent, PlayerPreferences prefs, Action onConfirm)
+        {
+            var overlay = new VisualElement();
+            overlay.AddToClassList("delete-confirm-overlay");
+
+            var box = new VisualElement();
+            box.AddToClassList("delete-confirm-box");
+
+            var text = new Label("Discard this item? Changes will be lost.");
+            text.AddToClassList("delete-confirm-text");
+            box.Add(text);
+
+            var buttons = new VisualElement();
+            buttons.AddToClassList("delete-confirm-buttons");
+
+            var cancelBtn = new Button(() => overlay.RemoveFromHierarchy());
+            cancelBtn.text = "Keep Editing";
+            cancelBtn.AddToClassList("delete-confirm-cancel");
+            buttons.Add(cancelBtn);
+
+            var yesBtn = new Button(() =>
+            {
+                overlay.RemoveFromHierarchy();
+                onConfirm?.Invoke();
+            });
+            yesBtn.text = "Discard";
+            yesBtn.AddToClassList("delete-confirm-yes");
+            buttons.Add(yesBtn);
+
+            box.Add(buttons);
+
+            var toggle = new Toggle("Don't ask again");
+            toggle.AddToClassList("delete-confirm-toggle");
+            toggle.RegisterValueChangedCallback(evt =>
+            {
+                if (prefs != null)
+                {
+                    prefs.SkipCancelCreationConfirmation = evt.newValue;
+                    prefs.Save();
+                }
+            });
+            box.Add(toggle);
+
+            overlay.Add(box);
+            parent.Add(overlay);
+        }
     }
 }

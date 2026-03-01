@@ -1,6 +1,7 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:Style src="AutomationPanel.uss" />
     <ui:Style src="RuleEditor.uss" />
+    <ui:VisualElement name="automation-panel-backdrop" class="panel-backdrop">
     <ui:VisualElement name="automation-panel-root" class="panel-root">
 
         <!-- Title bar -->
@@ -96,5 +97,6 @@
             </ui:VisualElement>
 
         </ui:VisualElement>
+    </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

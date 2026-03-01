@@ -51,6 +51,7 @@ namespace ProjectGuild.Simulation.Automation
             {
                 Id = Guid.NewGuid().ToString(),
                 Name = Name,
+                AutoGenerateName = AutoGenerateName,
                 Loop = Loop,
                 TargetNodeId = TargetNodeId,
                 Steps = new List<TaskStep>(),
@@ -74,6 +75,13 @@ namespace ProjectGuild.Simulation.Automation
         /// </summary>
         public string Name;
 
+        /// <summary>
+        /// When true, the name is auto-derived from the sequence's steps
+        /// and updates automatically as steps change.
+        /// Typing a custom name in the UI sets this to false.
+        /// </summary>
+        public bool AutoGenerateName;
+
         // Metadata for display / same-sequence suppression
         public string TargetNodeId;  // primary node
 
@@ -89,6 +97,7 @@ namespace ProjectGuild.Simulation.Automation
             {
                 Id = $"work-loop-{nodeId}",
                 Name = $"Gather at {nodeId}",
+                AutoGenerateName = false, // WorkAt creates with a specific name
                 TargetNodeId = nodeId,
                 Loop = true,
                 Steps = new List<TaskStep>

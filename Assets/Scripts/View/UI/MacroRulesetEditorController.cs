@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Automation;
@@ -52,6 +53,15 @@ namespace ProjectGuild.View.UI
         public string SelectedId => _selectedId;
         private string _searchFilter = "";
         private string _cachedRulesShapeKey;
+        private bool _focusNameFieldOnNextRefresh;
+
+        /// <summary>
+        /// Callback invoked when the player selects "+ New Sequence..." in a macro rule's
+        /// THEN dropdown. Params: (newSequenceId, wireAction). AutomationPanelController
+        /// handles the navigation stack push. wireAction takes the ID to wire (may differ
+        /// from the created ID if the user selects an existing item instead).
+        /// </summary>
+        public Action<string, Action<string>> OnRequestNavigateToNewSequence { get; set; }
 
         public MacroRulesetEditorController(VisualElement root, UIManager uiManager)
         {
@@ -70,6 +80,12 @@ namespace ProjectGuild.View.UI
                 _searchFilter = evt.newValue?.ToLowerInvariant() ?? "";
                 RebuildList();
             });
+        }
+
+        public void SelectNewItem(string id)
+        {
+            _focusNameFieldOnNextRefresh = true;
+            SelectItem(id);
         }
 
         public void SelectItem(string id)
@@ -298,6 +314,16 @@ namespace ProjectGuild.View.UI
             // Name field (update without triggering callback)
             _nameField.SetValueWithoutNotify(ruleset.Name ?? "");
 
+            if (_focusNameFieldOnNextRefresh)
+            {
+                _focusNameFieldOnNextRefresh = false;
+                _nameField.schedule.Execute(() =>
+                {
+                    _nameField.Focus();
+                    _nameField.SelectAll();
+                });
+            }
+
             // Rules container — only rebuild on structural change
             RefreshRulesContainer(ruleset, sim);
 
@@ -338,7 +364,8 @@ namespace ProjectGuild.View.UI
                             // Scoped rebuild: only rules container + footer, not the whole editor
                             _cachedRulesShapeKey = null; // force rebuild
                             RefreshEditor();
-                        });
+                        },
+                        onCreateNewSequence: OnRequestNavigateToNewSequence);
                     _rulesContainer.Add(ruleRow);
                 }
             }
@@ -351,16 +378,10 @@ namespace ProjectGuild.View.UI
             var sim = _uiManager.Simulation;
             if (sim == null) return;
 
-            var ruleset = new Ruleset
-            {
-                Name = "New Macro Ruleset",
-                Category = RulesetCategory.General,
-            };
-            string id = sim.CommandCreateMacroRuleset(ruleset);
-            _selectedId = id;
+            string id = sim.CommandCreateMacroRuleset();
             _cachedRulesShapeKey = null;
             RebuildList();
-            RefreshEditor();
+            SelectNewItem(id);
         }
 
         private void OnAddRuleClicked()

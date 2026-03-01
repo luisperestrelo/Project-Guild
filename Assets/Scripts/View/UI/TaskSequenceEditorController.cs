@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Automation;
@@ -35,6 +36,7 @@ namespace ProjectGuild.View.UI
         private readonly Label _sharedBannerText;
         private readonly Button _btnCloneBanner;
         private readonly TextField _nameField;
+        private readonly Toggle _autoNameToggle;
         private readonly Toggle _loopToggle;
         private readonly VisualElement _stepsEditor;
         private readonly Button _btnAddStep;
@@ -47,6 +49,15 @@ namespace ProjectGuild.View.UI
         public string SelectedId => _selectedId;
         private string _searchFilter = "";
         private string _cachedStepsShapeKey;
+        private bool _focusNameFieldOnNextRefresh;
+
+        /// <summary>
+        /// Callback invoked when the player selects "+ New Micro Ruleset..." in a Work step's
+        /// micro dropdown. Params: (newMicroRulesetId, wireAction). AutomationPanelController
+        /// handles the navigation stack push. wireAction takes the ID to wire (may differ
+        /// from the created ID if the user selects an existing item instead).
+        /// </summary>
+        public Action<string, Action<string>> OnRequestNavigateToNewMicroRuleset { get; set; }
 
         public TaskSequenceEditorController(VisualElement root, UIManager uiManager)
         {
@@ -72,6 +83,14 @@ namespace ProjectGuild.View.UI
             _sharedBannerText = root.Q<Label>("taskseq-shared-text");
             _btnCloneBanner = root.Q<Button>("btn-taskseq-clone-banner");
             _nameField = root.Q<TextField>("taskseq-name-field");
+
+            // Auto-generate toggle — inserted into the name field row
+            _autoNameToggle = new Toggle("Auto-generate name");
+            _autoNameToggle.AddToClassList("auto-name-toggle");
+            _autoNameToggle.tooltip = "Auto-generate name from steps";
+            var nameRow = _nameField.parent;
+            nameRow.Add(_autoNameToggle);
+
             _loopToggle = root.Q<Toggle>("taskseq-loop-toggle");
             _stepsEditor = root.Q("taskseq-steps-editor");
             _btnAddStep = root.Q<Button>("btn-add-step");
@@ -85,9 +104,36 @@ namespace ProjectGuild.View.UI
             _nameField.RegisterValueChangedCallback(evt =>
             {
                 if (_selectedId == null) return;
-                _uiManager.Simulation?.CommandRenameTaskSequence(_selectedId, evt.newValue);
+                var sim = _uiManager.Simulation;
+                if (sim == null) return;
+
+                // Typing a name disables auto-generate
+                var seq = sim.FindTaskSequenceInLibrary(_selectedId);
+                if (seq != null && seq.AutoGenerateName)
+                {
+                    seq.AutoGenerateName = false;
+                    _autoNameToggle.SetValueWithoutNotify(false);
+                }
+
+                sim.CommandRenameTaskSequence(_selectedId, evt.newValue);
                 // Update list item name in-place — no full list rebuild
                 UpdateListItemName(_selectedId, evt.newValue);
+            });
+            _autoNameToggle.RegisterValueChangedCallback(evt =>
+            {
+                if (_selectedId == null) return;
+                var sim = _uiManager.Simulation;
+                if (sim == null) return;
+
+                var seq = sim.FindTaskSequenceInLibrary(_selectedId);
+                if (seq == null) return;
+                seq.AutoGenerateName = evt.newValue;
+
+                if (evt.newValue)
+                {
+                    // Re-derive name immediately
+                    TryAutoNameFromSteps(_selectedId);
+                }
             });
             _loopToggle.RegisterValueChangedCallback(evt =>
             {
@@ -98,6 +144,12 @@ namespace ProjectGuild.View.UI
             _btnClone.clicked += OnDuplicateClicked;
             _btnDelete.clicked += () => DeleteItemWithConfirmation(_selectedId);
             _btnCloneBanner.clicked += OnCloneBannerClicked;
+        }
+
+        public void SelectNewItem(string id)
+        {
+            _focusNameFieldOnNextRefresh = true;
+            SelectItem(id);
         }
 
         public void SelectItem(string id)
@@ -223,7 +275,19 @@ namespace ProjectGuild.View.UI
 
             // Update fields without triggering change callbacks
             _nameField.SetValueWithoutNotify(seq.Name ?? "");
+            _autoNameToggle.SetValueWithoutNotify(seq.AutoGenerateName);
             _loopToggle.SetValueWithoutNotify(seq.Loop);
+
+            // Auto-focus and select name field text on new item creation
+            if (_focusNameFieldOnNextRefresh)
+            {
+                _focusNameFieldOnNextRefresh = false;
+                _nameField.schedule.Execute(() =>
+                {
+                    _nameField.Focus();
+                    _nameField.SelectAll();
+                });
+            }
 
             // Shared template banner
             int usageCount = sim.CountRunnersUsingTaskSequence(seq.Id);
@@ -289,8 +353,7 @@ namespace ProjectGuild.View.UI
                         var nodeDropdown = CreateNodeDropdown(step.TargetNodeId, state, newNodeId =>
                         {
                             sim.CommandSetStepTargetNode(seq.Id, stepIndex, newNodeId);
-                            // No RefreshEditor — dropdown already shows the new value,
-                            // sim command updated the data.
+                            TryAutoNameFromSteps(seq.Id);
                         });
                         nodeDropdown.AddToClassList("editor-step-dropdown");
                         row.Add(nodeDropdown);
@@ -318,6 +381,7 @@ namespace ProjectGuild.View.UI
                 var deleteBtn = new Button(() =>
                 {
                     sim.CommandRemoveStepFromTaskSequence(seq.Id, stepIndex);
+                    TryAutoNameFromSteps(seq.Id);
                     RefreshEditor();
                     RebuildList(); // step count may affect list info
                 });
@@ -372,16 +436,48 @@ namespace ProjectGuild.View.UI
                 displayNames.Add(micro.Name ?? micro.Id);
             }
 
+            // "+ New Micro Ruleset..." option (only when navigation callback is available)
+            int newMicroIndex = -1;
+            if (OnRequestNavigateToNewMicroRuleset != null)
+            {
+                newMicroIndex = choices.Count;
+                choices.Add("__new__");
+                displayNames.Add("+ New Micro Ruleset...");
+            }
+
             var dropdown = new DropdownField(displayNames, 0);
             int currentIndex = choices.IndexOf(currentMicroId);
             if (currentIndex >= 0)
                 dropdown.index = currentIndex;
 
+            int savedCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
+
             dropdown.RegisterValueChangedCallback(evt =>
             {
                 int idx = dropdown.index;
                 if (idx >= 0 && idx < choices.Count)
-                    onChange(choices[idx]);
+                {
+                    if (idx == newMicroIndex && OnRequestNavigateToNewMicroRuleset != null)
+                    {
+                        // Create a new micro ruleset with default rules and request navigation
+                        string newId = sim.CommandCreateMicroRuleset();
+
+                        // The wire action connects the selected micro to the Work step.
+                        // The id parameter may differ from newId if the user selected
+                        // an existing micro ruleset instead.
+                        Action<string> wireAction = (id) => onChange(id);
+
+                        // Reset dropdown to previous value (wire happens on Done, not now)
+                        if (savedCurrentIndex >= 0 && savedCurrentIndex < displayNames.Count)
+                            dropdown.SetValueWithoutNotify(displayNames[savedCurrentIndex]);
+
+                        OnRequestNavigateToNewMicroRuleset(newId, wireAction);
+                    }
+                    else
+                    {
+                        onChange(choices[idx]);
+                    }
+                }
             });
 
             return dropdown;
@@ -394,16 +490,9 @@ namespace ProjectGuild.View.UI
             var sim = _uiManager.Simulation;
             if (sim == null) return;
 
-            var seq = new TaskSequence
-            {
-                Name = "New Sequence",
-                Loop = true,
-                Steps = new List<TaskStep>(),
-            };
-            string id = sim.CommandCreateTaskSequence(seq);
-            _selectedId = id;
+            string id = sim.CommandCreateTaskSequence();
             RebuildList();
-            RefreshEditor();
+            SelectNewItem(id);
         }
 
         private void OnAddStepClicked()
@@ -436,6 +525,7 @@ namespace ProjectGuild.View.UI
                             break;
                     }
                     sim.CommandAddStepToTaskSequence(_selectedId, newStep);
+                    TryAutoNameFromSteps(_selectedId);
                     picker.RemoveFromHierarchy();
                     RefreshEditor();
                     RebuildList();
@@ -572,5 +662,108 @@ namespace ProjectGuild.View.UI
         {
             DuplicateItem(_selectedId);
         }
+
+        // ─── Auto-naming ──────────────────────────────
+
+        /// <summary>
+        /// Generate a descriptive name from a task sequence's steps.
+        /// Returns null if no meaningful name can be derived (empty steps).
+        /// Uses the micro ruleset's Category to pick the verb (Gather/Fight/Craft/Work).
+        /// Multiple Work steps append "& more". Travel chains truncate at 3 nodes.
+        /// </summary>
+        public static string GenerateNameFromSteps(TaskSequence seq, GameState state)
+        {
+            if (seq?.Steps == null || seq.Steps.Count == 0 || state?.Map == null)
+                return null;
+
+            // Collect all Work steps with their preceding TravelTo node names
+            var workEntries = new List<(string nodeName, string verb)>();
+            for (int i = 0; i < seq.Steps.Count; i++)
+            {
+                if (seq.Steps[i].Type != TaskStepType.Work) continue;
+
+                // Determine node name from preceding TravelTo
+                string nodeName = null;
+                if (i > 0 && seq.Steps[i - 1].Type == TaskStepType.TravelTo)
+                {
+                    var node = state.Map.GetNode(seq.Steps[i - 1].TargetNodeId);
+                    nodeName = node?.Name ?? seq.Steps[i - 1].TargetNodeId;
+                }
+
+                // Determine verb from micro ruleset category
+                string verb = "Work";
+                var microId = seq.Steps[i].MicroRulesetId;
+                if (!string.IsNullOrEmpty(microId))
+                {
+                    var micro = state.MicroRulesetLibrary.Find(r => r.Id == microId);
+                    if (micro != null)
+                    {
+                        verb = micro.Category switch
+                        {
+                            RulesetCategory.Gathering => "Gather",
+                            RulesetCategory.Combat => "Fight",
+                            RulesetCategory.Crafting => "Craft",
+                            _ => "Work",
+                        };
+                    }
+                }
+
+                workEntries.Add((nodeName, verb));
+            }
+
+            if (workEntries.Count > 0)
+            {
+                var (nodeName, verb) = workEntries[0];
+                string name = nodeName != null ? $"{verb} at {nodeName}" : verb;
+                if (workEntries.Count > 1)
+                    name += " & more";
+                return name;
+            }
+
+            // No Work steps — describe from TravelTo targets (truncate at 3)
+            const int maxTravelNodes = 3;
+            var travelNodes = new List<string>();
+            foreach (var step in seq.Steps)
+            {
+                if (step.Type == TaskStepType.TravelTo && !string.IsNullOrEmpty(step.TargetNodeId))
+                {
+                    var node = state.Map.GetNode(step.TargetNodeId);
+                    travelNodes.Add(node?.Name ?? step.TargetNodeId);
+                }
+            }
+            if (travelNodes.Count > 0)
+            {
+                if (travelNodes.Count > maxTravelNodes)
+                {
+                    var truncated = travelNodes.GetRange(0, maxTravelNodes);
+                    return $"Travel: {string.Join(" \u2192 ", truncated)} \u2192 \u2026";
+                }
+                return $"Travel: {string.Join(" \u2192 ", travelNodes)}";
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Update the sequence name from its steps, but only if AutoGenerateName is true.
+        /// Called after steps are added, removed, or targets changed.
+        /// </summary>
+        private void TryAutoNameFromSteps(string seqId)
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            var seq = sim.FindTaskSequenceInLibrary(seqId);
+            if (seq == null || !seq.AutoGenerateName) return;
+
+            string autoName = GenerateNameFromSteps(seq, sim.CurrentGameState);
+            if (autoName != null && autoName != seq.Name)
+            {
+                sim.CommandRenameTaskSequence(seqId, autoName);
+                _nameField.SetValueWithoutNotify(autoName);
+                UpdateListItemName(seqId, autoName);
+            }
+        }
+
     }
 }

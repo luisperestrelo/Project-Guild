@@ -1,13 +1,24 @@
+/* ─── Modal Backdrop (dims everything behind the panel) ── */
+
+.panel-backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
 /* ─── Options Panel (overlay, centered) ────────────── */
 
 .options-panel-root {
     position: absolute;
     left: 50%;
-    top: 50%;
+    top: 45%;
     translate: -50% -50%;
     width: 500px;
     max-height: 520px;
-    background-color: rgba(12, 12, 20, 0.96);
+    background-color: rgb(12, 12, 20);
     border-width: 1px;
     border-color: rgba(80, 80, 100, 0.6);
     border-radius: 6px;

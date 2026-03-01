@@ -48,8 +48,10 @@ namespace ProjectGuild.View.UI
         private bool _editorShellBuilt;
 
         private string _selectedId;
+        public string SelectedId => _selectedId;
         private string _searchFilter = "";
         private string _cachedRulesShapeKey;
+        private bool _focusNameFieldOnNextRefresh;
 
         public MicroRulesetEditorController(VisualElement root, UIManager uiManager)
         {
@@ -68,6 +70,12 @@ namespace ProjectGuild.View.UI
                 _searchFilter = evt.newValue?.ToLowerInvariant() ?? "";
                 RebuildList();
             });
+        }
+
+        public void SelectNewItem(string id)
+        {
+            _focusNameFieldOnNextRefresh = true;
+            SelectItem(id);
         }
 
         public void SelectItem(string id)
@@ -259,6 +267,16 @@ namespace ProjectGuild.View.UI
             // Name field (update without triggering callback)
             _nameField.SetValueWithoutNotify(ruleset.Name ?? "");
 
+            if (_focusNameFieldOnNextRefresh)
+            {
+                _focusNameFieldOnNextRefresh = false;
+                _nameField.schedule.Execute(() =>
+                {
+                    _nameField.Focus();
+                    _nameField.SelectAll();
+                });
+            }
+
             // Rules container — only rebuild on structural change
             RefreshRulesContainer(ruleset, sim);
 
@@ -311,14 +329,10 @@ namespace ProjectGuild.View.UI
             var sim = _uiManager.Simulation;
             if (sim == null) return;
 
-            var ruleset = DefaultRulesets.CreateDefaultMicro();
-            ruleset.Id = null; // let CommandCreate generate new ID
-            ruleset.Name = "New Micro Ruleset";
-            string id = sim.CommandCreateMicroRuleset(ruleset);
-            _selectedId = id;
+            string id = sim.CommandCreateMicroRuleset();
             _cachedRulesShapeKey = null;
             RebuildList();
-            RefreshEditor();
+            SelectNewItem(id);
         }
 
         private void OnAddRuleClicked()

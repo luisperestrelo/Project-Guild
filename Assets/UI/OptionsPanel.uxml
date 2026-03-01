@@ -1,5 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:Style src="OptionsPanel.uss" />
+    <ui:VisualElement name="options-panel-backdrop" class="panel-backdrop">
     <ui:VisualElement name="options-panel-root" class="options-panel-root">
         <!-- Title bar -->
         <ui:VisualElement name="options-title-bar" class="options-title-bar">
@@ -64,6 +65,14 @@
                         <ui:Label text="Delete library items without asking for confirmation" class="options-toggle-desc" />
                     </ui:VisualElement>
                 </ui:VisualElement>
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-skip-cancel-creation-confirm" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Skip cancel-creation confirmations" class="options-toggle-label" />
+                        <ui:Label text="Discard in-progress items without asking for confirmation" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:VisualElement>
 
             <!-- Divider -->
@@ -93,5 +102,6 @@
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
+    </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

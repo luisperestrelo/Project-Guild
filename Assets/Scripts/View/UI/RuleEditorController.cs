@@ -23,7 +23,8 @@ namespace ProjectGuild.View.UI
             string rulesetId,
             bool isMacro,
             GameSimulation sim,
-            Action onChanged)
+            Action onChanged,
+            Action<string, Action<string>> onCreateNewSequence = null)
         {
             var state = sim.CurrentGameState;
             var row = new VisualElement();
@@ -110,7 +111,7 @@ namespace ProjectGuild.View.UI
                 rule.Action = updatedAction;
                 sim.CommandUpdateRule(rulesetId, ruleIndex, rule);
                 onChanged();
-            });
+            }, onCreateNewSequence);
             row.Add(actionEditor);
 
             // ─── Timing toggle (macro only) ───
@@ -447,14 +448,15 @@ namespace ProjectGuild.View.UI
 
         private static VisualElement BuildActionEditor(
             AutomationAction action, bool isMacro, GameState state,
-            GameSimulation sim, Action<AutomationAction> onUpdate)
+            GameSimulation sim, Action<AutomationAction> onUpdate,
+            Action<string, Action<string>> onCreateNewSequence = null)
         {
             var container = new VisualElement();
             container.AddToClassList("action-editor");
 
             if (isMacro)
             {
-                // Flat dropdown: "Go Idle" + all library sequences by name
+                // Flat dropdown: "Go Idle" + all library sequences by name + optional "+ New Sequence..."
                 var choices = new List<string> { "Go Idle" };
                 var seqIds = new List<string> { null }; // null = Idle
 
@@ -465,6 +467,15 @@ namespace ProjectGuild.View.UI
                         choices.Add(seq.Name ?? seq.Id);
                         seqIds.Add(seq.Id);
                     }
+                }
+
+                // "+ New Sequence..." option (only when navigation callback is available)
+                int newSequenceIndex = -1;
+                if (onCreateNewSequence != null)
+                {
+                    newSequenceIndex = choices.Count;
+                    choices.Add("+ New Sequence...");
+                    seqIds.Add("__new__");
                 }
 
                 int currentIndex = 0; // default to Go Idle
@@ -480,10 +491,30 @@ namespace ProjectGuild.View.UI
                     int idx = dropdown.index;
                     if (idx >= 0 && idx < seqIds.Count)
                     {
-                        if (seqIds[idx] == null)
+                        if (idx == newSequenceIndex && onCreateNewSequence != null)
+                        {
+                            // Create a new sequence and request navigation
+                            string newId = sim.CommandCreateTaskSequence();
+
+                            // The wire action will be executed on "Done" —
+                            // it connects the selected sequence to the macro rule's action.
+                            // The id parameter may differ from newId if the user selected
+                            // an existing sequence instead.
+                            Action<string> wireAction = (id) => onUpdate(AutomationAction.AssignSequence(id));
+
+                            // Reset dropdown to previous value (the wire happens on Done, not now)
+                            dropdown.SetValueWithoutNotify(choices[currentIndex]);
+
+                            onCreateNewSequence(newId, wireAction);
+                        }
+                        else if (seqIds[idx] == null)
+                        {
                             onUpdate(AutomationAction.Idle());
+                        }
                         else
+                        {
                             onUpdate(AutomationAction.AssignSequence(seqIds[idx]));
+                        }
                     }
                 });
 

@@ -22,6 +22,7 @@ namespace ProjectGuild.Bridge
 
         // ─── Automation ──────────────────────────────────
         public bool SkipDeleteConfirmation = false;
+        public bool SkipCancelCreationConfirmation = false;
 
         // ─── Default scope filters ──────────────────────
         // Stored as strings to avoid coupling to view-layer enums.

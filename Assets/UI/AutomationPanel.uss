@@ -1,12 +1,24 @@
+/* ─── Modal Backdrop (dims everything behind the panel) ── */
+
+.panel-backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
 /* ─── Panel Root (overlay) ─────────────────────────── */
 
 .panel-root {
     position: absolute;
-    left: 50px;
-    top: 50px;
-    right: 50px;
-    bottom: 50px;
-    background-color: rgba(12, 12, 20, 0.96);
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: 750px;
+    height: 85%;
+    background-color: rgb(12, 12, 20);
     border-width: 1px;
     border-color: rgba(80, 80, 100, 0.6);
     border-radius: 6px;
@@ -76,6 +88,53 @@
     color: rgb(240, 240, 245);
     border-bottom-width: 2px;
     border-bottom-color: rgb(220, 180, 60);
+}
+
+/* ─── Navigation Header (breadcrumb + Cancel) ──────── */
+
+.nav-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.4);
+    background-color: rgba(20, 20, 35, 0.9);
+}
+
+.nav-breadcrumb {
+    font-size: 12px;
+    color: rgb(140, 140, 165);
+    flex-grow: 1;
+}
+
+.nav-cancel-button {
+    background-color: rgba(40, 40, 55, 0.8);
+    color: rgb(160, 160, 180);
+    border-width: 1px;
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 3px;
+    padding: 4px 14px;
+    font-size: 11px;
+}
+
+.nav-cancel-button:hover {
+    background-color: rgba(55, 55, 70, 0.9);
+    color: rgb(200, 200, 215);
+}
+
+/* Done button in footer during nav stack — uses editor-footer-button base + green tint */
+.nav-done-button {
+    background-color: rgba(35, 60, 35, 0.9);
+    color: rgb(140, 220, 140);
+    border-color: rgba(60, 120, 60, 0.5);
+    -unity-font-style: bold;
+    align-self: flex-start;
+}
+
+.nav-done-button:hover {
+    background-color: rgba(45, 80, 45, 0.95);
+    color: rgb(170, 240, 170);
 }
 
 /* ─── Panel Content ───────────────────────────────── */
@@ -350,6 +409,18 @@
     border-radius: 3px;
     color: rgb(220, 220, 235);
     padding: 3px 6px;
+}
+
+/* Auto-generate name toggle — compact checkbox next to name field */
+.auto-name-toggle {
+    margin-left: 6px;
+    flex-shrink: 0;
+}
+
+.auto-name-toggle .unity-label {
+    font-size: 11px;
+    color: rgb(130, 130, 150);
+    margin-right: 3px;
 }
 
 .editor-toggle {

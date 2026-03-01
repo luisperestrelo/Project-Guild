@@ -781,15 +781,7 @@ namespace ProjectGuild.View.UI
             var sim = _uiManager.Simulation;
             if (sim == null) return;
 
-            var seq = new TaskSequence
-            {
-                Name = "New Sequence",
-                Loop = true,
-                Steps = new List<TaskStep>(),
-            };
-            string id = sim.CommandCreateTaskSequence(seq);
-            // Don't assign yet — the sequence is empty. The library panel will show
-            // an "Assign to [Runner]" button that assigns when the user is done editing.
+            string id = sim.CommandCreateTaskSequence();
             _uiManager.OpenAutomationPanelToItemForNewAssignment("taskseq", id, _currentRunnerId);
         }
 
@@ -799,12 +791,7 @@ namespace ProjectGuild.View.UI
             var sim = _uiManager.Simulation;
             if (sim == null) return;
 
-            var ruleset = new Ruleset
-            {
-                Name = "New Macro Ruleset",
-                Category = RulesetCategory.General,
-            };
-            string id = sim.CommandCreateMacroRuleset(ruleset);
+            string id = sim.CommandCreateMacroRuleset();
             _uiManager.OpenAutomationPanelToItemForNewAssignment("macro", id, _currentRunnerId);
         }
     }
