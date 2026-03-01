@@ -121,14 +121,14 @@
 }
 
 .resource-category-arrow {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(160, 140, 60);
     min-width: 12px;
     -unity-text-align: middle-center;
 }
 
 .resource-category-name {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(220, 180, 60);
     -unity-font-style: bold;
 }
@@ -151,7 +151,7 @@
 }
 
 .resource-item-name {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(180, 180, 200);
     flex-shrink: 1;
     overflow: hidden;
@@ -159,7 +159,7 @@
 }
 
 .resource-item-quantity {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(220, 220, 240);
     -unity-text-align: middle-right;
     min-width: 36px;

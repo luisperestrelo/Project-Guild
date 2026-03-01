@@ -79,7 +79,7 @@
 }
 
 .options-subsection-header {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(160, 140, 80);
     -unity-font-style: bold;
     margin-top: 6px;
@@ -117,7 +117,7 @@
 }
 
 .options-toggle-desc {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(130, 130, 155);
     margin-top: 1px;
     white-space: normal;
@@ -138,22 +138,14 @@
 }
 
 .options-dropdown {
-    width: 160px;
-    font-size: 11px;
-    background-color: rgba(20, 20, 35, 0.8);
-    border-color: rgba(70, 70, 90, 0.5);
-    border-radius: 3px;
-    color: rgb(200, 200, 215);
-}
-
-.options-dropdown:focus {
-    border-color: rgba(220, 180, 60, 0.6);
+    min-width: 160px;
+    font-size: 12px;
 }
 
 /* ─── Save / Load section ────────────────────── */
 
 .options-save-status {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(140, 140, 160);
     margin-bottom: 8px;
 }

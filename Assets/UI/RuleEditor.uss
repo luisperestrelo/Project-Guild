@@ -1,24 +1,29 @@
 /* ─── Rule Editor Row ─────────────────────────────── */
 
 .rule-editor-row {
-    flex-direction: row;
-    align-items: flex-start;
-    flex-wrap: wrap;
+    flex-direction: column;
     padding: 6px 8px;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
     background-color: rgba(20, 20, 35, 0.5);
-    border-radius: 3px;
+    border-radius: 4px;
     border-width: 1px;
     border-color: rgba(50, 50, 70, 0.3);
 }
 
 .rule-editor-row:hover {
-    background-color: rgba(30, 30, 50, 0.6);
+    background-color: rgba(25, 25, 42, 0.6);
     border-color: rgba(70, 70, 90, 0.5);
 }
 
 .rule-editor-disabled {
     opacity: 0.45;
+}
+
+/* ─── Top Line (toggle, index, conditions card, buttons) ── */
+
+.rule-editor-top-line {
+    flex-direction: row;
+    align-items: flex-start;
 }
 
 /* ─── Toggle / Index / Keywords ──────────────────── */
@@ -30,63 +35,144 @@
     border-color: rgba(60, 100, 60, 0.4);
     border-radius: 2px;
     padding: 1px 4px;
-    font-size: 10px;
+    font-size: 12px;
     margin-right: 4px;
+    margin-top: 3px;
     width: 20px;
     height: 18px;
+    flex-shrink: 0;
 }
 
 .rule-editor-index {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(100, 100, 120);
     width: 18px;
     -unity-text-align: middle-right;
     margin-right: 4px;
+    margin-top: 4px;
+    flex-shrink: 0;
 }
 
 .rule-editor-keyword {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(180, 160, 60);
     -unity-font-style: bold;
-    margin-left: 4px;
-    margin-right: 4px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+/* ─── Conditions Sub-Card (blue tint) ────────────── */
+
+.rule-editor-conditions-card {
+    flex-direction: row;
+    align-items: flex-start;
+    flex-grow: 1;
+    flex-shrink: 1;
+    background-color: rgba(30, 50, 80, 0.25);
+    border-left-width: 2px;
+    border-left-color: rgba(60, 100, 160, 0.5);
+    border-radius: 3px;
+    padding: 4px 6px;
+}
+
+.rule-editor-conditions-content {
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.rule-editor-and-keyword {
+    font-size: 11px;
+    color: rgb(100, 140, 200);
+    -unity-font-style: bold;
+    margin-top: 2px;
+    margin-bottom: 2px;
 }
 
 /* ─── Conditions ──────────────────────────────────── */
 
-.rule-editor-conditions {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    flex-shrink: 1;
-}
-
 .condition-editor {
     flex-direction: row;
     align-items: center;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
 }
 
 .condition-type-dropdown {
-    font-size: 10px;
-    min-width: 100px;
+    font-size: 12px;
+    min-width: 110px;
     margin-right: 3px;
 }
 
 .condition-params {
     flex-direction: row;
     align-items: center;
+    flex-shrink: 0;
 }
 
-.condition-op-dropdown {
-    font-size: 10px;
-    width: 45px;
+.condition-op-wrapper {
+    position: relative;
+    flex-grow: 0;
+    flex-shrink: 0;
     margin-right: 3px;
 }
 
-.condition-num-field {
-    font-size: 10px;
-    width: 50px;
+.condition-op-button {
+    font-size: 12px;
+    min-width: 28px;
+    height: 20px;
+    padding: 0 6px;
+    background-color: rgba(25, 50, 55, 0.8);
+    color: rgb(120, 210, 210);
+    border-width: 1px;
+    border-color: rgba(50, 130, 130, 0.5);
+    border-radius: 2px;
+    -unity-text-align: middle-center;
+}
+
+.condition-op-button:hover {
+    background-color: rgba(35, 65, 70, 0.9);
+    border-color: rgba(70, 170, 170, 0.6);
+    color: rgb(160, 240, 240);
+}
+
+.condition-op-popup {
+    position: absolute;
+    top: 22px;
+    left: 0;
+    flex-direction: row;
+    background-color: rgba(20, 20, 35, 0.95);
+    border-width: 1px;
+    border-color: rgba(50, 130, 130, 0.6);
+    border-radius: 3px;
+    padding: 2px;
+}
+
+.condition-op-option {
+    font-size: 12px;
+    min-width: 26px;
+    height: 22px;
+    padding: 0 5px;
+    margin: 1px;
+    background-color: rgba(30, 30, 50, 0.8);
+    color: rgb(180, 180, 200);
+    border-width: 0;
+    border-radius: 2px;
+    -unity-text-align: middle-center;
+}
+
+.condition-op-option:hover {
+    background-color: rgba(35, 65, 70, 0.9);
+    color: rgb(160, 240, 240);
+}
+
+.condition-op-option-active {
+    background-color: rgba(40, 80, 85, 0.7);
+    color: rgb(140, 220, 220);
+}
+
+IntegerField.condition-num-field {
+    font-size: 12px;
+    min-width: 50px;
+    flex-grow: 0;
     margin-right: 3px;
 }
 
@@ -99,44 +185,63 @@
     padding: 1px 4px;
 }
 
-.condition-item-dropdown,
-.condition-skill-dropdown,
-.condition-node-dropdown,
-.condition-state-dropdown {
-    font-size: 10px;
+DropdownField.condition-item-dropdown,
+DropdownField.condition-skill-dropdown,
+DropdownField.condition-node-dropdown,
+DropdownField.condition-state-dropdown {
+    font-size: 12px;
     min-width: 90px;
+    flex-grow: 0;
     margin-right: 3px;
 }
 
+/* Condition delete — gray/subtle, distinct from rule delete (red) */
 .condition-delete-btn {
-    background-color: rgba(50, 25, 25, 0.6);
-    color: rgb(160, 100, 100);
+    background-color: rgba(40, 40, 55, 0.6);
+    color: rgb(120, 120, 140);
     border-width: 0;
     border-radius: 2px;
     padding: 0 4px;
-    font-size: 10px;
-    margin-left: 2px;
+    font-size: 12px;
+    margin-left: 3px;
+    margin-right: 6px;
     height: 16px;
 }
 
 .condition-delete-btn:hover {
-    background-color: rgba(80, 35, 35, 0.8);
-    color: rgb(200, 130, 130);
+    background-color: rgba(60, 45, 45, 0.8);
+    color: rgb(180, 130, 130);
 }
 
+/* Add condition "+" button */
 .rule-editor-add-cond {
-    background-color: rgba(30, 35, 45, 0.6);
-    color: rgb(130, 140, 160);
+    background-color: rgba(35, 50, 70, 0.5);
+    color: rgb(100, 140, 190);
     border-width: 0;
     border-radius: 2px;
-    padding: 1px 6px;
-    font-size: 9px;
-    margin-left: 4px;
+    padding: 1px 8px;
+    font-size: 12px;
+    margin-top: 2px;
+    align-self: flex-start;
 }
 
 .rule-editor-add-cond:hover {
-    background-color: rgba(40, 45, 60, 0.8);
-    color: rgb(170, 180, 200);
+    background-color: rgba(45, 65, 90, 0.7);
+    color: rgb(140, 180, 230);
+}
+
+/* ─── Action Sub-Card (amber tint) ───────────────── */
+
+.rule-editor-action-card {
+    flex-direction: row;
+    align-items: center;
+    background-color: rgba(70, 55, 25, 0.25);
+    border-left-width: 2px;
+    border-left-color: rgba(160, 120, 40, 0.5);
+    border-radius: 3px;
+    padding: 4px 6px;
+    margin-top: 3px;
+    margin-left: 42px;
 }
 
 /* ─── Action ──────────────────────────────────────── */
@@ -147,8 +252,8 @@
 }
 
 .action-type-dropdown {
-    font-size: 10px;
-    min-width: 90px;
+    font-size: 12px;
+    min-width: 100px;
     margin-right: 3px;
 }
 
@@ -159,13 +264,13 @@
 
 .action-node-dropdown,
 .action-item-dropdown {
-    font-size: 10px;
+    font-size: 12px;
     min-width: 100px;
     margin-right: 3px;
 }
 
 .action-index-field {
-    font-size: 10px;
+    font-size: 12px;
     width: 40px;
     margin-right: 3px;
 }
@@ -185,13 +290,13 @@
     border-width: 0;
     border-radius: 2px;
     padding: 1px 6px;
-    font-size: 9px;
+    font-size: 11px;
 }
 
 /* ─── Timing ──────────────────────────────────────── */
 
 .rule-editor-timing {
-    font-size: 10px;
+    font-size: 12px;
     min-width: 120px;
     margin-left: 6px;
 }
@@ -202,6 +307,8 @@
     flex-direction: row;
     margin-left: auto;
     align-items: center;
+    flex-shrink: 0;
+    margin-top: 2px;
 }
 
 .rule-editor-move-btn {
@@ -210,7 +317,7 @@
     border-width: 0;
     border-radius: 2px;
     padding: 1px 5px;
-    font-size: 9px;
+    font-size: 11px;
     margin-right: 2px;
 }
 
@@ -225,7 +332,7 @@
     border-width: 0;
     border-radius: 2px;
     padding: 1px 5px;
-    font-size: 10px;
+    font-size: 12px;
     margin-left: 4px;
 }
 

@@ -82,7 +82,7 @@
     padding: 3px 10px;
     margin-right: 2px;
     margin-bottom: 2px;
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(160, 160, 180);
     background-color: rgba(25, 25, 40, 0.6);
     border-width: 1px;
@@ -150,7 +150,7 @@
     position: absolute;
     bottom: 2px;
     right: 3px;
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(220, 220, 240);
     -unity-font-style: bold;
 }
@@ -164,6 +164,6 @@
 }
 
 .bank-total-label {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(140, 140, 160);
 }

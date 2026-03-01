@@ -35,7 +35,7 @@
     border-radius: 2px;
     padding: 3px 8px;
     margin-right: 2px;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .filter-button:hover {
@@ -85,7 +85,7 @@
 }
 
 .entry-text {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(200, 200, 210);
     white-space: normal;
     flex-grow: 1;
@@ -110,7 +110,7 @@
     translate: -50% 0;
     background-color: rgba(220, 180, 60, 0.9);
     color: rgb(15, 15, 25);
-    font-size: 10px;
+    font-size: 12px;
     -unity-font-style: bold;
     padding: 2px 10px;
     border-radius: 8px;

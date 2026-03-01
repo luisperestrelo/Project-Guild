@@ -20,24 +20,11 @@
 .folder-dropdown {
     max-width: 140px;
     min-width: 80px;
-    font-size: 11px;
+    font-size: 12px;
     margin-right: 4px;
     flex-shrink: 1;
 }
 
-.folder-dropdown .unity-base-popup-field__input {
-    background-color: rgba(30, 30, 45, 0.8);
-    color: rgb(200, 200, 220);
-    border-width: 1px;
-    border-color: rgba(80, 80, 100, 0.5);
-    border-radius: 2px;
-    padding: 2px 6px;
-    font-size: 11px;
-}
-
-.folder-dropdown .unity-base-popup-field__arrow {
-    -unity-background-image-tint-color: rgb(160, 160, 180);
-}
 
 /* ─── Page Tabs ──────────────────────────────────── */
 
@@ -55,7 +42,7 @@
     border-radius: 2px;
     padding: 3px 8px;
     margin-right: 2px;
-    font-size: 11px;
+    font-size: 12px;
     flex-shrink: 1;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -80,7 +67,7 @@
     border-width: 0;
     border-radius: 2px;
     padding: 3px 6px;
-    font-size: 11px;
+    font-size: 12px;
     margin-right: 2px;
     flex-shrink: 0;
 }
@@ -102,7 +89,7 @@
     border-width: 0;
     border-radius: 2px;
     padding: 3px 6px;
-    font-size: 10px;
+    font-size: 12px;
     margin-left: 2px;
     flex-shrink: 0;
 }
@@ -134,7 +121,7 @@
 }
 
 .search-field {
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .search-field .unity-text-field__input {
@@ -154,7 +141,7 @@
 
 .search-result-row {
     padding: 3px 8px;
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(180, 180, 200);
 }
 
@@ -200,7 +187,7 @@
 }
 
 .logbook-collapsed .collapsed-label {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(180, 180, 200);
     -unity-font-style: bold;
 }

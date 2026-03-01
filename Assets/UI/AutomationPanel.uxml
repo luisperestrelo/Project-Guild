@@ -1,4 +1,5 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="Common.uss" />
     <ui:Style src="AutomationPanel.uss" />
     <ui:Style src="RuleEditor.uss" />
     <ui:VisualElement name="automation-panel-backdrop" class="panel-backdrop">

@@ -101,7 +101,7 @@
 /* ─── Warning banner ─────────────────────────────── */
 
 .overview-warning-label {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(230, 140, 50);
     background-color: rgba(180, 100, 30, 0.15);
     border-width: 1px;
@@ -115,7 +115,7 @@
 /* ─── Task / Travel ───────────────────────────────── */
 
 .info-label {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(140, 140, 160);
     margin-right: 4px;
 }
@@ -171,12 +171,12 @@
 }
 
 .live-stat-label {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(140, 140, 160);
 }
 
 .live-stat-value {
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(220, 220, 240);
     -unity-text-align: middle-right;
 }
@@ -191,7 +191,7 @@
 }
 
 .live-stat-xp-label {
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(160, 160, 180);
     min-width: 120px;
     flex-shrink: 0;
@@ -232,13 +232,13 @@
 
 .skill-name {
     width: 100px;
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(180, 180, 200);
 }
 
 .skill-level {
     width: 36px;
-    font-size: 11px;
+    font-size: 12px;
     color: rgb(220, 220, 240);
     -unity-text-align: middle-right;
     margin-right: 4px;
@@ -246,7 +246,7 @@
 
 .skill-passion {
     width: 12px;
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(220, 180, 60);
     -unity-text-align: middle-center;
 }
@@ -303,7 +303,7 @@
 }
 
 .inventory-slot-label {
-    font-size: 9px;
+    font-size: 11px;
     color: rgb(180, 200, 220);
     -unity-text-align: middle-center;
     white-space: normal;
@@ -314,7 +314,7 @@
     position: absolute;
     bottom: 2px;
     right: 3px;
-    font-size: 10px;
+    font-size: 12px;
     color: rgb(220, 220, 240);
     -unity-font-style: bold;
     -unity-text-align: middle-right;

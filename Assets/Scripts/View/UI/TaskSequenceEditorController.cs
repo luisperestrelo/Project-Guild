@@ -377,7 +377,38 @@ namespace ProjectGuild.View.UI
                         break;
                 }
 
-                // Delete button
+                // Move / Delete buttons
+                var buttonsContainer = new VisualElement();
+                buttonsContainer.AddToClassList("editor-step-buttons");
+
+                var moveUpBtn = new Button(() =>
+                {
+                    if (stepIndex > 0)
+                    {
+                        sim.CommandMoveStepInTaskSequence(seq.Id, stepIndex, stepIndex - 1);
+                        TryAutoNameFromSteps(seq.Id);
+                        _cachedStepsShapeKey = null;
+                        RefreshEditor();
+                    }
+                });
+                moveUpBtn.text = "\u25b2";
+                moveUpBtn.AddToClassList("editor-step-move-btn");
+                buttonsContainer.Add(moveUpBtn);
+
+                var moveDownBtn = new Button(() =>
+                {
+                    if (stepIndex < seq.Steps.Count - 1)
+                    {
+                        sim.CommandMoveStepInTaskSequence(seq.Id, stepIndex, stepIndex + 1);
+                        TryAutoNameFromSteps(seq.Id);
+                        _cachedStepsShapeKey = null;
+                        RefreshEditor();
+                    }
+                });
+                moveDownBtn.text = "\u25bc";
+                moveDownBtn.AddToClassList("editor-step-move-btn");
+                buttonsContainer.Add(moveDownBtn);
+
                 var deleteBtn = new Button(() =>
                 {
                     sim.CommandRemoveStepFromTaskSequence(seq.Id, stepIndex);
@@ -387,7 +418,9 @@ namespace ProjectGuild.View.UI
                 });
                 deleteBtn.text = "\u00d7";
                 deleteBtn.AddToClassList("editor-step-delete");
-                row.Add(deleteBtn);
+                buttonsContainer.Add(deleteBtn);
+
+                row.Add(buttonsContainer);
 
                 _stepsEditor.Add(row);
             }

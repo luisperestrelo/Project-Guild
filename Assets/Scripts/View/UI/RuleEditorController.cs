@@ -8,11 +8,16 @@ namespace ProjectGuild.View.UI
 {
     /// <summary>
     /// Reusable component that renders a single automation rule as an editable row.
-    /// Provides inline editing via dropdowns for condition type, parameters, action type,
-    /// and timing. Supports move up/down, toggle enabled, and delete.
+    /// Two-line layout: conditions (IF) on top, action (THEN) on bottom.
+    /// Supports move up/down, toggle enabled, and delete.
     ///
     /// Used by both MacroRulesetEditorController and MicroRulesetEditorController.
     /// All changes go through GameSimulation commands.
+    ///
+    /// IMPORTANT: Value-only changes (number fields, dropdown selections) persist via
+    /// CommandUpdateRule but do NOT trigger a UI rebuild. Only structural changes
+    /// (add/remove condition, add/remove/move rule, condition type change) call
+    /// onStructuralChange which rebuilds the rules container.
     /// </summary>
     public class RuleEditorController
     {
@@ -23,7 +28,7 @@ namespace ProjectGuild.View.UI
             string rulesetId,
             bool isMacro,
             GameSimulation sim,
-            Action onChanged,
+            Action onStructuralChange,
             Action<string, Action<string>> onCreateNewSequence = null)
         {
             var state = sim.CurrentGameState;
@@ -31,106 +36,103 @@ namespace ProjectGuild.View.UI
             row.AddToClassList("rule-editor-row");
             if (!rule.Enabled) row.AddToClassList("rule-editor-disabled");
 
-            // ─── Enable toggle ───
+            // Persist a value change without rebuilding the UI.
+            // The element already shows the new value — just save to sim.
+            void PersistRule()
+            {
+                sim.CommandUpdateRule(rulesetId, ruleIndex, rule);
+            }
+
+            // ─── Top line: checkbox, index, IF, conditions, move/delete ───
+            var topLine = new VisualElement();
+            topLine.AddToClassList("rule-editor-top-line");
+
+            // Enable toggle
             var enableBtn = new Button(() =>
             {
                 sim.CommandToggleRuleEnabled(rulesetId, ruleIndex);
-                onChanged();
+                onStructuralChange();
             });
             enableBtn.text = rule.Enabled ? "\u2713" : "\u2717";
             enableBtn.AddToClassList("rule-editor-toggle");
-            row.Add(enableBtn);
+            topLine.Add(enableBtn);
 
-            // ─── Index label ───
+            // Index label
             var indexLabel = new Label($"{ruleIndex + 1}.");
             indexLabel.AddToClassList("rule-editor-index");
             indexLabel.pickingMode = PickingMode.Ignore;
-            row.Add(indexLabel);
+            topLine.Add(indexLabel);
 
-            // ─── "IF" label ───
+            // Conditions sub-card (blue tint)
+            var conditionsCard = new VisualElement();
+            conditionsCard.AddToClassList("rule-editor-conditions-card");
+
             var ifLabel = new Label("IF");
             ifLabel.AddToClassList("rule-editor-keyword");
             ifLabel.pickingMode = PickingMode.Ignore;
-            row.Add(ifLabel);
+            conditionsCard.Add(ifLabel);
 
-            // ─── Condition(s) ───
-            var conditionsContainer = new VisualElement();
-            conditionsContainer.AddToClassList("rule-editor-conditions");
+            var conditionsContent = new VisualElement();
+            conditionsContent.AddToClassList("rule-editor-conditions-content");
 
             for (int ci = 0; ci < rule.Conditions.Count; ci++)
             {
+                int condIndex = ci;
+
                 if (ci > 0)
                 {
                     var andLabel = new Label("AND");
-                    andLabel.AddToClassList("rule-editor-keyword");
+                    andLabel.AddToClassList("rule-editor-and-keyword");
                     andLabel.pickingMode = PickingMode.Ignore;
-                    conditionsContainer.Add(andLabel);
+                    conditionsContent.Add(andLabel);
                 }
 
-                int condIndex = ci;
-                var condRow = BuildConditionEditor(rule.Conditions[ci], state, sim, (updatedCond) =>
-                {
-                    rule.Conditions[condIndex] = updatedCond;
-                    sim.CommandUpdateRule(rulesetId, ruleIndex, rule);
-                    onChanged();
-                }, () =>
-                {
-                    // Delete condition
-                    if (rule.Conditions.Count > 1)
+                var condRow = BuildConditionEditor(
+                    rule.Conditions[ci], state, sim,
+                    // Value-only update — persist, no rebuild
+                    (updatedCond) =>
                     {
-                        rule.Conditions.RemoveAt(condIndex);
-                        sim.CommandUpdateRule(rulesetId, ruleIndex, rule);
-                        onChanged();
-                    }
-                });
-                conditionsContainer.Add(condRow);
+                        rule.Conditions[condIndex] = updatedCond;
+                        PersistRule();
+                    },
+                    // Condition type changed — structural, needs param rebuild.
+                    // We handle this locally in BuildConditionEditor via RebuildParams,
+                    // but the parent also needs to rebuild to re-sync condition indices.
+                    (updatedCond) =>
+                    {
+                        rule.Conditions[condIndex] = updatedCond;
+                        PersistRule();
+                        onStructuralChange();
+                    },
+                    // Delete condition
+                    () =>
+                    {
+                        if (rule.Conditions.Count > 1)
+                        {
+                            rule.Conditions.RemoveAt(condIndex);
+                            PersistRule();
+                            onStructuralChange();
+                        }
+                    });
+                conditionsContent.Add(condRow);
             }
 
-            // + AND button
+            // "+" button to add condition
             var addCondBtn = new Button(() =>
             {
                 rule.Conditions.Add(Condition.Always());
-                sim.CommandUpdateRule(rulesetId, ruleIndex, rule);
-                onChanged();
+                PersistRule();
+                onStructuralChange();
             });
-            addCondBtn.text = "+ AND";
+            addCondBtn.text = "+";
             addCondBtn.AddToClassList("rule-editor-add-cond");
-            conditionsContainer.Add(addCondBtn);
+            addCondBtn.tooltip = "Add condition";
+            conditionsContent.Add(addCondBtn);
 
-            row.Add(conditionsContainer);
+            conditionsCard.Add(conditionsContent);
+            topLine.Add(conditionsCard);
 
-            // ─── "THEN" label ───
-            var thenLabel = new Label("THEN");
-            thenLabel.AddToClassList("rule-editor-keyword");
-            thenLabel.pickingMode = PickingMode.Ignore;
-            row.Add(thenLabel);
-
-            // ─── Action picker ───
-            var actionEditor = BuildActionEditor(rule.Action, isMacro, state, sim, (updatedAction) =>
-            {
-                rule.Action = updatedAction;
-                sim.CommandUpdateRule(rulesetId, ruleIndex, rule);
-                onChanged();
-            }, onCreateNewSequence);
-            row.Add(actionEditor);
-
-            // ─── Timing toggle (macro only) ───
-            if (isMacro)
-            {
-                var timingChoices = new List<string> { "Immediately", "Finish Current Seq" };
-                var timingDropdown = new DropdownField(timingChoices,
-                    rule.FinishCurrentSequence ? 1 : 0);
-                timingDropdown.AddToClassList("rule-editor-timing");
-                timingDropdown.RegisterValueChangedCallback(evt =>
-                {
-                    rule.FinishCurrentSequence = timingDropdown.index == 1;
-                    sim.CommandUpdateRule(rulesetId, ruleIndex, rule);
-                    onChanged();
-                });
-                row.Add(timingDropdown);
-            }
-
-            // ─── Move / Delete buttons ───
+            // Move / Delete buttons (anchored right)
             var buttonsContainer = new VisualElement();
             buttonsContainer.AddToClassList("rule-editor-buttons");
 
@@ -139,7 +141,7 @@ namespace ProjectGuild.View.UI
                 if (ruleIndex > 0)
                 {
                     sim.CommandMoveRuleInRuleset(rulesetId, ruleIndex, ruleIndex - 1);
-                    onChanged();
+                    onStructuralChange();
                 }
             });
             moveUpBtn.text = "\u25b2";
@@ -152,7 +154,7 @@ namespace ProjectGuild.View.UI
                 if (ruleset != null && ruleIndex < ruleset.Rules.Count - 1)
                 {
                     sim.CommandMoveRuleInRuleset(rulesetId, ruleIndex, ruleIndex + 1);
-                    onChanged();
+                    onStructuralChange();
                 }
             });
             moveDownBtn.text = "\u25bc";
@@ -162,13 +164,52 @@ namespace ProjectGuild.View.UI
             var deleteBtn = new Button(() =>
             {
                 sim.CommandRemoveRuleFromRuleset(rulesetId, ruleIndex);
-                onChanged();
+                onStructuralChange();
             });
             deleteBtn.text = "\u00d7";
             deleteBtn.AddToClassList("rule-editor-delete-btn");
             buttonsContainer.Add(deleteBtn);
 
-            row.Add(buttonsContainer);
+            topLine.Add(buttonsContainer);
+            row.Add(topLine);
+
+            // ─── Bottom line: THEN, action, timing ───
+            var actionCard = new VisualElement();
+            actionCard.AddToClassList("rule-editor-action-card");
+
+            var thenLabel = new Label("THEN");
+            thenLabel.AddToClassList("rule-editor-keyword");
+            thenLabel.pickingMode = PickingMode.Ignore;
+            actionCard.Add(thenLabel);
+
+            var actionEditor = BuildActionEditor(rule.Action, isMacro, state, sim, (updatedAction) =>
+            {
+                rule.Action = updatedAction;
+                PersistRule();
+                // Action type changes are structural (params change), but dropdown
+                // selections within an action type are value-only. The action editor
+                // handles this internally — we always rebuild here since action type
+                // changes swap the entire parameter UI.
+                onStructuralChange();
+            }, onCreateNewSequence);
+            actionCard.Add(actionEditor);
+
+            // Timing toggle (macro only)
+            if (isMacro)
+            {
+                var timingChoices = new List<string> { "Immediately", "Finish Current Seq" };
+                var timingDropdown = new DropdownField(timingChoices,
+                    rule.FinishCurrentSequence ? 1 : 0);
+                timingDropdown.AddToClassList("rule-editor-timing");
+                timingDropdown.RegisterValueChangedCallback(evt =>
+                {
+                    rule.FinishCurrentSequence = timingDropdown.index == 1;
+                    PersistRule(); // value-only — no rebuild
+                });
+                actionCard.Add(timingDropdown);
+            }
+
+            row.Add(actionCard);
 
             return row;
         }
@@ -177,7 +218,7 @@ namespace ProjectGuild.View.UI
 
         private static VisualElement BuildConditionEditor(
             Condition condition, GameState state, GameSimulation sim,
-            Action<Condition> onUpdate, Action onDelete)
+            Action<Condition> onValueUpdate, Action<Condition> onTypeChange, Action onDelete)
         {
             var container = new VisualElement();
             container.AddToClassList("condition-editor");
@@ -206,7 +247,7 @@ namespace ProjectGuild.View.UI
             var paramContainer = new VisualElement();
             paramContainer.AddToClassList("condition-params");
 
-            void RebuildParams(ConditionType condType)
+            void RebuildParams(ConditionType condType, Condition cond)
             {
                 paramContainer.Clear();
 
@@ -218,31 +259,31 @@ namespace ProjectGuild.View.UI
                         break;
 
                     case ConditionType.InventorySlots:
-                        AddOperatorAndNumber(paramContainer, condition, onUpdate);
+                        AddOperatorAndNumber(paramContainer, cond, onValueUpdate);
                         break;
 
                     case ConditionType.InventoryContains:
                     case ConditionType.BankContains:
-                        AddItemPicker(paramContainer, condition, sim, onUpdate);
-                        AddOperatorAndNumber(paramContainer, condition, onUpdate);
+                        AddItemPicker(paramContainer, cond, sim, onValueUpdate);
+                        AddOperatorAndNumber(paramContainer, cond, onValueUpdate);
                         break;
 
                     case ConditionType.SkillLevel:
-                        AddSkillPicker(paramContainer, condition, onUpdate);
-                        AddOperatorAndNumber(paramContainer, condition, onUpdate);
+                        AddSkillPicker(paramContainer, cond, onValueUpdate);
+                        AddOperatorAndNumber(paramContainer, cond, onValueUpdate);
                         break;
 
                     case ConditionType.AtNode:
-                        AddNodePicker(paramContainer, condition, state, onUpdate);
+                        AddNodePicker(paramContainer, cond, state, onValueUpdate);
                         break;
 
                     case ConditionType.RunnerStateIs:
-                        AddStatePicker(paramContainer, condition, onUpdate);
+                        AddStatePicker(paramContainer, cond, onValueUpdate);
                         break;
                 }
             }
 
-            RebuildParams(condition.Type);
+            RebuildParams(condition.Type, condition);
 
             typeDropdown.RegisterValueChangedCallback(evt =>
             {
@@ -257,13 +298,14 @@ namespace ProjectGuild.View.UI
                         newCond.Operator = ComparisonOperator.GreaterOrEqual;
                         newCond.NumericValue = 1;
                     }
-                    onUpdate(newCond);
+                    // Type change is structural — params need to rebuild
+                    onTypeChange(newCond);
                 }
             });
 
-            // Delete condition button (only if there are multiple conditions)
+            // Delete condition button
             var deleteCondBtn = new Button(() => onDelete());
-            deleteCondBtn.text = "\u00d7";
+            deleteCondBtn.text = "\u2212"; // minus sign, visually distinct from rule ×
             deleteCondBtn.AddToClassList("condition-delete-btn");
 
             container.Add(typeDropdown);
@@ -273,31 +315,60 @@ namespace ProjectGuild.View.UI
             return container;
         }
 
-        private static void AddOperatorAndNumber(VisualElement parent,
-            Condition condition, Action<Condition> onUpdate)
+        private static readonly string[] OpLabels = { ">", "\u2265", "<", "\u2264", "=", "\u2260" };
+        private static readonly ComparisonOperator[] OpValues =
         {
-            var opChoices = new List<string> { ">", ">=", "<", "<=", "=", "!=" };
-            var opValues = new List<ComparisonOperator>
+            ComparisonOperator.GreaterThan, ComparisonOperator.GreaterOrEqual,
+            ComparisonOperator.LessThan, ComparisonOperator.LessOrEqual,
+            ComparisonOperator.Equal, ComparisonOperator.NotEqual
+        };
+
+        private static string GetOpLabel(ComparisonOperator op)
+        {
+            int idx = System.Array.IndexOf(OpValues, op);
+            return idx >= 0 ? OpLabels[idx] : "?";
+        }
+
+        private static void AddOperatorAndNumber(VisualElement parent,
+            Condition condition, Action<Condition> onValueUpdate)
+        {
+            var opBtn = new Button();
+            opBtn.text = GetOpLabel(condition.Operator);
+            opBtn.AddToClassList("condition-op-button");
+            // Wrap button in a container so the absolute popup anchors to it
+            var opWrapper = new VisualElement();
+            opWrapper.AddToClassList("condition-op-wrapper");
+
+            opBtn.clicked += () =>
             {
-                ComparisonOperator.GreaterThan, ComparisonOperator.GreaterOrEqual,
-                ComparisonOperator.LessThan, ComparisonOperator.LessOrEqual,
-                ComparisonOperator.Equal, ComparisonOperator.NotEqual
+                var existingPopup = opWrapper.Q("op-popup");
+                if (existingPopup != null) { existingPopup.RemoveFromHierarchy(); return; }
+
+                var popup = new VisualElement();
+                popup.name = "op-popup";
+                popup.AddToClassList("condition-op-popup");
+
+                for (int i = 0; i < OpLabels.Length; i++)
+                {
+                    int capturedIndex = i;
+                    var optionBtn = new Button(() =>
+                    {
+                        condition.Operator = OpValues[capturedIndex];
+                        opBtn.text = OpLabels[capturedIndex];
+                        onValueUpdate(condition);
+                        popup.RemoveFromHierarchy();
+                    });
+                    optionBtn.text = OpLabels[capturedIndex];
+                    optionBtn.AddToClassList("condition-op-option");
+                    if (OpValues[capturedIndex] == condition.Operator)
+                        optionBtn.AddToClassList("condition-op-option-active");
+                    popup.Add(optionBtn);
+                }
+
+                opWrapper.Add(popup);
             };
 
-            int currentOp = opValues.IndexOf(condition.Operator);
-            if (currentOp < 0) currentOp = 1; // default to >=
-
-            var opDropdown = new DropdownField(opChoices, currentOp);
-            opDropdown.AddToClassList("condition-op-dropdown");
-            opDropdown.RegisterValueChangedCallback(evt =>
-            {
-                int idx = opDropdown.index;
-                if (idx >= 0 && idx < opValues.Count)
-                {
-                    condition.Operator = opValues[idx];
-                    onUpdate(condition);
-                }
-            });
+            opWrapper.Add(opBtn);
 
             var numField = new IntegerField();
             numField.AddToClassList("condition-num-field");
@@ -305,15 +376,15 @@ namespace ProjectGuild.View.UI
             numField.RegisterValueChangedCallback(evt =>
             {
                 condition.NumericValue = evt.newValue;
-                onUpdate(condition);
+                onValueUpdate(condition); // value-only — no rebuild
             });
 
-            parent.Add(opDropdown);
+            parent.Add(opWrapper);
             parent.Add(numField);
         }
 
         private static void AddItemPicker(VisualElement parent,
-            Condition condition, GameSimulation sim, Action<Condition> onUpdate)
+            Condition condition, GameSimulation sim, Action<Condition> onValueUpdate)
         {
             var choices = new List<string>();
             var ids = new List<string>();
@@ -344,14 +415,14 @@ namespace ProjectGuild.View.UI
                 if (idx >= 0 && idx < ids.Count)
                 {
                     condition.StringParam = ids[idx];
-                    onUpdate(condition);
+                    onValueUpdate(condition); // value-only
                 }
             });
             parent.Add(dropdown);
         }
 
         private static void AddSkillPicker(VisualElement parent,
-            Condition condition, Action<Condition> onUpdate)
+            Condition condition, Action<Condition> onValueUpdate)
         {
             var choices = new List<string>();
             var values = new List<int>();
@@ -373,14 +444,14 @@ namespace ProjectGuild.View.UI
                 if (idx >= 0 && idx < values.Count)
                 {
                     condition.IntParam = values[idx];
-                    onUpdate(condition);
+                    onValueUpdate(condition); // value-only
                 }
             });
             parent.Add(dropdown);
         }
 
         private static void AddNodePicker(VisualElement parent,
-            Condition condition, GameState state, Action<Condition> onUpdate)
+            Condition condition, GameState state, Action<Condition> onValueUpdate)
         {
             var choices = new List<string>();
             var ids = new List<string>();
@@ -411,14 +482,14 @@ namespace ProjectGuild.View.UI
                 if (idx >= 0 && idx < ids.Count)
                 {
                     condition.StringParam = ids[idx];
-                    onUpdate(condition);
+                    onValueUpdate(condition); // value-only
                 }
             });
             parent.Add(dropdown);
         }
 
         private static void AddStatePicker(VisualElement parent,
-            Condition condition, Action<Condition> onUpdate)
+            Condition condition, Action<Condition> onValueUpdate)
         {
             var choices = new List<string> { "Idle", "Traveling", "Gathering", "Depositing" };
             var values = new List<int>
@@ -438,7 +509,7 @@ namespace ProjectGuild.View.UI
                 if (idx >= 0 && idx < values.Count)
                 {
                     condition.IntParam = values[idx];
-                    onUpdate(condition);
+                    onValueUpdate(condition); // value-only
                 }
             });
             parent.Add(dropdown);
@@ -493,18 +564,9 @@ namespace ProjectGuild.View.UI
                     {
                         if (idx == newSequenceIndex && onCreateNewSequence != null)
                         {
-                            // Create a new sequence and request navigation
                             string newId = sim.CommandCreateTaskSequence();
-
-                            // The wire action will be executed on "Done" —
-                            // it connects the selected sequence to the macro rule's action.
-                            // The id parameter may differ from newId if the user selected
-                            // an existing sequence instead.
                             Action<string> wireAction = (id) => onUpdate(AutomationAction.AssignSequence(id));
-
-                            // Reset dropdown to previous value (the wire happens on Done, not now)
                             dropdown.SetValueWithoutNotify(choices[currentIndex]);
-
                             onCreateNewSequence(newId, wireAction);
                         }
                         else if (seqIds[idx] == null)
@@ -540,10 +602,8 @@ namespace ProjectGuild.View.UI
                     paramContainer.Clear();
                     if (actionType == ActionType.GatherHere)
                     {
-                        // Item picker or positional index
                         if (!string.IsNullOrEmpty(action.StringParam))
                         {
-                            // Item-based resolution
                             var itemChoices = new List<string>();
                             var itemIds = new List<string>();
                             if (sim.ItemRegistry != null)
@@ -559,9 +619,7 @@ namespace ProjectGuild.View.UI
 
                             int itemIndex = itemIds.IndexOf(action.StringParam);
                             if (itemIndex < 0)
-                            {
-                                itemIndex = itemChoices.Count - 1; // fall back to positional
-                            }
+                                itemIndex = itemChoices.Count - 1;
 
                             var itemDropdown = new DropdownField(itemChoices, itemIndex);
                             itemDropdown.AddToClassList("action-item-dropdown");
@@ -584,7 +642,6 @@ namespace ProjectGuild.View.UI
                         }
                         else
                         {
-                            // Positional index
                             var indexField = new IntegerField();
                             indexField.AddToClassList("action-index-field");
                             indexField.SetValueWithoutNotify(action.IntParam);
@@ -594,7 +651,6 @@ namespace ProjectGuild.View.UI
                             });
                             paramContainer.Add(indexField);
 
-                            // Switch to item-based button
                             var switchBtn = new Button(() =>
                             {
                                 string defaultItem = "";
