@@ -123,6 +123,11 @@ Back to Tick() (continues processing)
 | `VisualSyncSystem.cs` | View | The cameraman. Keeps 3D visuals in sync with sim |
 | `NodeMarker.cs` | View | Tags node GameObjects for click-to-select raycasting |
 | `BankMarker.cs` | View | Tags the bank GameObject for click-to-open raycasting |
+| `UIManager.cs` | View | Top-level UI coordinator. Owns UIDocument, manages all controllers, tick refresh, selection state |
+| `RunnerWarnings.cs` | Simulation | Centralized warning message strings and factory methods |
+| `TimeFormatHelper.cs` | View | Formats elapsed game time as M:SS / H:MM:SS / Dd H:MM:SS |
+| `UIDialogs.cs` | View | Modal confirmation dialogs for delete and creation cancel |
+| `PlayerPreferences.cs` | Bridge | UX preferences persisted separately from game saves |
 
 ### The Conveyor Belt (Spiral of Death Protection)
 
@@ -335,6 +340,14 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 - `CommandMoveStepInTaskSequence` — runner index follows the moved step
 - `CommandSetTaskSequenceLoop`, `CommandSetWorkStepMicroRuleset`, `CommandRenameTaskSequence`
 
+**Player-action commands:**
+- `CommandWorkAtSuspendMacrosForOneCycle(runnerId, nodeId)` — player-direct "Work At" button. Finds or creates gather loop, assigns, suspends macros for one cycle.
+- `CommandRenameRunner(runnerId, newName)` — rename a runner.
+- `CommandCreateTaskSequence()` / `CommandCreateMacroRuleset()` / `CommandCreateMicroRuleset()` — parameterless creation with auto-naming and defaults.
+- `CommandCloneTaskSequence(sourceId)` — deep-copy into new library entry.
+- `RefreshMacroConfigWarnings()` — recompute warning state after ruleset edits.
+- `GetMacroRulesReferencingTaskSequence(seqId)` — impact analysis for deletion UX.
+
 **Query helpers:** `CountRunnersUsing*`, `GetRunnerNamesUsing*`, `CountSequencesUsingMicroRuleset`
 
 ### Items — `Simulation/Items/`
@@ -442,6 +455,8 @@ Concrete implementation of `ISaveSystem`. Uses `JsonUtility.ToJson/FromJson` and
 
 ## Scripts — View Layer
 
+The view layer includes MonoBehaviours (`View/`) and plain C# UI controllers (`View/UI/`). The UI controllers are NOT MonoBehaviours — they are plain C# classes instantiated and coordinated by `UIManager`. This keeps UI logic testable and avoids unnecessary GameObject overhead.
+
 ### `View/GameBootstrapper.cs`
 Entry point that wires up the simulation, visuals, and 3D picking. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner. Owns a `SaveManager` instance. Provides `SaveGame()`, `LoadSavedGame()`, and `StartNewGameFromOptions()` for the Options panel. Load/New Game use `ReloadWorld()` which tears down UI (`UIManager.Teardown()`), runs the load/create action, rebuilds visuals (`VisualSyncSystem.BuildWorld()`), and re-initializes UI (`UIManager.Initialize()`).
 
@@ -465,6 +480,14 @@ Development-only console for debugging and testing. Wrapped in `#if UNITY_EDITOR
 - `/runners` — lists all runners with state, location, and current task.
 - `/tick` — prints current tick number.
 - `/time` — prints game time in H:MM:SS format with tick count.
+- `/advance N` — advance N ticks instantly.
+- `/pause` — toggle simulation pause.
+- `/fill <runnerId>` — fill runner's inventory.
+- `/assign <runnerId> <nodeId>` — assign runner to node.
+- `/inspect <runnerId>` — show detailed runner state.
+- `/bank` — show bank contents.
+- `/save` / `/load` — save/load game.
+- `/config` — show simulation config values.
 - `/hud on|off` — toggles the persistent HUD label.
 - `/clear` — clears console output.
 - `/help` — lists all commands.
@@ -551,7 +574,7 @@ Plain C# class. Player scratchpad positioned bottom-center (between log panel an
 Plain C# class. Always-visible left-side panel showing guild bank totals grouped by `ItemCategory` (Rimworld-style). Refreshes every tick via `UIManager.OnSimulationTick()`. Groups items by category with collapsible headers (gold text, click to toggle). Compact rows: item name + formatted quantity (K/M suffixes for large numbers). Hidden when bank is empty. Shape-keyed caching: rebuilds DOM only when item set changes, updates quantities in-place otherwise. Collapsed state tracked in `HashSet<ItemCategory>`. Clicking any item row opens the bank panel.
 
 ### `View/UI/RuleEditorController.cs`
-Static helper class. Builds interactive rule rows with inline editing. Each row has: enable toggle, condition picker (cascading dropdowns for type → parameters), action picker (macro: Idle/WorkAt/ReturnToHub with node dropdown; micro: GatherHere/FinishTask with item picker), timing toggle (macro only), move up/down buttons, delete button. All changes go through `GameSimulation` commands. Used by both Macro and Micro editor controllers.
+Static helper class. Builds interactive rule rows with inline editing. Two-line layout per rule: conditions on top (blue tint sub-card), action on bottom (amber tint sub-card). Conditions: type dropdown → parameters, with "+" button to add conditions and "AND" keyword between stacked conditions. Operator picker is a teal-colored Button + popup (not a DropdownField — its internal layout was unstyliable via USS). Uses `OpLabels` with unicode math symbols (>=, <=, !=). Condition delete (- gray button) is distinct from rule delete (x red button). Action picker: macro (Idle/WorkAt/ReturnToHub with node dropdown), micro (GatherHere/FinishTask with item picker). Timing toggle (macro only), move up/down buttons. Value-only changes (typing numbers, picking dropdowns) do NOT trigger DOM rebuild — only structural changes (add/remove condition/rule, type change) do. All changes go through `GameSimulation` commands. Used by both Macro and Micro editor controllers.
 
 ### `View/UI/AutomationUIHelpers.cs`
 Static helper class (pure C#, no Unity deps). Natural language formatting for automation components:
@@ -571,7 +594,9 @@ Resolves node IDs via GameState.Map, item IDs via optional `ItemNameResolver` de
 `RunnerDetailsPanel.uxml/.uss` — Bottom-right panel with tab bar (Overview, Inventory, Skills, Equipment*, Automation) and ScrollView content. Dark theme with gold section headers.
 `AutomationTab.uxml/.uss` — Sub-tab bar (Task Seq / Macro / Micro) with content containers for read-only runner automation summary. Instantiated into the details panel's automation content area.
 `AutomationPanel.uxml/.uss` — Full-screen overlay panel for editing automation libraries. Title bar with close button, library tab bar (Task Sequences / Macro Rulesets / Micro Rulesets), master-detail layout (list pane left, editor pane right). Includes shared template warning banner, step type picker, and editor field styles.
-`RuleEditor.uss` — Styles for interactive rule editing rows: condition/action pickers, operator dropdowns, move/delete buttons, timing toggle. Loaded via AutomationPanel.uxml.
+`Common.uss` — Shared dropdown styling (dark-theme appearance for all DropdownFields). Referenced by every UXML.
+`DropdownPopup.uss` — Styles for dropdown popup lists (dark background, light text, hover highlights). Imported via runtime theme `.tss` because popups are created at panel root level outside UXML trees.
+`RuleEditor.uss` — Two-line layout (conditions blue card, action amber card), teal operator button + popup, condition-op-wrapper for absolute popup positioning, condition delete vs rule delete styling. Loaded via AutomationPanel.uxml.
 `BankPanel.uxml/.uss` — Overlay panel for OSRS-style bank view. Title bar with close button, search field, category tab row, flex-wrap item grid (66px slots, 48px icons, quantity bottom-right), footer with item count.
 `OptionsPanel.uxml/.uss` — Centered overlay panel (500×520px) for UX preferences and save/load. Two sections: Preferences (toggle rows for logbook auto-navigate/expand, dropdown fields for chronicle/decision log default scope filters) and Save/Load (save/load/new game buttons, status label, inline confirmation dialog for destructive actions). Dark theme, gold section headers. Button (top-left, next to Automation) opens via `UIManager.ToggleOptionsPanel()`.
 `LogPanelContainer.uxml/.uss` — Tabbed container for the bottom-left log area. Tab bar with Chronicle/Decisions tabs (gold underline on active), collapse button, content slots for sub-panel templates. Collapsed state shows "Logs" label with unread badge.
@@ -579,6 +604,9 @@ Resolves node IDs via GameState.Map, item IDs via optional `ItemNameResolver` de
 `DecisionLogPanel.uxml/.uss` — Content template for Decision Log. Two filter rows: scope filters (Node/Runner/All) and layer filters (All/Macro/Micro) separated by a thin divider. Entry rows color-coded by layer (green left border = Macro, blue = Micro). Same scroll/indicator pattern as Chronicle.
 `LogbookPanel.uxml/.uss` — Player scratchpad panel (bottom-center). Header with folder dropdown, page tabs (gold underline active), add-page button, lock/search/collapse buttons. Search bar (hidden by default, toggles with Ctrl+F or search button click) with results dropdown. Multiline TextField for note content (transparent background, no border). Collapsed state shows small "Logbook" label.
 `PanelSettings.asset` — Scale With Screen Size, 1920x1080 reference, controls UI scaling across resolutions.
+`UnityDefaultRuntimeTheme.tss` — Imports `DropdownPopup.uss` for panel-root-level popup styling.
+
+**Font system:** `MainLayout.uss` has `:root { -unity-font-definition: url("Fonts/dejavu-fonts-ttf-2.37/.../DejaVuSans.ttf"); }` overriding Unity's default NotInter. `PanelTextSettings.asset` and SDF font assets live in `Assets/UI/Fonts/`.
 
 ---
 
@@ -667,6 +695,12 @@ Uses a simple 3-node right triangle map (A, B, C) with constant speed for predic
 **"Let it break":** When automation rules are misconfigured (empty ruleset, invalid index, no matching rule), the runner stops and a warning event fires. The UI warns the player. This applies project-wide.
 
 **Persistent elements with shape-keyed caching (UI Toolkit):** UI elements that display dynamic data are built once and updated in-place via `SetValueWithoutNotify()` or `.text` assignment. Elements that change structurally (step rows, rule rows, list items) are gated behind a "shape key" — a string like `"{seqId}|{stepCount}"`. If the shape key matches the cached value, the rebuild is skipped entirely. If it doesn't match, the container is `Clear()`ed and rebuilt. This prevents tick-driven destruction/recreation of interactive elements (TextFields, DropdownFields) which causes cursor focus loss and garbage generation. List panes track items by ID in a `Dictionary` and toggle selection CSS without rebuilding.
+
+**ITickRefreshable pattern:** Controllers displaying sim data implement `ITickRefreshable` and self-register via `uiManager.RegisterTickRefreshable(this)` in their constructor. `UIManager` iterates the list in `OnSimulationTick()` — no manual per-controller wiring. Sub-controllers managed by a parent (Chronicle, DecisionLog) don't implement it; their parent does. Any new panel showing sim data must follow this pattern.
+
+**View expresses intent, sim handles mechanics:** View calls `sim.CommandWorkAtSuspendMacrosForOneCycle()`, never directly mutates runner state. All player actions are public methods on `GameSimulation`. Ruleset mutations, task sequence edits, runner commands — everything routes through the sim layer.
+
+**No per-tick UI rebuilds:** Interactive elements (dropdowns, text fields) must NOT be rebuilt every tick — causes focus loss, dropdown closing, multi-click issues. Shape-keyed caching (see above) prevents this. Separate "choices rebuild" cache (by count) from "value sync" cache (by current ID).
 
 **Fluent builder for definitions:** `new RunnerDefinition { Name = "Bob" }.WithSkill(SkillType.Melee, 10, passion: true)` reads like English and is hard to get wrong.
 
