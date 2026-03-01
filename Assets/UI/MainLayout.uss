@@ -1,3 +1,7 @@
+:root {
+    -unity-font-definition: url("Fonts/dejavu-fonts-ttf-2.37/dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf");
+}
+
 .root {
     flex-grow: 1;
     flex-direction: column;

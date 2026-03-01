@@ -1,0 +1,53 @@
+/* ─── Dropdown Popup List ────────────────────────────
+   The popup Unity creates when you click a DropdownField.
+   Must be in the theme .tss to reach popups (they live
+   at the panel root, outside UXML trees).
+   ──────────────────────────────────────────────────────── */
+
+.unity-base-dropdown__container-outer {
+    min-width: 180px;
+    background-color: rgb(18, 18, 30);
+    border-width: 1px;
+    border-color: rgba(80, 80, 100, 0.6);
+    border-radius: 4px;
+}
+
+.unity-base-dropdown__container-inner {
+    background-color: rgb(18, 18, 30);
+}
+
+.unity-base-dropdown__item {
+    background-color: rgba(25, 25, 40, 0.9);
+    padding: 3px 8px;
+}
+
+.unity-base-dropdown__item:hover {
+    background-color: rgba(50, 50, 75, 0.9);
+}
+
+.unity-base-dropdown__item > .unity-base-dropdown__label {
+    overflow: visible;
+    white-space: nowrap;
+    color: rgb(200, 200, 220);
+    font-size: 12px;
+}
+
+.unity-base-dropdown .unity-label {
+    color: rgb(200, 200, 220);
+}
+
+.unity-base-dropdown .unity-text-element {
+    color: rgb(200, 200, 220);
+}
+
+.unity-base-dropdown__checkmark {
+    -unity-background-image-tint-color: rgb(180, 180, 200);
+}
+
+.unity-base-dropdown__item:checked {
+    background-color: rgba(40, 55, 80, 0.9);
+}
+
+.unity-base-dropdown__item:checked > .unity-base-dropdown__label {
+    color: rgb(220, 220, 240);
+}

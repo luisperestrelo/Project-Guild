@@ -16,7 +16,7 @@
     left: 50%;
     top: 50%;
     translate: -50% -50%;
-    width: 900px;
+    width: 1000px;
     height: 85%;
     background-color: rgb(12, 12, 20);
     border-width: 1px;

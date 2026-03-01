@@ -219,7 +219,7 @@ namespace ProjectGuild.View.UI
                 string capturedId = seq.Id;
 
                 var dupeBtn = new Button(() => DuplicateItem(capturedId));
-                dupeBtn.text = "\u29C9"; // ⧉
+                dupeBtn.text = "\u2750"; // ❐
                 dupeBtn.AddToClassList("list-item-icon-btn");
                 dupeBtn.tooltip = "Duplicate";
                 actions.Add(dupeBtn);
