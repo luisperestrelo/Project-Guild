@@ -1028,7 +1028,12 @@ namespace ProjectGuild.View.UI
             foreach (var micro in sim.CurrentGameState.MicroRulesetLibrary)
             {
                 var capturedId = micro.Id;
-                var btn = new Button(() =>
+
+                var row = new VisualElement();
+                row.AddToClassList("swap-picker-row");
+
+                // Select button (name)
+                var selectBtn = new Button(() =>
                 {
                     if (capturedId == stepMicroId)
                     {
@@ -1043,15 +1048,42 @@ namespace ProjectGuild.View.UI
                     _cachedMicroShapeKey = null;
                     Refresh();
                 });
-                btn.text = micro.Name ?? micro.Id;
-                btn.AddToClassList("assign-popup-runner");
+                selectBtn.text = micro.Name ?? micro.Id;
+                selectBtn.AddToClassList("assign-popup-runner");
+                selectBtn.style.flexGrow = 1;
 
-                // Highlight the currently active micro
                 if (capturedId == effectiveId)
-                    btn.AddToClassList("assign-popup-current");
+                    selectBtn.AddToClassList("assign-popup-current");
 
-                popup.Add(btn);
+                row.Add(selectBtn);
+
+                // View button (▸)
+                var viewBtn = new Button(() =>
+                {
+                    popup.RemoveFromHierarchy();
+                    _uiManager.OpenAutomationPanelToItemFromRunner("micro", capturedId, _currentRunnerId);
+                });
+                viewBtn.text = "\u25B8";
+                viewBtn.AddToClassList("swap-picker-view-btn");
+                row.Add(viewBtn);
+
+                popup.Add(row);
             }
+
+            // + New button
+            var newBtn = new Button(() =>
+            {
+                string newId = sim.CommandCreateMicroRuleset();
+                sim.CommandSetMicroOverride(_currentRunnerId, stepIndex, newId);
+                popup.RemoveFromHierarchy();
+                _cachedMicroShapeKey = null;
+                Refresh();
+                _uiManager.OpenAutomationPanelToItemFromRunner("micro", newId, _currentRunnerId);
+            });
+            newBtn.text = "+ New Micro Ruleset";
+            newBtn.AddToClassList("assign-popup-runner");
+            newBtn.AddToClassList("swap-picker-new-btn");
+            popup.Add(newBtn);
 
             // Clear override option (only when an override exists)
             if (currentOverrideId != null)

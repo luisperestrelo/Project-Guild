@@ -431,6 +431,45 @@
     padding-left: 6px;
 }
 
+/* ─── Swap Picker ────────────────────────────────── */
+
+.swap-picker-row {
+    flex-direction: row;
+    align-items: stretch;
+}
+
+.swap-picker-row > .assign-popup-runner {
+    margin-bottom: 0;
+    border-bottom-right-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.swap-picker-view-btn {
+    background-color: rgba(40, 40, 55, 0.8);
+    color: rgb(180, 160, 100);
+    border-width: 1px;
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 0 2px 2px 0;
+    padding: 3px 6px;
+    font-size: 12px;
+    margin-left: 0;
+}
+
+.swap-picker-view-btn:hover {
+    background-color: rgba(60, 55, 40, 0.8);
+    color: rgb(220, 200, 130);
+}
+
+.swap-picker-new-btn {
+    color: rgb(100, 180, 100);
+    border-color: rgba(100, 180, 100, 0.3);
+}
+
+.swap-picker-new-btn:hover {
+    color: rgb(130, 220, 130);
+    border-color: rgba(130, 220, 130, 0.5);
+}
+
 .auto-clear-button {
     color: rgb(200, 100, 100);
     border-color: rgba(200, 100, 100, 0.3);
