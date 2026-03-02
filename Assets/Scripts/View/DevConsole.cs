@@ -274,6 +274,8 @@ namespace ProjectGuild.View
                 _historyIndex = -1;
                 _historyStash = "";
                 _inputField.value = "";
+                // Re-focus after Enter so player can keep typing/using up-arrow
+                _inputField.schedule.Execute(() => _inputField.Focus());
             }
             else if (evt.keyCode == KeyCode.UpArrow)
             {

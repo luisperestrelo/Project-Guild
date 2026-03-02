@@ -269,29 +269,6 @@ DropdownField.condition-state-dropdown {
     margin-right: 3px;
 }
 
-.action-index-field {
-    font-size: 12px;
-    width: 40px;
-    margin-right: 3px;
-}
-
-.action-index-field > #unity-text-input {
-    background-color: rgba(25, 25, 40, 0.8);
-    border-width: 1px;
-    border-color: rgba(60, 60, 80, 0.5);
-    border-radius: 2px;
-    color: rgb(200, 200, 215);
-    padding: 1px 4px;
-}
-
-.action-switch-btn {
-    background-color: rgba(30, 35, 45, 0.6);
-    color: rgb(130, 150, 170);
-    border-width: 0;
-    border-radius: 2px;
-    padding: 1px 6px;
-    font-size: 11px;
-}
 
 /* ─── Timing ──────────────────────────────────────── */
 

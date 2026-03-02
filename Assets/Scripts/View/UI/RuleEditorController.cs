@@ -623,79 +623,44 @@ namespace ProjectGuild.View.UI
                     paramContainer.Clear();
                     if (actionType == ActionType.GatherHere)
                     {
+                        // "Any" (GatherAny, IntParam=-1) + all registered items
+                        var itemChoices = new List<string> { "Any" };
+                        var itemIds = new List<string> { "" }; // empty = Any
+
+                        if (sim.ItemRegistry != null)
+                        {
+                            foreach (var item in sim.ItemRegistry.AllItemDefinitions)
+                            {
+                                itemIds.Add(item.Id);
+                                itemChoices.Add(item.Name ?? item.Id);
+                            }
+                        }
+
+                        int currentIndex = 0; // default to Any
                         if (!string.IsNullOrEmpty(action.StringParam))
                         {
-                            var itemChoices = new List<string>();
-                            var itemIds = new List<string>();
-                            if (sim.ItemRegistry != null)
-                            {
-                                foreach (var item in sim.ItemRegistry.AllItemDefinitions)
-                                {
-                                    itemIds.Add(item.Id);
-                                    itemChoices.Add(item.Name ?? item.Id);
-                                }
-                            }
-                            itemChoices.Add("(positional: first)");
-                            itemIds.Add("");
-
-                            int itemIndex = itemIds.IndexOf(action.StringParam);
-                            if (itemIndex < 0)
-                                itemIndex = itemChoices.Count - 1;
-
-                            var itemDropdown = new DropdownField(itemChoices, itemIndex);
-                            itemDropdown.AddToClassList("action-item-dropdown");
-                            itemDropdown.RegisterValueChangedCallback(evt =>
-                            {
-                                int idx = itemDropdown.index;
-                                if (idx >= 0 && idx < itemIds.Count)
-                                {
-                                    if (string.IsNullOrEmpty(itemIds[idx]))
-                                        onUpdate(AutomationAction.GatherHere(0));
-                                    else
-                                        onUpdate(new AutomationAction
-                                        {
-                                            Type = ActionType.GatherHere,
-                                            StringParam = itemIds[idx],
-                                        });
-                                }
-                            });
-                            paramContainer.Add(itemDropdown);
+                            int found = itemIds.IndexOf(action.StringParam);
+                            if (found >= 0) currentIndex = found;
                         }
-                        else
-                        {
-                            var indexField = new IntegerField();
-                            indexField.AddToClassList("action-index-field");
-                            indexField.SetValueWithoutNotify(action.IntParam);
-                            indexField.RegisterValueChangedCallback(evt =>
-                            {
-                                onUpdate(AutomationAction.GatherHere(evt.newValue));
-                            });
-                            paramContainer.Add(indexField);
 
-                            var switchBtn = new Button(() =>
+                        var itemDropdown = new DropdownField(itemChoices, currentIndex);
+                        itemDropdown.AddToClassList("action-item-dropdown");
+                        itemDropdown.RegisterValueChangedCallback(evt =>
+                        {
+                            int idx = itemDropdown.index;
+                            if (idx >= 0 && idx < itemIds.Count)
                             {
-                                string defaultItem = "";
-                                if (sim.ItemRegistry != null)
-                                {
-                                    foreach (var item in sim.ItemRegistry.AllItemDefinitions)
-                                    {
-                                        defaultItem = item.Id;
-                                        break;
-                                    }
-                                }
-                                if (!string.IsNullOrEmpty(defaultItem))
-                                {
+                                if (string.IsNullOrEmpty(itemIds[idx]))
+                                    onUpdate(AutomationAction.GatherAny());
+                                else
                                     onUpdate(new AutomationAction
                                     {
                                         Type = ActionType.GatherHere,
-                                        StringParam = defaultItem,
+                                        StringParam = itemIds[idx],
                                     });
-                                }
-                            });
-                            switchBtn.text = "Pick Item";
-                            switchBtn.AddToClassList("action-switch-btn");
-                            paramContainer.Add(switchBtn);
-                        }
+                            }
+                        });
+                        paramContainer.Add(itemDropdown);
                     }
                 }
 
@@ -709,7 +674,7 @@ namespace ProjectGuild.View.UI
                         switch (typeValues[idx])
                         {
                             case ActionType.GatherHere:
-                                onUpdate(AutomationAction.GatherHere(0));
+                                onUpdate(AutomationAction.GatherAny());
                                 break;
                             case ActionType.FinishTask:
                                 onUpdate(AutomationAction.FinishTask());

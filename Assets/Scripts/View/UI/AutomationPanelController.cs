@@ -496,7 +496,7 @@ namespace ProjectGuild.View.UI
                     footerButtons.style.display = DisplayStyle.None;
 
                 // Also hide the Assign To button injected by AutomationPanelController
-                RemoveAssignButton();
+                RemoveRunnerContextButtons();
 
                 // Add Done button to footer
                 if (footer != null)
@@ -571,13 +571,12 @@ namespace ProjectGuild.View.UI
 
         private void ShowAssignButtonOnActiveTab()
         {
-            // Remove any existing button first
-            RemoveAssignButton();
+            // Remove any existing runner-context buttons first
+            RemoveRunnerContextButtons();
 
             if (string.IsNullOrEmpty(_pendingAssignRunnerId)) return;
-            // No Assign To during nav stack (Done replaces it) or on Micro tab
+            // No runner-context buttons during nav stack (nav Done replaces them)
             if (_navigationStack.Count > 0) return;
-            if (_activeTab == "micro") return;
 
             var sim = _uiManager.Simulation;
             var runner = sim?.FindRunner(_pendingAssignRunnerId);
@@ -588,9 +587,27 @@ namespace ProjectGuild.View.UI
                 footerButtons = _contentTaskSeq.Q(className: "editor-footer-buttons");
             else if (_activeTab == "macro")
                 footerButtons = _contentMacro.Q(className: "editor-footer-buttons");
+            else if (_activeTab == "micro")
+                footerButtons = _contentMicro.Q(className: "editor-footer-buttons");
 
-            if (footerButtons != null)
+            if (footerButtons == null) return;
+
+            if (_activeTab == "micro")
             {
+                // Micro has no Assign To (micros are per-Work-step, not per-runner).
+                // Show "Done" so the player has closure after editing.
+                var doneBtn = new Button(() => Close());
+                doneBtn.name = "btn-done-editing";
+                doneBtn.text = "Done";
+                doneBtn.AddToClassList("editor-footer-button");
+                doneBtn.style.backgroundColor = new Color(0.2f, 0.4f, 0.2f, 0.9f);
+                doneBtn.style.color = new Color(0.85f, 1f, 0.85f);
+                doneBtn.style.unityFontStyleAndWeight = FontStyle.Bold;
+                footerButtons.Insert(0, doneBtn);
+            }
+            else
+            {
+                // Task seq / macro: show "Assign to [Runner]"
                 var assignBtn = new Button(() => CompletePendingAssignment());
                 assignBtn.name = "btn-pending-assign";
                 assignBtn.text = $"Assign to {runner.Name}";
@@ -602,11 +619,12 @@ namespace ProjectGuild.View.UI
             }
         }
 
-        private void RemoveAssignButton()
+        private void RemoveRunnerContextButtons()
         {
             // Could be on any tab's footer — search all
             _contentTaskSeq.Q("btn-pending-assign")?.RemoveFromHierarchy();
             _contentMacro.Q("btn-pending-assign")?.RemoveFromHierarchy();
+            _contentMicro.Q("btn-done-editing")?.RemoveFromHierarchy();
         }
 
         private void CompletePendingAssignment()
@@ -635,7 +653,7 @@ namespace ProjectGuild.View.UI
         private void ClearPendingAssignment()
         {
             _pendingAssignRunnerId = null;
-            RemoveAssignButton();
+            RemoveRunnerContextButtons();
         }
 
         // ─── Tab Switching ────────────────────────────────────

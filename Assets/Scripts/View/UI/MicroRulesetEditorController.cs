@@ -447,7 +447,7 @@ namespace ProjectGuild.View.UI
             {
                 Label = $"Rule {ruleset.Rules.Count + 1}",
                 Conditions = { Condition.Always() },
-                Action = AutomationAction.GatherHere(0),
+                Action = AutomationAction.GatherAny(),
                 Enabled = true,
             });
             _cachedRulesShapeKey = null;
