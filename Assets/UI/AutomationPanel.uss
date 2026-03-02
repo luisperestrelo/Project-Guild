@@ -13,11 +13,10 @@
 
 .panel-root {
     position: absolute;
-    left: 50%;
-    top: 50%;
-    translate: -50% -50%;
+    left: 362px;
+    top: 185px;
     width: 1000px;
-    height: 85%;
+    height: 840px;
     background-color: rgb(12, 12, 20);
     border-width: 1px;
     border-color: rgba(80, 80, 100, 0.6);

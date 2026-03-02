@@ -68,6 +68,13 @@ namespace ProjectGuild.View.UI
         // Nav footer Done button (replaces normal footer buttons during nav stack)
         private Button _navDoneButton;
 
+        // ─── Drag state ─────────────────────────────────────
+        private bool _isDragging;
+        private Vector2 _dragOffset;
+        private bool _hasCustomPosition; // true once dragged at least once
+        private float _customLeft;
+        private float _customTop;
+
         public AutomationPanelController(VisualElement root, UIManager uiManager)
         {
             _root = root;
@@ -80,6 +87,12 @@ namespace ProjectGuild.View.UI
             // Close button
             var btnClose = root.Q<Button>("btn-close-panel");
             btnClose.clicked += OnCloseButtonClicked;
+
+            // Title bar drag-to-move
+            var titleBar = root.Q("panel-title-bar");
+            titleBar.RegisterCallback<PointerDownEvent>(OnTitleBarPointerDown);
+            titleBar.RegisterCallback<PointerMoveEvent>(OnTitleBarPointerMove);
+            titleBar.RegisterCallback<PointerUpEvent>(OnTitleBarPointerUp);
 
             // Tab bar + buttons
             _tabBar = root.Q("panel-tab-bar");
@@ -132,6 +145,7 @@ namespace ProjectGuild.View.UI
         {
             IsOpen = true;
             _root.style.display = DisplayStyle.Flex;
+            ApplyPosition();
             _panelRoot.Focus();
             RefreshActiveTab();
         }
@@ -228,6 +242,53 @@ namespace ProjectGuild.View.UI
                 case "macro": _macroEditor.SelectNewItem(itemId); break;
                 case "micro": _microEditor.SelectNewItem(itemId); break;
             }
+        }
+
+        // ─── Drag-to-Move ────────────────────────────────────
+
+        private void ApplyPosition()
+        {
+            if (_hasCustomPosition)
+            {
+                _panelRoot.style.left = _customLeft;
+                _panelRoot.style.top = _customTop;
+            }
+            // else: default position from USS
+        }
+
+        private void OnTitleBarPointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0) return;
+
+            _isDragging = true;
+            _hasCustomPosition = true;
+
+            _dragOffset = new Vector2(
+                evt.position.x - _panelRoot.resolvedStyle.left,
+                evt.position.y - _panelRoot.resolvedStyle.top);
+
+            ((VisualElement)evt.currentTarget).CapturePointer(evt.pointerId);
+            evt.StopPropagation();
+        }
+
+        private void OnTitleBarPointerMove(PointerMoveEvent evt)
+        {
+            if (!_isDragging) return;
+
+            _customLeft = evt.position.x - _dragOffset.x;
+            _customTop = evt.position.y - _dragOffset.y;
+            _panelRoot.style.left = _customLeft;
+            _panelRoot.style.top = _customTop;
+            evt.StopPropagation();
+        }
+
+        private void OnTitleBarPointerUp(PointerUpEvent evt)
+        {
+            if (!_isDragging) return;
+
+            _isDragging = false;
+            ((VisualElement)evt.currentTarget).ReleasePointer(evt.pointerId);
+            evt.StopPropagation();
         }
 
         // ─── Navigation Stack ─────────────────────────────────
