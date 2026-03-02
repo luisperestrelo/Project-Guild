@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Items;
 
@@ -133,6 +134,13 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public string MacroRulesetId;
 
+        /// <summary>
+        /// Per-Work-step micro ruleset overrides. When set, the runner uses the override
+        /// MicroRulesetId instead of the one specified in the TaskSequence step.
+        /// Keyed by step index. Cleared on task sequence reassignment.
+        /// </summary>
+        public List<MicroOverride> MicroOverrides;
+
         public Runner()
         {
             Skills = new Skill[SkillTypeExtensions.SkillCount];
@@ -156,6 +164,17 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float GetEffectiveLevel(SkillType type, SimulationConfig config) =>
             Skills[(int)type].GetEffectiveLevel(config);
+    }
+
+    /// <summary>
+    /// A per-step micro ruleset override on a runner. Overrides the MicroRulesetId
+    /// that the TaskSequence step specifies, without touching the shared template.
+    /// </summary>
+    [Serializable]
+    public class MicroOverride
+    {
+        public int StepIndex;
+        public string MicroRulesetId;
     }
 
     /// <summary>

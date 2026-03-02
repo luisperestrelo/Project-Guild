@@ -609,6 +609,7 @@ namespace ProjectGuild.Simulation.Core
             runner.CompletedAtLeastOneCycle = false;
             runner.LastCompletedTaskSequenceId = null;
             runner.PendingTaskSequenceId = null; // immediate assignment supersedes any deferred
+            runner.MicroOverrides?.Clear(); // fresh assignment = clean slate for overrides
             // Don't clear MacroSuspendedUntilLoop here — WorkAt() sets it before
             // calling AssignRunner, and we want it to persist through the first cycle.
 
@@ -854,17 +855,26 @@ namespace ProjectGuild.Simulation.Core
             bool itemJustProduced = false)
         {
             Ruleset microRuleset = null;
+            bool isOverride = false;
             var seq = GetRunnerTaskSequence(runner);
             if (seq != null)
             {
                 var step = GetCurrentStep(runner, seq);
-                if (step?.MicroRulesetId != null)
-                    microRuleset = FindMicroRulesetInLibrary(step.MicroRulesetId);
+                if (step != null)
+                {
+                    // Check runner-level override first, fall back to step's configured micro
+                    string overrideId = GetRunnerMicroOverrideForStep(runner, runner.TaskSequenceCurrentStepIndex);
+                    string microId = overrideId ?? step.MicroRulesetId;
+                    isOverride = overrideId != null;
+                    if (microId != null)
+                        microRuleset = FindMicroRulesetInLibrary(microId);
+                }
             }
 
             if (microRuleset == null)
                 return MicroResultNoMatch; // let it break
 
+            string logSource = isOverride ? "MicroEval Override" : "MicroEval";
             var ctx = new EvaluationContext(runner, CurrentGameState, Config);
             int ruleIndex = RuleEvaluator.EvaluateRuleset(microRuleset, ctx);
 
@@ -875,7 +885,7 @@ namespace ProjectGuild.Simulation.Core
 
                 if (action.Type == ActionType.FinishTask)
                 {
-                    LogDecision(runner, ruleIndex, rule, "MicroEval",
+                    LogDecision(runner, ruleIndex, rule, logSource,
                         "Finish Task", false, DecisionLayer.Micro);
                     return MicroResultFinishTask;
                 }
@@ -888,7 +898,7 @@ namespace ProjectGuild.Simulation.Core
                         string itemId = node.Gatherables[index].ProducedItemId;
                         string itemName = ItemRegistry?.Get(itemId)?.Name ?? itemId;
                         string actionLabel = $"Gather {itemName}";
-                        LogDecision(runner, ruleIndex, rule, "MicroEval",
+                        LogDecision(runner, ruleIndex, rule, logSource,
                             actionLabel, false, DecisionLayer.Micro);
                         return index;
                     }
@@ -906,7 +916,7 @@ namespace ProjectGuild.Simulation.Core
                         string itemId = node.Gatherables[index].ProducedItemId;
                         string itemName = ItemRegistry?.Get(itemId)?.Name ?? itemId;
                         string actionLabel = $"Gather Best Available -> {itemName}";
-                        LogDecision(runner, ruleIndex, rule, "MicroEval",
+                        LogDecision(runner, ruleIndex, rule, logSource,
                             actionLabel, false, DecisionLayer.Micro);
                         return index;
                     }
@@ -1448,6 +1458,24 @@ namespace ProjectGuild.Simulation.Core
         /// <summary>Get the runner's macro ruleset from the library.</summary>
         public Ruleset GetRunnerMacroRuleset(Runner runner) =>
             FindMacroRulesetInLibrary(runner.MacroRulesetId);
+
+        /// <summary>
+        /// Get the runner's micro override for a specific step index, or null if no override.
+        /// </summary>
+        public string GetRunnerMicroOverrideForStep(Runner runner, int stepIndex)
+        {
+            if (runner.MicroOverrides == null) return null;
+            for (int i = 0; i < runner.MicroOverrides.Count; i++)
+            {
+                if (runner.MicroOverrides[i].StepIndex == stepIndex)
+                    return runner.MicroOverrides[i].MicroRulesetId;
+            }
+            return null;
+        }
+
+        /// <summary>Returns true if the runner has any micro overrides.</summary>
+        public bool RunnerHasMicroOverrides(Runner runner) =>
+            runner.MicroOverrides != null && runner.MicroOverrides.Count > 0;
 
         // ─── Runner Commands ──────────────────────────────────────────
 
@@ -2484,6 +2512,82 @@ namespace ProjectGuild.Simulation.Core
                 ToNodeId = targetNodeId,
                 EstimatedDurationSeconds = distance / speed,
             });
+        }
+
+        // ─── Micro Override Commands ──────────────────────────────────
+
+        /// <summary>Set a micro override for a specific Work step on a runner.</summary>
+        public void CommandSetMicroOverride(string runnerId, int stepIndex, string microRulesetId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+
+            runner.MicroOverrides ??= new List<MicroOverride>();
+
+            // Replace existing override for this step, or add new
+            for (int i = 0; i < runner.MicroOverrides.Count; i++)
+            {
+                if (runner.MicroOverrides[i].StepIndex == stepIndex)
+                {
+                    runner.MicroOverrides[i].MicroRulesetId = microRulesetId;
+                    return;
+                }
+            }
+            runner.MicroOverrides.Add(new MicroOverride { StepIndex = stepIndex, MicroRulesetId = microRulesetId });
+        }
+
+        /// <summary>Clear a micro override for a specific Work step on a runner.</summary>
+        public void CommandClearMicroOverride(string runnerId, int stepIndex)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner?.MicroOverrides == null) return;
+
+            for (int i = 0; i < runner.MicroOverrides.Count; i++)
+            {
+                if (runner.MicroOverrides[i].StepIndex == stepIndex)
+                {
+                    runner.MicroOverrides.RemoveAt(i);
+                    return;
+                }
+            }
+        }
+
+        /// <summary>Clear all micro overrides on a runner.</summary>
+        public void CommandClearAllMicroOverrides(string runnerId)
+        {
+            var runner = FindRunner(runnerId);
+            runner?.MicroOverrides?.Clear();
+        }
+
+        /// <summary>
+        /// Fork the runner's current task sequence into a new one with overrides baked in.
+        /// Creates a new sequence in the library, assigns it to the runner, clears overrides.
+        /// </summary>
+        public void CommandForkTaskSequenceWithOverrides(string runnerId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+            if (runner.MicroOverrides == null || runner.MicroOverrides.Count == 0) return;
+
+            var seq = GetRunnerTaskSequence(runner);
+            if (seq == null) return;
+
+            var copy = seq.DeepCopy();
+            copy.Name = $"{seq.Name} ({runner.Name}'s)";
+            copy.AutoGenerateName = false;
+
+            // Bake overrides into the copy's steps
+            foreach (var ov in runner.MicroOverrides)
+            {
+                if (ov.StepIndex >= 0 && ov.StepIndex < copy.Steps.Count
+                    && copy.Steps[ov.StepIndex].Type == TaskStepType.Work)
+                {
+                    copy.Steps[ov.StepIndex].MicroRulesetId = ov.MicroRulesetId;
+                }
+            }
+
+            // AssignRunner adds to library and clears overrides
+            AssignRunner(runnerId, copy, "fork from overrides");
         }
 
         public Runner FindRunner(string runnerId)

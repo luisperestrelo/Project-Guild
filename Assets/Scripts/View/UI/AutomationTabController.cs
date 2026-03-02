@@ -49,6 +49,8 @@ namespace ProjectGuild.View.UI
         // ─── Task Sequence cached step rows ──────
         private string _cachedTaskSeqShapeKey;
         private readonly List<(VisualElement row, Label indicator, Label index, Label text, Label microLink)> _stepRowCache = new();
+        private Button _btnForkWithOverrides;
+        private Button _btnClearAllOverrides;
 
         // ─── Macro sub-tab (persistent UXML elements) ──────
         private readonly Label _macroNameLabel;
@@ -119,6 +121,24 @@ namespace ProjectGuild.View.UI
             _btnCopyTaskSeq.clicked += OnCopyTaskSeqClicked;
             _btnClearTask.clicked += OnClearTaskClicked;
             _btnResumeMacros.clicked += OnResumeMacrosClicked;
+
+            // Override action buttons (dynamically shown)
+            var overrideRow = new VisualElement();
+            overrideRow.AddToClassList("auto-override-row");
+
+            _btnForkWithOverrides = new Button(OnForkWithOverridesClicked);
+            _btnForkWithOverrides.text = "Save as new Task Sequence";
+            _btnForkWithOverrides.AddToClassList("auto-action-button");
+            _btnForkWithOverrides.AddToClassList("auto-edit-button");
+            overrideRow.Add(_btnForkWithOverrides);
+
+            _btnClearAllOverrides = new Button(OnClearAllOverridesClicked);
+            _btnClearAllOverrides.text = "Clear All Overrides";
+            _btnClearAllOverrides.AddToClassList("auto-action-button");
+            _btnClearAllOverrides.AddToClassList("auto-clear-button");
+            overrideRow.Add(_btnClearAllOverrides);
+
+            _contentTaskSeq.Add(overrideRow);
 
             // Macro elements
             _macroNameLabel = root.Q<Label>("macro-name-label");
@@ -324,11 +344,24 @@ namespace ProjectGuild.View.UI
 
                         microLink = new Label();
                         microLink.AddToClassList("auto-step-micro-link");
-                        string capturedMicroId = step.MicroRulesetId;
+                        microLink.enableRichText = true;
+                        int capturedStepIndex = i;
                         microLink.RegisterCallback<ClickEvent>(evt =>
                         {
-                            if (evt.clickCount == 2 && !string.IsNullOrEmpty(capturedMicroId))
-                                _uiManager.OpenAutomationPanelToItemFromRunner("micro", capturedMicroId, _currentRunnerId);
+                            if (evt.clickCount == 2)
+                            {
+                                // Double-click: open in library editor
+                                string effectiveMicroId = sim.GetRunnerMicroOverrideForStep(
+                                    sim.FindRunner(_currentRunnerId), capturedStepIndex)
+                                    ?? seq.Steps[capturedStepIndex].MicroRulesetId;
+                                if (!string.IsNullOrEmpty(effectiveMicroId))
+                                    _uiManager.OpenAutomationPanelToItemFromRunner("micro", effectiveMicroId, _currentRunnerId);
+                            }
+                            else if (evt.clickCount == 1)
+                            {
+                                // Single-click: open micro swap picker
+                                ShowMicroSwapPicker(microLink, capturedStepIndex);
+                            }
                         });
                         row.Add(microLink);
                     }
@@ -355,11 +388,25 @@ namespace ProjectGuild.View.UI
                 // Step description
                 cached.text.text = AutomationUIHelpers.FormatStep(step, state);
 
-                // Micro ruleset link for Work steps
+                // Micro ruleset link for Work steps (shows override indicator)
                 if (cached.microLink != null && step.Type == TaskStepType.Work)
                 {
-                    var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
-                    cached.microLink.text = microRuleset?.Name ?? step.MicroRulesetId ?? "None";
+                    string overrideId = sim.GetRunnerMicroOverrideForStep(runner, i);
+                    if (overrideId != null)
+                    {
+                        var overrideMicro = sim.FindMicroRulesetInLibrary(overrideId);
+                        var originalMicro = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                        string overrideName = overrideMicro?.Name ?? "Unknown";
+                        string originalName = originalMicro?.Name ?? step.MicroRulesetId ?? "None";
+                        cached.microLink.text = $"{overrideName} <color=#888>(was: {originalName})</color>";
+                        cached.microLink.AddToClassList("micro-override-active");
+                    }
+                    else
+                    {
+                        var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                        cached.microLink.text = microRuleset?.Name ?? step.MicroRulesetId ?? "None";
+                        cached.microLink.RemoveFromClassList("micro-override-active");
+                    }
                 }
             }
 
@@ -375,6 +422,10 @@ namespace ProjectGuild.View.UI
                 _pendingSection.style.display = DisplayStyle.None;
             }
 
+            // Override action buttons — visible only when runner has overrides
+            bool hasOverrides = sim.RunnerHasMicroOverrides(runner);
+            _btnForkWithOverrides.style.display = hasOverrides ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnClearAllOverrides.style.display = hasOverrides ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         // ─── Macro Rules Sub-Tab ────────────────────────
@@ -509,8 +560,8 @@ namespace ProjectGuild.View.UI
 
             _microNoTaskLabel.style.display = DisplayStyle.None;
 
-            // Build shape key from Work step structure
-            string shapeKey = BuildMicroShapeKey(seq, sim);
+            // Build shape key from Work step structure (includes override state)
+            string shapeKey = BuildMicroShapeKey(seq, sim, runner);
 
             if (shapeKey != _cachedMicroShapeKey)
             {
@@ -540,8 +591,10 @@ namespace ProjectGuild.View.UI
                     sectionCache.infoLabel.AddToClassList("micro-work-ruleset-info");
                     section.Add(sectionCache.infoLabel);
 
-                    // Rule rows (built based on current micro ruleset)
-                    var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                    // Rule rows (built based on EFFECTIVE micro — override or step's)
+                    string overrideId = sim.GetRunnerMicroOverrideForStep(runner, i);
+                    string effectiveMicroId = overrideId ?? step.MicroRulesetId;
+                    var microRuleset = sim.FindMicroRulesetInLibrary(effectiveMicroId);
                     int ruleCount = microRuleset?.Rules.Count ?? 0;
 
                     if (ruleCount == 0)
@@ -579,17 +632,17 @@ namespace ProjectGuild.View.UI
                         }
                     }
 
-                    // Edit in Library button
-                    string capturedMicroId = step.MicroRulesetId;
+                    // Edit in Library button (uses effective micro — override or step's)
+                    string capturedEffectiveMicroId = effectiveMicroId;
                     var editBtn = new Button(() =>
                     {
-                        if (!string.IsNullOrEmpty(capturedMicroId))
-                            _uiManager.OpenAutomationPanelToItemFromRunner("micro", capturedMicroId, _currentRunnerId);
+                        if (!string.IsNullOrEmpty(capturedEffectiveMicroId))
+                            _uiManager.OpenAutomationPanelToItemFromRunner("micro", capturedEffectiveMicroId, _currentRunnerId);
                     });
                     editBtn.text = "Edit in Library";
                     editBtn.AddToClassList("auto-action-button");
                     editBtn.AddToClassList("auto-edit-button");
-                    editBtn.SetEnabled(!string.IsNullOrEmpty(capturedMicroId));
+                    editBtn.SetEnabled(!string.IsNullOrEmpty(capturedEffectiveMicroId));
                     section.Add(editBtn);
                     sectionCache.editButton = editBtn;
                     sectionCache.stepIndex = i;
@@ -626,15 +679,31 @@ namespace ProjectGuild.View.UI
                 }
                 sectionCache.headerLabel.text = $"Work{nodeContext}";
 
-                // Micro ruleset info
-                var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                // Micro ruleset info (resolve effective micro — override or step's)
+                string overrideId = sim.GetRunnerMicroOverrideForStep(runner, i);
+                string effectiveMicroId = overrideId ?? step.MicroRulesetId;
+                var microRuleset = sim.FindMicroRulesetInLibrary(effectiveMicroId);
+
                 if (microRuleset != null)
                 {
-                    int seqCount = sim.CountSequencesUsingMicroRuleset(microRuleset.Id);
-                    string usageText = seqCount > 1
-                        ? $"\"{microRuleset.Name}\" (Used by {seqCount} sequences)"
-                        : $"\"{microRuleset.Name}\"";
-                    sectionCache.infoLabel.text = usageText;
+                    sectionCache.infoLabel.enableRichText = true;
+                    if (overrideId != null)
+                    {
+                        // Show override indicator with original name
+                        var originalMicro = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                        string originalName = originalMicro?.Name ?? step.MicroRulesetId ?? "None";
+                        sectionCache.infoLabel.text = $"\"{microRuleset.Name}\" <color=#DCB43C>(overriding: {originalName})</color>";
+                        sectionCache.section.AddToClassList("micro-override-active");
+                    }
+                    else
+                    {
+                        int seqCount = sim.CountSequencesUsingMicroRuleset(microRuleset.Id);
+                        string usageText = seqCount > 1
+                            ? $"\"{microRuleset.Name}\" (Used by {seqCount} sequences)"
+                            : $"\"{microRuleset.Name}\"";
+                        sectionCache.infoLabel.text = usageText;
+                        sectionCache.section.RemoveFromClassList("micro-override-active");
+                    }
                     sectionCache.infoLabel.style.display = DisplayStyle.Flex;
 
                     // Update rule rows
@@ -663,27 +732,31 @@ namespace ProjectGuild.View.UI
                 }
                 else
                 {
-                    sectionCache.infoLabel.text = string.IsNullOrEmpty(step.MicroRulesetId)
+                    sectionCache.infoLabel.text = string.IsNullOrEmpty(effectiveMicroId)
                         ? "No micro ruleset assigned (runner will get stuck)"
-                        : $"Missing micro ruleset: {step.MicroRulesetId}";
+                        : $"Missing micro ruleset: {effectiveMicroId}";
                     sectionCache.infoLabel.style.display = DisplayStyle.Flex;
+                    sectionCache.section.RemoveFromClassList("micro-override-active");
                 }
             }
         }
 
-        private static string BuildMicroShapeKey(TaskSequence seq, GameSimulation sim)
+        private static string BuildMicroShapeKey(TaskSequence seq, GameSimulation sim, Runner runner)
         {
-            // Shape = seq ID + work step indices + micro IDs + rule counts
+            // Shape = seq ID + work step indices + effective micro IDs + rule counts
             var parts = new List<string> { seq.Id ?? "" };
             for (int i = 0; i < seq.Steps.Count; i++)
             {
                 var step = seq.Steps[i];
                 if (step.Type != TaskStepType.Work) continue;
 
-                string microId = step.MicroRulesetId ?? "";
-                var microRuleset = sim.FindMicroRulesetInLibrary(step.MicroRulesetId);
+                // Use effective micro (override or step's) for shape key
+                string overrideId = sim.GetRunnerMicroOverrideForStep(runner, i);
+                string effectiveId = overrideId ?? step.MicroRulesetId ?? "";
+                var microRuleset = sim.FindMicroRulesetInLibrary(effectiveId);
                 int ruleCount = microRuleset?.Rules.Count ?? 0;
-                parts.Add($"{i}:{microId}:{ruleCount}");
+                string overrideFlag = overrideId != null ? "O" : "";
+                parts.Add($"{i}:{effectiveId}:{ruleCount}:{overrideFlag}");
             }
             return string.Join("|", parts);
         }
@@ -903,6 +976,106 @@ namespace ProjectGuild.View.UI
             var tabRoot = copyRow.parent;
             int rowIdx = tabRoot.IndexOf(copyRow);
             tabRoot.Insert(rowIdx + 1, popup);
+        }
+
+        // ─── Micro Override Handlers ─────────────────────
+
+        private void OnForkWithOverridesClicked()
+        {
+            if (_currentRunnerId == null) return;
+            _uiManager.Simulation?.CommandForkTaskSequenceWithOverrides(_currentRunnerId);
+            _cachedTaskSeqShapeKey = null; // force rebuild
+            _cachedMicroShapeKey = null;
+            Refresh();
+        }
+
+        private void OnClearAllOverridesClicked()
+        {
+            if (_currentRunnerId == null) return;
+            _uiManager.Simulation?.CommandClearAllMicroOverrides(_currentRunnerId);
+            Refresh();
+        }
+
+        /// <summary>
+        /// Shows a popup to pick a micro ruleset to override on a specific Work step.
+        /// </summary>
+        private void ShowMicroSwapPicker(VisualElement anchor, int stepIndex)
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null || _currentRunnerId == null) return;
+
+            // Toggle: remove if already open
+            var existingPopup = _contentTaskSeq.Q("micro-swap-popup");
+            if (existingPopup != null) { existingPopup.RemoveFromHierarchy(); return; }
+
+            var runner = sim.FindRunner(_currentRunnerId);
+            if (runner == null) return;
+
+            var popup = new VisualElement();
+            popup.name = "micro-swap-popup";
+            popup.AddToClassList("assign-popup");
+
+            var header = new Label("Swap micro ruleset:");
+            header.AddToClassList("assign-popup-header");
+            popup.Add(header);
+
+            // Current override info
+            string currentOverrideId = sim.GetRunnerMicroOverrideForStep(runner, stepIndex);
+
+            foreach (var micro in sim.CurrentGameState.MicroRulesetLibrary)
+            {
+                var capturedId = micro.Id;
+                var btn = new Button(() =>
+                {
+                    sim.CommandSetMicroOverride(_currentRunnerId, stepIndex, capturedId);
+                    popup.RemoveFromHierarchy();
+                    _cachedMicroShapeKey = null; // force micro tab rebuild
+                    Refresh();
+                });
+                btn.text = micro.Name ?? micro.Id;
+                btn.AddToClassList("assign-popup-runner");
+
+                // Highlight the currently active micro (override or step default)
+                var seq = sim.GetRunnerTaskSequence(runner);
+                string stepMicroId = seq?.Steps[stepIndex]?.MicroRulesetId;
+                string effectiveId = currentOverrideId ?? stepMicroId;
+                if (capturedId == effectiveId)
+                    btn.AddToClassList("assign-popup-current");
+
+                popup.Add(btn);
+            }
+
+            // Clear override option (only when an override exists)
+            if (currentOverrideId != null)
+            {
+                var clearBtn = new Button(() =>
+                {
+                    sim.CommandClearMicroOverride(_currentRunnerId, stepIndex);
+                    popup.RemoveFromHierarchy();
+                    _cachedMicroShapeKey = null;
+                    Refresh();
+                });
+                clearBtn.text = "Clear Override";
+                clearBtn.AddToClassList("assign-popup-cancel");
+                popup.Add(clearBtn);
+            }
+
+            var cancelBtn = new Button(() => popup.RemoveFromHierarchy());
+            cancelBtn.text = "Cancel";
+            cancelBtn.AddToClassList("assign-popup-cancel");
+            popup.Add(cancelBtn);
+
+            // Insert in content area
+            var anchorRow = anchor.parent;
+            if (anchorRow?.parent != null)
+            {
+                int rowIdx = anchorRow.parent.IndexOf(anchorRow);
+                anchorRow.parent.Insert(rowIdx + 1, popup);
+            }
+            else
+            {
+                _contentTaskSeq.Add(popup);
+            }
         }
     }
 }

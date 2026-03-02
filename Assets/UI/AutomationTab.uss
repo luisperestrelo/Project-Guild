@@ -412,3 +412,33 @@
     margin-top: 4px;
     font-size: 12px;
 }
+
+.assign-popup-current {
+    border-color: rgb(220, 180, 60);
+    border-width: 1px;
+}
+
+/* ─── Micro Override ─────────────────────────────── */
+
+.micro-override-active > .auto-step-micro-link,
+.auto-step-micro-link.micro-override-active {
+    color: rgb(220, 180, 60);
+}
+
+.micro-work-section.micro-override-active {
+    border-left-width: 2px;
+    border-left-color: rgb(220, 180, 60);
+    padding-left: 6px;
+}
+
+.auto-override-row {
+    flex-direction: row;
+    margin-top: 6px;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+}
+
+.auto-override-row > .auto-action-button {
+    margin-right: 6px;
+    font-size: 11px;
+}

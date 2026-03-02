@@ -1121,5 +1121,314 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
                 "When MinLevel is tied, should pick lowest index (0)");
         }
+
+        // ─── Micro Override (Hot-Wiring) ──────────────────────────────
+
+        [Test]
+        public void MicroOverride_TakesPrecedenceOverStepMicro()
+        {
+            Setup("mine");
+
+            // Create two micro rulesets: one gathers copper (index 0), one gathers tin (index 1)
+            var copperMicro = CreateAndRegisterMicroRuleset("copper-micro");
+            copperMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            var tinMicro = CreateAndRegisterMicroRuleset("tin-micro");
+            tinMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(1),
+                Enabled = true,
+            });
+
+            // Sequence configured to use copper micro on Work step
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "copper-micro");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
+                "Without override, should gather copper (index 0)");
+
+            // Now set override to tin micro
+            int workStepIndex = -1;
+            for (int i = 0; i < seq.Steps.Count; i++)
+                if (seq.Steps[i].Type == TaskStepType.Work) { workStepIndex = i; break; }
+
+            _sim.CommandSetMicroOverride(_runner.Id, workStepIndex, "tin-micro");
+
+            // Tick to re-evaluate (runner is gathering, micro re-evaluates each tick)
+            _sim.Tick();
+
+            Assert.AreEqual(1, _runner.Gathering.GatherableIndex,
+                "Override should cause runner to gather tin (index 1)");
+        }
+
+        [Test]
+        public void MicroOverride_NoOverrideFallsBackToStepMicro()
+        {
+            Setup("mine");
+
+            var copperMicro = CreateAndRegisterMicroRuleset("copper-only");
+            copperMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "copper-only");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
+                "No override set — should use step's micro and gather copper");
+            Assert.IsFalse(_sim.RunnerHasMicroOverrides(_runner));
+        }
+
+        [Test]
+        public void MicroOverride_ClearedOnAssignRunner()
+        {
+            Setup("mine");
+
+            var micro = CreateAndRegisterMicroRuleset("some-micro");
+            micro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "some-micro");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            // Set override
+            _sim.CommandSetMicroOverride(_runner.Id, 1, "some-override-id");
+            Assert.IsTrue(_sim.RunnerHasMicroOverrides(_runner));
+
+            // Re-assign (same or different sequence) — overrides cleared
+            _sim.AssignRunner(_runner.Id, seq);
+            Assert.IsFalse(_sim.RunnerHasMicroOverrides(_runner));
+        }
+
+        [Test]
+        public void MicroOverride_PersistsAcrossLoops()
+        {
+            Setup("mine");
+
+            var copperMicro = CreateAndRegisterMicroRuleset("copper-loop");
+            copperMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            var tinMicro = CreateAndRegisterMicroRuleset("tin-loop");
+            tinMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(1),
+                Enabled = true,
+            });
+
+            // Create a looping sequence and assign
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "copper-loop");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            // Find the Work step index
+            int workStepIndex = -1;
+            for (int i = 0; i < seq.Steps.Count; i++)
+                if (seq.Steps[i].Type == TaskStepType.Work) { workStepIndex = i; break; }
+
+            // Override to tin
+            _sim.CommandSetMicroOverride(_runner.Id, workStepIndex, "tin-loop");
+
+            // Fill inventory to trigger FinishTask → deposit → loop back
+            var fillItem = new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore);
+            for (int i = 0; i < _sim.Config.InventorySize - 1; i++)
+                _runner.Inventory.TryAdd(fillItem);
+            // Tick through: inventory fills → FinishTask → travel to hub → deposit → travel back → gather again
+            TickUntil(() => _runner.State == RunnerState.Gathering && _runner.CompletedAtLeastOneCycle, 5000);
+
+            // After looping, override should still be active
+            Assert.IsNotNull(_sim.GetRunnerMicroOverrideForStep(_runner, workStepIndex),
+                "Override should persist after sequence loops");
+            Assert.AreEqual(1, _runner.Gathering.GatherableIndex,
+                "After loop, override should still cause tin gathering");
+        }
+
+        [Test]
+        public void MicroOverride_PerStepIndexIndependence()
+        {
+            Setup("mine");
+
+            // Set overrides on different step indices
+            _sim.CommandSetMicroOverride(_runner.Id, 0, "micro-a");
+            _sim.CommandSetMicroOverride(_runner.Id, 2, "micro-b");
+
+            Assert.AreEqual("micro-a", _sim.GetRunnerMicroOverrideForStep(_runner, 0));
+            Assert.IsNull(_sim.GetRunnerMicroOverrideForStep(_runner, 1),
+                "Step 1 has no override");
+            Assert.AreEqual("micro-b", _sim.GetRunnerMicroOverrideForStep(_runner, 2));
+        }
+
+        [Test]
+        public void CommandClearMicroOverride_RemovesSpecificOverride()
+        {
+            Setup("mine");
+
+            _sim.CommandSetMicroOverride(_runner.Id, 0, "micro-a");
+            _sim.CommandSetMicroOverride(_runner.Id, 2, "micro-b");
+
+            _sim.CommandClearMicroOverride(_runner.Id, 0);
+
+            Assert.IsNull(_sim.GetRunnerMicroOverrideForStep(_runner, 0),
+                "Cleared override should be null");
+            Assert.AreEqual("micro-b", _sim.GetRunnerMicroOverrideForStep(_runner, 2),
+                "Other override should remain");
+        }
+
+        [Test]
+        public void CommandClearAllMicroOverrides_RemovesAll()
+        {
+            Setup("mine");
+
+            _sim.CommandSetMicroOverride(_runner.Id, 0, "micro-a");
+            _sim.CommandSetMicroOverride(_runner.Id, 1, "micro-b");
+            _sim.CommandSetMicroOverride(_runner.Id, 2, "micro-c");
+
+            _sim.CommandClearAllMicroOverrides(_runner.Id);
+
+            Assert.IsFalse(_sim.RunnerHasMicroOverrides(_runner));
+        }
+
+        [Test]
+        public void CommandSetMicroOverride_ReplacesExistingForSameStep()
+        {
+            Setup("mine");
+
+            _sim.CommandSetMicroOverride(_runner.Id, 1, "first-micro");
+            Assert.AreEqual("first-micro", _sim.GetRunnerMicroOverrideForStep(_runner, 1));
+
+            _sim.CommandSetMicroOverride(_runner.Id, 1, "second-micro");
+            Assert.AreEqual("second-micro", _sim.GetRunnerMicroOverrideForStep(_runner, 1));
+            Assert.AreEqual(1, _runner.MicroOverrides.Count,
+                "Should replace, not add a second entry");
+        }
+
+        [Test]
+        public void MicroOverride_InvalidOverrideCausesNoMatch()
+        {
+            Setup("mine");
+
+            var copperMicro = CreateAndRegisterMicroRuleset("valid-micro");
+            copperMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "valid-micro");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+
+            // Override with a non-existent micro ID → let it break
+            int workStepIndex = -1;
+            for (int i = 0; i < seq.Steps.Count; i++)
+                if (seq.Steps[i].Type == TaskStepType.Work) { workStepIndex = i; break; }
+
+            _sim.CommandSetMicroOverride(_runner.Id, workStepIndex, "non-existent-micro");
+            _sim.Tick();
+
+            Assert.IsNotNull(_runner.ActiveWarning,
+                "Invalid override micro should cause a warning (let it break)");
+        }
+
+        [Test]
+        public void CommandForkTaskSequenceWithOverrides_BakesOverridesIntoNewSequence()
+        {
+            Setup("mine");
+
+            var copperMicro = CreateAndRegisterMicroRuleset("fork-copper");
+            copperMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(0),
+                Enabled = true,
+            });
+
+            var tinMicro = CreateAndRegisterMicroRuleset("fork-tin");
+            tinMicro.Rules.Add(new Rule
+            {
+                Conditions = { new Condition { Type = ConditionType.Always } },
+                Action = AutomationAction.GatherHere(1),
+                Enabled = true,
+            });
+
+            // Create sequence with copper micro
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            seq.Name = "Mining Loop";
+            SetWorkStepMicroRuleset(seq, "fork-copper");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            string originalSeqId = _runner.TaskSequenceId;
+
+            // Override Work step to tin
+            int workStepIndex = -1;
+            for (int i = 0; i < seq.Steps.Count; i++)
+                if (seq.Steps[i].Type == TaskStepType.Work) { workStepIndex = i; break; }
+
+            _sim.CommandSetMicroOverride(_runner.Id, workStepIndex, "fork-tin");
+
+            // Fork
+            _sim.CommandForkTaskSequenceWithOverrides(_runner.Id);
+
+            // Runner should be on a NEW sequence
+            Assert.AreNotEqual(originalSeqId, _runner.TaskSequenceId,
+                "Runner should be assigned to new forked sequence");
+
+            // Overrides should be cleared
+            Assert.IsFalse(_sim.RunnerHasMicroOverrides(_runner),
+                "Overrides should be cleared after fork");
+
+            // New sequence's Work step should have tin micro baked in
+            var newSeq = _sim.GetRunnerTaskSequence(_runner);
+            Assert.IsNotNull(newSeq);
+            Assert.That(newSeq.Name, Does.Contain("Tester"),
+                "Forked sequence name should contain runner name");
+
+            for (int i = 0; i < newSeq.Steps.Count; i++)
+            {
+                if (newSeq.Steps[i].Type == TaskStepType.Work)
+                {
+                    Assert.AreEqual("fork-tin", newSeq.Steps[i].MicroRulesetId,
+                        "Forked sequence's Work step should have the override micro baked in");
+                }
+            }
+
+            // Original sequence should be unchanged
+            var origSeq = _sim.FindTaskSequenceInLibrary(originalSeqId);
+            Assert.IsNotNull(origSeq, "Original sequence should still exist");
+            for (int i = 0; i < origSeq.Steps.Count; i++)
+            {
+                if (origSeq.Steps[i].Type == TaskStepType.Work)
+                {
+                    Assert.AreEqual("fork-copper", origSeq.Steps[i].MicroRulesetId,
+                        "Original sequence should be unchanged");
+                }
+            }
+        }
     }
 }
