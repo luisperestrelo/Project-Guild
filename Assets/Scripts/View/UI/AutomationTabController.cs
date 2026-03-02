@@ -323,7 +323,7 @@ namespace ProjectGuild.View.UI
             // Macro suspension indicator
             if (runner.MacroSuspendedUntilLoop)
             {
-                _suspensionLabel.text = "Macros paused \u2014 completing first cycle";
+                _suspensionLabel.text = "Macro rules disabled until the current task completes one full cycle.";
                 _suspensionLabel.style.display = DisplayStyle.Flex;
             }
             else
