@@ -698,6 +698,9 @@ namespace ProjectGuild.View.UI
                     editBtn.AddToClassList("auto-edit-button");
                     actionsRow.Add(editBtn);
                     sectionCache.editButton = editBtn;
+                    _uiManager.RegisterTooltip(editBtn, () =>
+                        "Edits the shared ruleset — changes affect all sequences using it.\n" +
+                        "Use Duplicate & Override to change only this runner.");
 
                     // Duplicate & Override button
                     var dupBtn = new Button(() => OnDuplicateAndOverrideClicked(capturedStepIndex));
@@ -706,6 +709,8 @@ namespace ProjectGuild.View.UI
                     dupBtn.AddToClassList("auto-duplicate-button");
                     actionsRow.Add(dupBtn);
                     sectionCache.duplicateOverrideButton = dupBtn;
+                    _uiManager.RegisterTooltip(dupBtn, () =>
+                        "Creates a copy of this micro ruleset and sets it as an override for this runner only.");
 
                     // Clear Override button (hidden when no override)
                     var clearBtn = new Button(() =>
