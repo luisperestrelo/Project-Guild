@@ -230,17 +230,6 @@
     color: rgb(210, 210, 225);
 }
 
-.list-item-name-default {
-    color: rgb(130, 130, 150);
-    -unity-font-style: italic;
-    transition-property: opacity;
-    transition-duration: 0.8s;
-}
-
-.list-item-name-default-dim {
-    opacity: 0.5;
-}
-
 .list-item-info {
     font-size: 11px;
     color: rgb(120, 120, 140);

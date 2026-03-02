@@ -207,8 +207,6 @@ namespace ProjectGuild.View.UI
 
                 var nameLabel = new Label(name);
                 nameLabel.AddToClassList("list-item-name");
-                if (AutomationUIHelpers.IsDefaultName(name) || seq.AutoGenerateName)
-                    AutomationUIHelpers.ApplyDefaultNameStyle(nameLabel);
                 nameLabel.pickingMode = PickingMode.Ignore;
                 textContainer.Add(nameLabel);
 
