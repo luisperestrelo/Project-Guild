@@ -1019,26 +1019,34 @@ namespace ProjectGuild.View.UI
             header.AddToClassList("assign-popup-header");
             popup.Add(header);
 
-            // Current override info
+            // Current state
             string currentOverrideId = sim.GetRunnerMicroOverrideForStep(runner, stepIndex);
+            var seq = sim.GetRunnerTaskSequence(runner);
+            string stepMicroId = seq?.Steps[stepIndex]?.MicroRulesetId;
+            string effectiveId = currentOverrideId ?? stepMicroId;
 
             foreach (var micro in sim.CurrentGameState.MicroRulesetLibrary)
             {
                 var capturedId = micro.Id;
                 var btn = new Button(() =>
                 {
-                    sim.CommandSetMicroOverride(_currentRunnerId, stepIndex, capturedId);
+                    if (capturedId == stepMicroId)
+                    {
+                        // Picking the step's original micro — clear any override instead of creating a redundant one
+                        sim.CommandClearMicroOverride(_currentRunnerId, stepIndex);
+                    }
+                    else
+                    {
+                        sim.CommandSetMicroOverride(_currentRunnerId, stepIndex, capturedId);
+                    }
                     popup.RemoveFromHierarchy();
-                    _cachedMicroShapeKey = null; // force micro tab rebuild
+                    _cachedMicroShapeKey = null;
                     Refresh();
                 });
                 btn.text = micro.Name ?? micro.Id;
                 btn.AddToClassList("assign-popup-runner");
 
-                // Highlight the currently active micro (override or step default)
-                var seq = sim.GetRunnerTaskSequence(runner);
-                string stepMicroId = seq?.Steps[stepIndex]?.MicroRulesetId;
-                string effectiveId = currentOverrideId ?? stepMicroId;
+                // Highlight the currently active micro
                 if (capturedId == effectiveId)
                     btn.AddToClassList("assign-popup-current");
 
