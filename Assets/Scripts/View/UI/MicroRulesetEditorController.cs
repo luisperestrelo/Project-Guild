@@ -304,22 +304,17 @@ namespace ProjectGuild.View.UI
             {
                 _banner.style.display = DisplayStyle.Flex;
                 var parts = new List<string>();
-                if (seqNames.Count > 0)
-                    parts.Add($"Used in: {string.Join(", ", seqNames)}");
                 if (runnerNames.Count > 0)
-                    parts.Add($"Active on: {string.Join(", ", runnerNames)}");
-                string who = string.Join(". ", parts) + ".";
+                    parts.Add($"Active on:\n  {string.Join(", ", runnerNames)}");
+                if (seqNames.Count > 0)
+                    parts.Add($"Used in task sequences:\n  {string.Join(", ", seqNames)}");
 
-                if (seqNames.Count > 1 || runnerNames.Count > 1)
-                {
-                    _bannerText.text = $"{who}\nEdits here affect all of them. Duplicate to make an independent copy.";
-                    _cloneBannerBtn.style.display = DisplayStyle.Flex;
-                }
-                else
-                {
-                    _bannerText.text = who;
-                    _cloneBannerBtn.style.display = DisplayStyle.None;
-                }
+                bool shared = seqNames.Count > 1 || runnerNames.Count > 1;
+                if (shared)
+                    parts.Add("Edits here affect all of them.");
+
+                _bannerText.text = string.Join("\n", parts);
+                _cloneBannerBtn.style.display = shared ? DisplayStyle.Flex : DisplayStyle.None;
             }
             else
             {

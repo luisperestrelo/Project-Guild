@@ -321,17 +321,16 @@ namespace ProjectGuild.View.UI
 
             // Shared template banner (update in-place)
             var runnerNames = sim.GetRunnerNamesUsingMacroRuleset(ruleset.Id);
-            if (runnerNames.Count > 1)
+            if (runnerNames.Count > 0)
             {
                 _banner.style.display = DisplayStyle.Flex;
-                _bannerText.text = $"Used by {string.Join(", ", runnerNames)}.\nEdits here affect all of them. Duplicate to make an independent copy.";
-                _cloneBannerBtn.style.display = DisplayStyle.Flex;
-            }
-            else if (runnerNames.Count == 1)
-            {
-                _banner.style.display = DisplayStyle.Flex;
-                _bannerText.text = $"Used by {runnerNames[0]}.";
-                _cloneBannerBtn.style.display = DisplayStyle.None;
+                bool shared = runnerNames.Count > 1;
+                var parts = new List<string>();
+                parts.Add($"Active on:\n  {string.Join(", ", runnerNames)}");
+                if (shared)
+                    parts.Add("Edits here affect all of them.");
+                _bannerText.text = string.Join("\n", parts);
+                _cloneBannerBtn.style.display = shared ? DisplayStyle.Flex : DisplayStyle.None;
             }
             else
             {

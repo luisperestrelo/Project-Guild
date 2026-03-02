@@ -306,17 +306,16 @@ namespace ProjectGuild.View.UI
 
             // Shared template banner
             var runnerNames = sim.GetRunnerNamesUsingTaskSequence(seq.Id);
-            if (runnerNames.Count > 1)
+            if (runnerNames.Count > 0)
             {
                 _sharedBanner.style.display = DisplayStyle.Flex;
-                _sharedBannerText.text = $"Used by {string.Join(", ", runnerNames)}.\nEdits here affect all of them. Duplicate to make an independent copy.";
-                _btnCloneBanner.style.display = DisplayStyle.Flex;
-            }
-            else if (runnerNames.Count == 1)
-            {
-                _sharedBanner.style.display = DisplayStyle.Flex;
-                _sharedBannerText.text = $"Used by {runnerNames[0]}.";
-                _btnCloneBanner.style.display = DisplayStyle.None;
+                bool shared = runnerNames.Count > 1;
+                var parts = new List<string>();
+                parts.Add($"Active on:\n  {string.Join(", ", runnerNames)}");
+                if (shared)
+                    parts.Add("Edits here affect all of them.");
+                _sharedBannerText.text = string.Join("\n", parts);
+                _btnCloneBanner.style.display = shared ? DisplayStyle.Flex : DisplayStyle.None;
             }
             else
             {
