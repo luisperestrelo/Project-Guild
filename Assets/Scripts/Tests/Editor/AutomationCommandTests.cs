@@ -905,10 +905,10 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void FormatAction_GatherHere_Positional()
+        public void FormatAction_GatherHere_NoStringParam_ShowsGatherAny()
         {
             var result = AutomationUIHelpers.FormatAction(AutomationAction.GatherHere(0), null);
-            Assert.AreEqual("Gather Here (0)", result);
+            Assert.AreEqual("Gather Any", result);
         }
 
         [Test]
