@@ -1988,12 +1988,17 @@ namespace ProjectGuild.Simulation.Core
                 seq.Steps.Insert(insertIndex, step);
             }
 
-            // Adjust runner step indices: insert before current → increment
-            foreach (var runner in CurrentGameState.Runners)
+            // Adjust runner step indices: insert before/at current → increment.
+            // Skip when the sequence had no steps before (count is 1 after this add) —
+            // the runner's step index 0 means "start from the beginning", not a tracked position.
+            if (seq.Steps.Count > 1)
             {
-                if (runner.TaskSequenceId != seqId) continue;
-                if (actualIndex <= runner.TaskSequenceCurrentStepIndex)
-                    runner.TaskSequenceCurrentStepIndex++;
+                foreach (var runner in CurrentGameState.Runners)
+                {
+                    if (runner.TaskSequenceId != seqId) continue;
+                    if (actualIndex <= runner.TaskSequenceCurrentStepIndex)
+                        runner.TaskSequenceCurrentStepIndex++;
+                }
             }
         }
 
