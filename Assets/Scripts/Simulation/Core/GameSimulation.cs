@@ -2563,6 +2563,18 @@ namespace ProjectGuild.Simulation.Core
         /// Fork the runner's current task sequence into a new one with overrides baked in.
         /// Creates a new sequence in the library, assigns it to the runner, clears overrides.
         /// </summary>
+        /// <summary>
+        /// Clone a micro ruleset and immediately set it as the override for a runner's Work step.
+        /// Returns the cloned ruleset ID, or null on failure.
+        /// </summary>
+        public string CommandCloneMicroRulesetAsOverride(string runnerId, int stepIndex, string sourceMicroId)
+        {
+            string cloneId = CommandCloneMicroRuleset(sourceMicroId);
+            if (cloneId == null) return null;
+            CommandSetMicroOverride(runnerId, stepIndex, cloneId);
+            return cloneId;
+        }
+
         public void CommandForkTaskSequenceWithOverrides(string runnerId, string name = null)
         {
             var runner = FindRunner(runnerId);
