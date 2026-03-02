@@ -610,7 +610,7 @@ Static helper class (pure C#, no Unity deps). Natural language formatting for au
 - `FormatCondition()` — "Bank contains Copper Ore >= 200"
 - `FormatAction()` — "Work at Copper Mine"
 - `FormatRule()` — "IF Bank contains Copper Ore >= 200 THEN Work at Pine Forest"
-- `FormatTimingTag()` — "Immediately" or "Finish Current Sequence"
+- `FormatTimingTag()` — "Immediately" or "After current task"
 - `FormatStep()` — "Travel to Copper Mine", "Work (Default Gather)", "Deposit"
 - `FormatOperator()` — >, >=, <, <=, =, !=
 - `HumanizeId()` — "copper_ore" → "Copper Ore"

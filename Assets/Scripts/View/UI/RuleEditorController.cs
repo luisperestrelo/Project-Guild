@@ -194,19 +194,40 @@ namespace ProjectGuild.View.UI
             }, onCreateNewSequence);
             actionCard.Add(actionEditor);
 
-            // Timing toggle (macro only)
+            // Timing toggle (macro only) — two radio-style buttons
             if (isMacro)
             {
-                var timingChoices = new List<string> { "Immediately", "Finish Current Seq" };
-                var timingDropdown = new DropdownField(timingChoices,
-                    rule.FinishCurrentSequence ? 1 : 0);
-                timingDropdown.AddToClassList("rule-editor-timing");
-                timingDropdown.RegisterValueChangedCallback(evt =>
+                var timingContainer = new VisualElement();
+                timingContainer.AddToClassList("rule-editor-timing");
+
+                var interruptBtn = new Button();
+                interruptBtn.text = "Immediately";
+                interruptBtn.AddToClassList("rule-editor-timing-btn");
+                interruptBtn.AddToClassList("rule-editor-timing-btn-left");
+
+                var afterBtn = new Button();
+                afterBtn.text = "After current task";
+                afterBtn.AddToClassList("rule-editor-timing-btn");
+                afterBtn.AddToClassList("rule-editor-timing-btn-right");
+
+                void UpdateTimingSelection(bool finishCurrent)
                 {
-                    rule.FinishCurrentSequence = timingDropdown.index == 1;
-                    PersistRule(); // value-only — no rebuild
-                });
-                actionCard.Add(timingDropdown);
+                    rule.FinishCurrentSequence = finishCurrent;
+                    PersistRule();
+                    interruptBtn.EnableInClassList("rule-editor-timing-active", !finishCurrent);
+                    afterBtn.EnableInClassList("rule-editor-timing-active", finishCurrent);
+                }
+
+                interruptBtn.clicked += () => UpdateTimingSelection(false);
+                afterBtn.clicked += () => UpdateTimingSelection(true);
+
+                // Set initial state
+                interruptBtn.EnableInClassList("rule-editor-timing-active", !rule.FinishCurrentSequence);
+                afterBtn.EnableInClassList("rule-editor-timing-active", rule.FinishCurrentSequence);
+
+                timingContainer.Add(interruptBtn);
+                timingContainer.Add(afterBtn);
+                actionCard.Add(timingContainer);
             }
 
             row.Add(actionCard);

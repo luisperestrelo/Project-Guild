@@ -84,6 +84,22 @@ namespace ProjectGuild.Simulation.Core
         public string PendingTaskSequenceId;
 
         /// <summary>
+        /// Context from the deferred rule that set PendingTaskSequenceId.
+        /// Used by the Decision Log to show a complete entry when the pending executes.
+        /// </summary>
+        public float PendingSetAtGameTime;
+        public string PendingConditionSnapshot;
+        public string PendingRuleLabel;
+
+        /// <summary>
+        /// Set true when AdvanceRunnerStepIndex wraps from the last step back to step 0.
+        /// Cleared on AssignRunner (fresh assignment starts at step 0 but hasn't looped yet).
+        /// Used to distinguish "starting a new sequence at step 0" from "looped back to step 0
+        /// after completing all steps" — deferred pending actions only apply on loop-back.
+        /// </summary>
+        public bool CompletedAtLeastOneCycle;
+
+        /// <summary>
         /// When true, macro rules are skipped until the current sequence loops
         /// (step index wraps back to 0). Used by "Work At" to guarantee one cycle.
         /// Cleared automatically on loop wrap, or when the sequence is cancelled/replaced.

@@ -296,9 +296,38 @@ DropdownField.condition-state-dropdown {
 /* ─── Timing ──────────────────────────────────────── */
 
 .rule-editor-timing {
-    font-size: 12px;
-    min-width: 120px;
+    flex-direction: row;
     margin-left: 6px;
+}
+
+.rule-editor-timing-btn {
+    font-size: 11px;
+    padding: 2px 6px;
+    margin: 0;
+    border-width: 1px;
+    border-color: rgb(80, 80, 90);
+    background-color: rgb(45, 45, 50);
+    color: rgb(160, 160, 170);
+    border-radius: 0;
+}
+
+.rule-editor-timing-btn-left {
+    border-radius: 3px 0 0 3px;
+}
+
+.rule-editor-timing-btn-right {
+    border-radius: 0 3px 3px 0;
+    border-left-width: 0;
+}
+
+.rule-editor-timing-btn:hover {
+    background-color: rgb(55, 55, 62);
+}
+
+.rule-editor-timing-active {
+    background-color: rgb(50, 70, 90);
+    border-color: rgb(80, 130, 180);
+    color: rgb(200, 220, 240);
 }
 
 /* ─── Move / Delete buttons ───────────────────────── */

@@ -531,6 +531,7 @@ namespace ProjectGuild.Simulation.Core
             {
                 runner.TaskSequenceId = null;
                 runner.TaskSequenceCurrentStepIndex = 0;
+                runner.CompletedAtLeastOneCycle = false;
                 runner.LastCompletedTaskSequenceId = null;
 
                 Events.Publish(new TaskSequenceChanged
@@ -605,6 +606,7 @@ namespace ProjectGuild.Simulation.Core
 
             runner.TaskSequenceId = taskSequence?.Id;
             runner.TaskSequenceCurrentStepIndex = 0;
+            runner.CompletedAtLeastOneCycle = false;
             runner.LastCompletedTaskSequenceId = null;
             runner.PendingTaskSequenceId = null; // immediate assignment supersedes any deferred
             // Don't clear MacroSuspendedUntilLoop here — WorkAt() sets it before
@@ -640,9 +642,11 @@ namespace ProjectGuild.Simulation.Core
             {
                 if (runner.State != RunnerState.Idle) return;
 
-                // At loop boundary (step 0): apply any pending deferred assignment.
-                // This is the "finish current sequence" resolution point.
-                if (runner.TaskSequenceCurrentStepIndex == 0 && ApplyPendingTaskSequence(runner))
+                // At loop boundary (step 0 after completing a full cycle): apply any pending
+                // deferred assignment. CompletedAtLeastOneCycle distinguishes "just assigned,
+                // starting at step 0" from "looped back to step 0 after finishing all steps."
+                if (runner.TaskSequenceCurrentStepIndex == 0 && runner.CompletedAtLeastOneCycle
+                    && ApplyPendingTaskSequence(runner))
                     return;
 
                 // Evaluate macro rules before executing the next step.
@@ -1210,13 +1214,25 @@ namespace ProjectGuild.Simulation.Core
             bool actuallyDeferred = rule.FinishCurrentSequence && currentSeq != null;
             string actionDetail = newSeq != null ? $"Assign: {newSeq.Name ?? newSeq.Id}" : "Idle";
 
-            LogDecision(runner, ruleIndex, rule, triggerReason, actionDetail, actuallyDeferred);
-
             if (actuallyDeferred)
             {
-                runner.PendingTaskSequenceId = newSeq?.Id;
+                // Only log + set on first fire — the rule evaluates every tick but
+                // we only want one Decision Log entry, not a wall of duplicates.
+                // TODO: Revisit this approach when addressing broader decision log spam
+                // (macro + micro both fire every tick). May want a unified "log first
+                // occurrence only" strategy. Deferred to Phase 5 (combat).
+                if (runner.PendingTaskSequenceId != newSeq?.Id)
+                {
+                    LogDecision(runner, ruleIndex, rule, triggerReason, actionDetail, actuallyDeferred);
+                    runner.PendingTaskSequenceId = newSeq?.Id;
+                    runner.PendingSetAtGameTime = CurrentGameState.TotalTimeElapsed;
+                    runner.PendingConditionSnapshot = FormatConditionSnapshot(rule, runner);
+                    runner.PendingRuleLabel = rule.Label;
+                }
                 return false;
             }
+
+            LogDecision(runner, ruleIndex, rule, triggerReason, actionDetail, actuallyDeferred);
 
             // Immediate: change task sequence now
             AssignRunner(runner.Id, newSeq, $"macro rule: {rule.Label}");
@@ -1253,8 +1269,45 @@ namespace ProjectGuild.Simulation.Core
             var pending = GetRunnerPendingTaskSequence(runner);
             if (pending == null) return false;
 
+            string actionDetail = pending.Name ?? pending.Id;
             runner.PendingTaskSequenceId = null;
 
+            // Log the deferred action execution in the Decision Log.
+            // Replays the original rule context so the player sees:
+            //   1. What condition caused it (from when the deferred was set)
+            //   2. When the decision was made
+            //   3. What the runner is now going to do
+            // UI format: "[time] [MACRO] Name: ConditionSnapshot → ActionDetail"
+            float elapsed = CurrentGameState.TotalTimeElapsed - runner.PendingSetAtGameTime;
+            string conditionText = !string.IsNullOrEmpty(runner.PendingConditionSnapshot)
+                ? runner.PendingConditionSnapshot
+                : "(unknown condition)";
+            string snapshot = elapsed >= 1f
+                ? $"{conditionText} (deferred {elapsed:F0}s ago)"
+                : conditionText;
+            CurrentGameState.MacroDecisionLog.Add(new DecisionLogEntry
+            {
+                TickNumber = CurrentGameState.TickCount,
+                GameTime = CurrentGameState.TotalTimeElapsed,
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+                NodeId = runner.CurrentNodeId,
+                Layer = DecisionLayer.Macro,
+                RuleIndex = -1,
+                RuleLabel = runner.PendingRuleLabel ?? "Deferred rule",
+                TriggerReason = "loop boundary",
+                ActionType = ActionType.AssignSequence,
+                ConditionSnapshot = snapshot,
+                ActionDetail = actionDetail,
+                WasDeferred = false,
+            });
+
+            Events.Publish(new AutomationPendingActionExecuted
+            {
+                RunnerId = runner.Id,
+                ActionType = ActionType.AssignSequence,
+                ActionDetail = actionDetail,
+            });
 
             AssignRunner(runner.Id, pending, "deferred macro rule");
             return true;
@@ -2189,6 +2242,26 @@ namespace ProjectGuild.Simulation.Core
             return names;
         }
 
+        /// <summary>Get names of task sequences that reference a micro ruleset in their Work steps.</summary>
+        public List<string> GetSequenceNamesUsingMicroRuleset(string microId)
+        {
+            var names = new List<string>();
+            if (string.IsNullOrEmpty(microId)) return names;
+            foreach (var seq in CurrentGameState.TaskSequenceLibrary)
+            {
+                if (seq.Steps == null) continue;
+                foreach (var step in seq.Steps)
+                {
+                    if (step.Type == TaskStepType.Work && step.MicroRulesetId == microId)
+                    {
+                        names.Add(seq.Name ?? seq.Id);
+                        break;
+                    }
+                }
+            }
+            return names;
+        }
+
         /// <summary>
         /// Count task sequences that reference a micro ruleset in their Work steps.
         /// </summary>
@@ -2237,6 +2310,7 @@ namespace ProjectGuild.Simulation.Core
                 if (seq.Loop)
                 {
                     runner.TaskSequenceCurrentStepIndex = 0;
+                    runner.CompletedAtLeastOneCycle = true;
                     return true;
                 }
 

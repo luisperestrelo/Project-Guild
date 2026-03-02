@@ -112,6 +112,7 @@ namespace ProjectGuild.View.UI
             // Force full rebuild on filter change
             _lastEntryCount = -1;
             _lastRepeatSum = -1;
+            Refresh(); // also refresh immediately so filter changes work while paused
         }
 
         private static void SetFilterActive(Button btn, bool active)

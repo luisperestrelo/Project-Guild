@@ -168,6 +168,48 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
+        public void MacroRule_FinishCurrentSequence_DoesNotApplyOnFreshAssignment()
+        {
+            // Regression test: pending deferred action must NOT fire when a freshly
+            // assigned sequence starts at step 0. It should only fire after the
+            // runner completes a full loop cycle and wraps back to step 0.
+            Setup("mine");
+
+            var forestSeqId = RegisterLibrarySequence("forest");
+
+            // Bank already has enough copper to trigger the rule
+            _sim.CurrentGameState.Bank.Deposit("copper_ore", _config.InventorySize);
+
+            var macroRuleset = SetRunnerMacroRuleset();
+            macroRuleset.Rules.Add(new Rule
+            {
+                Label = "Switch to forest",
+                Conditions = { Condition.BankContains("copper_ore", ComparisonOperator.GreaterOrEqual, _config.InventorySize) },
+                Action = AutomationAction.AssignSequence(forestSeqId),
+                FinishCurrentSequence = true,
+                Enabled = true,
+            });
+
+            // Assign a mine sequence — macro fires during assignment but is deferred
+            var mineSeq = TaskSequence.CreateLoop("mine", "hub");
+            _sim.AssignRunner(_runner.Id, mineSeq);
+
+            // Pending should be set
+            Assert.IsNotNull(_runner.PendingTaskSequenceId,
+                "FinishCurrentSequence rule should set PendingTaskSequenceId");
+
+            // Tick until runner arrives at mine (completes TravelTo step)
+            TickUntil(() => _runner.CurrentNodeId == "mine", safetyLimit: 500);
+
+            // Runner should still be on the mine sequence — pending must NOT apply
+            // at step 0 of a freshly assigned sequence
+            Assert.AreEqual(mineSeq.Id, _runner.TaskSequenceId,
+                "Deferred pending should NOT apply on arrival — runner hasn't completed a full cycle yet");
+            Assert.IsNotNull(_runner.PendingTaskSequenceId,
+                "PendingTaskSequenceId should still be set, waiting for loop completion");
+        }
+
+        [Test]
         public void MacroRule_FinishCurrentSequence_PendingTaskSequenceStored()
         {
             Setup("mine");

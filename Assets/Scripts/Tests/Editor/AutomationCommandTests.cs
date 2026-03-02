@@ -973,10 +973,10 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void FormatTimingTag_FinishCurrentSequence()
+        public void FormatTimingTag_AfterCurrentTask()
         {
             var rule = new Rule { FinishCurrentSequence = true };
-            Assert.AreEqual("Finish Current Sequence", AutomationUIHelpers.FormatTimingTag(rule));
+            Assert.AreEqual("After current task", AutomationUIHelpers.FormatTimingTag(rule));
         }
 
         [Test]

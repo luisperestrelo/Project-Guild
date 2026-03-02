@@ -46,12 +46,12 @@ namespace ProjectGuild.View.UI
 
         /// <summary>
         /// Format the timing as a readable tag.
-        /// Returns "Immediately" or "Finish Current Sequence".
+        /// Returns "After current task" or "Interrupt".
         /// </summary>
         public static string FormatTimingTag(Rule rule)
         {
             if (rule == null) return "";
-            return rule.FinishCurrentSequence ? "Finish Current Sequence" : "Immediately";
+            return rule.FinishCurrentSequence ? "After current task" : "Immediately";
         }
 
         // ─── Condition Formatting ─────────────────────────────────────

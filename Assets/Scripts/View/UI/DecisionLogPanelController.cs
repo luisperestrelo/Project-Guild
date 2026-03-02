@@ -139,6 +139,7 @@ namespace ProjectGuild.View.UI
         {
             _lastMacroGeneration = -1;
             _lastMicroGeneration = -1;
+            Refresh(); // also refresh immediately so filter changes work while paused
         }
 
         private static void SetFilterActive(Button btn, bool active)

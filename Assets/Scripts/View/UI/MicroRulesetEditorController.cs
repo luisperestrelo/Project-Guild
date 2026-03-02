@@ -512,8 +512,8 @@ namespace ProjectGuild.View.UI
             var ruleset = sim?.FindMicroRulesetInLibrary(id);
             if (ruleset == null) return;
 
-            int seqCount = sim.CountSequencesUsingMicroRuleset(id);
             var runnerNames = sim.GetRunnerNamesUsingMicroRuleset(id);
+            var seqNames = sim.GetSequenceNamesUsingMicroRuleset(id);
 
             var warningParts = new List<string>();
             warningParts.Add($"Delete \"{ruleset.Name}\"?");
@@ -524,9 +524,10 @@ namespace ProjectGuild.View.UI
                 warningParts.Add($"Active on:\n{list}\nThey will have no micro rules at their Work step.");
             }
 
-            if (seqCount > 0)
+            if (seqNames.Count > 0)
             {
-                warningParts.Add($"{seqCount} task sequence{(seqCount != 1 ? "s" : "")} reference this micro ruleset.");
+                string list = string.Join("\n", seqNames.ConvertAll(n => $"  - {n}"));
+                warningParts.Add($"Used in task sequences:\n{list}");
             }
 
             string warning = string.Join("\n\n", warningParts);
