@@ -983,10 +983,74 @@ namespace ProjectGuild.View.UI
         private void OnForkWithOverridesClicked()
         {
             if (_currentRunnerId == null) return;
-            _uiManager.Simulation?.CommandForkTaskSequenceWithOverrides(_currentRunnerId);
-            _cachedTaskSeqShapeKey = null; // force rebuild
-            _cachedMicroShapeKey = null;
-            Refresh();
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+            var runner = sim.FindRunner(_currentRunnerId);
+            if (runner == null) return;
+            var seq = sim.GetRunnerTaskSequence(runner);
+            if (seq == null) return;
+
+            // Toggle: remove if already open
+            var existing = _contentTaskSeq.Q("fork-name-popup");
+            if (existing != null) { existing.RemoveFromHierarchy(); return; }
+
+            string defaultName = $"{seq.Name} ({runner.Name}'s)";
+
+            var popup = new VisualElement();
+            popup.name = "fork-name-popup";
+            popup.AddToClassList("assign-popup");
+
+            var header = new Label("Save as new Task Sequence:");
+            header.AddToClassList("assign-popup-header");
+            popup.Add(header);
+
+            var nameField = new TextField();
+            nameField.value = defaultName;
+            nameField.AddToClassList("fork-name-field");
+            popup.Add(nameField);
+
+            var btnRow = new VisualElement();
+            btnRow.style.flexDirection = FlexDirection.Row;
+
+            var confirmBtn = new Button(() =>
+            {
+                string name = string.IsNullOrWhiteSpace(nameField.value) ? defaultName : nameField.value;
+                sim.CommandForkTaskSequenceWithOverrides(_currentRunnerId, name);
+                popup.RemoveFromHierarchy();
+                _cachedTaskSeqShapeKey = null;
+                _cachedMicroShapeKey = null;
+                Refresh();
+            });
+            confirmBtn.text = "Create";
+            confirmBtn.AddToClassList("assign-popup-runner");
+            confirmBtn.AddToClassList("swap-picker-new-btn");
+            btnRow.Add(confirmBtn);
+
+            var cancelBtn = new Button(() => popup.RemoveFromHierarchy());
+            cancelBtn.text = "Cancel";
+            cancelBtn.AddToClassList("assign-popup-cancel");
+            btnRow.Add(cancelBtn);
+
+            popup.Add(btnRow);
+
+            // Insert after the override row
+            var overrideRow = _btnForkWithOverrides.parent;
+            if (overrideRow?.parent != null)
+            {
+                int idx = overrideRow.parent.IndexOf(overrideRow);
+                overrideRow.parent.Insert(idx + 1, popup);
+            }
+            else
+            {
+                _contentTaskSeq.Add(popup);
+            }
+
+            // Auto-focus and select all text
+            nameField.schedule.Execute(() =>
+            {
+                nameField.Focus();
+                nameField.SelectAll();
+            });
         }
 
         private void OnClearAllOverridesClicked()
@@ -1070,14 +1134,11 @@ namespace ProjectGuild.View.UI
                 popup.Add(row);
             }
 
-            // + New button
+            // + New button — creates and opens editor, does NOT set as override
             var newBtn = new Button(() =>
             {
                 string newId = sim.CommandCreateMicroRuleset();
-                sim.CommandSetMicroOverride(_currentRunnerId, stepIndex, newId);
                 popup.RemoveFromHierarchy();
-                _cachedMicroShapeKey = null;
-                Refresh();
                 _uiManager.OpenAutomationPanelToItemFromRunner("micro", newId, _currentRunnerId);
             });
             newBtn.text = "+ New Micro Ruleset";

@@ -2563,7 +2563,7 @@ namespace ProjectGuild.Simulation.Core
         /// Fork the runner's current task sequence into a new one with overrides baked in.
         /// Creates a new sequence in the library, assigns it to the runner, clears overrides.
         /// </summary>
-        public void CommandForkTaskSequenceWithOverrides(string runnerId)
+        public void CommandForkTaskSequenceWithOverrides(string runnerId, string name = null)
         {
             var runner = FindRunner(runnerId);
             if (runner == null) return;
@@ -2573,7 +2573,7 @@ namespace ProjectGuild.Simulation.Core
             if (seq == null) return;
 
             var copy = seq.DeepCopy();
-            copy.Name = $"{seq.Name} ({runner.Name}'s)";
+            copy.Name = name ?? $"{seq.Name} ({runner.Name}'s)";
             copy.AutoGenerateName = false;
 
             // Bake overrides into the copy's steps
