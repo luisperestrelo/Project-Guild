@@ -21,9 +21,9 @@ namespace ProjectGuild.Simulation.Core
         // ─── Micro Rules ────────────────────────────────
         public const string NoMicroRulesConfigured = "No micro rules configured";
 
-        public static string NoMicroRuleMatched(string nodeId, int rulesEvaluated)
+        public static string NoMicroRuleMatched(string nodeName, int rulesEvaluated)
         {
-            return $"No micro rule matched at {nodeId} ({rulesEvaluated} rules evaluated)";
+            return $"No micro rule matched at {nodeName} ({rulesEvaluated} rules evaluated)";
         }
 
         // ─── Skill ──────────────────────────────────────

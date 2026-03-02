@@ -1401,7 +1401,9 @@ namespace ProjectGuild.Simulation.Core
             bool isEmpty = ruleset == null || ruleset.Rules == null || ruleset.Rules.Count == 0;
             runner.ActiveWarning = isEmpty
                 ? RunnerWarnings.NoMicroRulesConfigured
-                : RunnerWarnings.NoMicroRuleMatched(runner.CurrentNodeId, ruleset.Rules.Count);
+                : RunnerWarnings.NoMicroRuleMatched(
+                    CurrentGameState.Map.GetNode(runner.CurrentNodeId)?.Name ?? runner.CurrentNodeId,
+                    ruleset.Rules.Count);
 
             Events.Publish(new NoMicroRuleMatched
             {
