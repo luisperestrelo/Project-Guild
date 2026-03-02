@@ -319,6 +319,12 @@ namespace ProjectGuild.View.UI
                     {
                         newCond.Operator = ComparisonOperator.GreaterOrEqual;
                         newCond.NumericValue = 1;
+                        // Default to first registered item so the dropdown value matches the data
+                        foreach (var item in sim.ItemRegistry.AllItemDefinitions)
+                        {
+                            newCond.StringParam = item.Id;
+                            break;
+                        }
                     }
                     // Type change is structural — params need to rebuild
                     onTypeChange(newCond);

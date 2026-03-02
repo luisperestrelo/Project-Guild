@@ -858,7 +858,7 @@ namespace ProjectGuild.View.UI
                 if (i > 0 && seq.Steps[i - 1].Type == TaskStepType.TravelTo)
                 {
                     var node = state.Map.GetNode(seq.Steps[i - 1].TargetNodeId);
-                    nodeName = node?.Name ?? seq.Steps[i - 1].TargetNodeId;
+                    nodeName = node?.Name ?? AutomationUIHelpers.HumanizeId(seq.Steps[i - 1].TargetNodeId);
                 }
 
                 // Determine verb from micro ruleset category
@@ -899,7 +899,7 @@ namespace ProjectGuild.View.UI
                 if (step.Type == TaskStepType.TravelTo && !string.IsNullOrEmpty(step.TargetNodeId))
                 {
                     var node = state.Map.GetNode(step.TargetNodeId);
-                    travelNodes.Add(node?.Name ?? step.TargetNodeId);
+                    travelNodes.Add(node?.Name ?? AutomationUIHelpers.HumanizeId(step.TargetNodeId));
                 }
             }
             if (travelNodes.Count > 0)

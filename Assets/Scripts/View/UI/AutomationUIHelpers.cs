@@ -135,10 +135,10 @@ namespace ProjectGuild.View.UI
                     {
                         foreach (var seq in state.TaskSequenceLibrary)
                             if (seq.Id == action.StringParam)
-                                return $"Use {seq.Name ?? seq.Id}";
+                                return seq.Name ?? seq.Id;
                     }
                     return string.IsNullOrEmpty(action.StringParam)
-                        ? "Use ?"
+                        ? "Assign ?"
                         : "<color=#CC4444>\u26A0 [Deleted Sequence]</color> <color=#999999>\u2014 goes Idle</color>";
 
                 case ActionType.GatherHere:
