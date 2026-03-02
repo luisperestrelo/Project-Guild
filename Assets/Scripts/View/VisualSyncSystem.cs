@@ -40,6 +40,15 @@ namespace ProjectGuild.View
             return _runnerVisuals.TryGetValue(runnerId, out var visual) ? visual : null;
         }
 
+        private static Material CreatePlaceholderMaterial(Color color)
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            var mat = new Material(shader);
+            mat.color = color;
+            return mat;
+        }
+
         private void OnEnable()
         {
             if (_simulationRunner == null)
@@ -105,9 +114,7 @@ namespace ProjectGuild.View
                 // Color from node data
                 var renderer = marker.GetComponent<Renderer>();
                 if (renderer != null)
-                {
-                    renderer.material.color = new Color(node.ColorR, node.ColorG, node.ColorB);
-                }
+                    renderer.material = CreatePlaceholderMaterial(new Color(node.ColorR, node.ColorG, node.ColorB));
             }
 
             marker.name = $"Node_{node.Id}";
@@ -152,7 +159,7 @@ namespace ProjectGuild.View
 
             var renderer = bankObj.GetComponent<Renderer>();
             if (renderer != null)
-                renderer.material.color = new Color(0.7f, 0.6f, 0.2f);
+                renderer.material = CreatePlaceholderMaterial(new Color(0.7f, 0.6f, 0.2f));
 
             bankObj.AddComponent<BankMarker>();
 
@@ -187,6 +194,9 @@ namespace ProjectGuild.View
                 // Placeholder: capsule
                 obj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 obj.transform.localScale = new Vector3(0.5f, 1f, 0.5f);
+                var capsuleRenderer = obj.GetComponent<Renderer>();
+                if (capsuleRenderer != null)
+                    capsuleRenderer.material = CreatePlaceholderMaterial(Color.white);
             }
 
             // Put runners on their own physics layer for selective raycasting
