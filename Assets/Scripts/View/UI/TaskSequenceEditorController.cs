@@ -305,17 +305,22 @@ namespace ProjectGuild.View.UI
             }
 
             // Shared template banner
-            int usageCount = sim.CountRunnersUsingTaskSequence(seq.Id);
-            _sharedBanner.style.display = DisplayStyle.Flex;
-            if (usageCount > 1)
+            var runnerNames = sim.GetRunnerNamesUsingTaskSequence(seq.Id);
+            if (runnerNames.Count > 1)
             {
-                _sharedBannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.\nDuplicate to make an independent copy.";
+                _sharedBanner.style.display = DisplayStyle.Flex;
+                _sharedBannerText.text = $"Used by {string.Join(", ", runnerNames)}.\nEdits here affect all of them. Duplicate to make an independent copy.";
                 _btnCloneBanner.style.display = DisplayStyle.Flex;
+            }
+            else if (runnerNames.Count == 1)
+            {
+                _sharedBanner.style.display = DisplayStyle.Flex;
+                _sharedBannerText.text = $"Used by {runnerNames[0]}.";
+                _btnCloneBanner.style.display = DisplayStyle.None;
             }
             else
             {
-                _sharedBannerText.text = "Edits here apply everywhere this sequence is used.";
-                _btnCloneBanner.style.display = DisplayStyle.None;
+                _sharedBanner.style.display = DisplayStyle.None;
             }
 
             // Steps

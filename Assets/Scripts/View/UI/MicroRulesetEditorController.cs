@@ -297,17 +297,33 @@ namespace ProjectGuild.View.UI
             BuildEditorShell();
 
             // Shared template banner (update in-place)
-            int seqCount = sim.CountSequencesUsingMicroRuleset(ruleset.Id);
-            _banner.style.display = DisplayStyle.Flex;
-            if (seqCount > 1)
+            var seqNames = sim.GetSequenceNamesUsingMicroRuleset(ruleset.Id);
+            var runnerNames = sim.GetRunnerNamesUsingMicroRuleset(ruleset.Id);
+            bool hasUsers = seqNames.Count > 0 || runnerNames.Count > 0;
+            if (hasUsers)
             {
-                _bannerText.text = $"Shared by {seqCount} sequences. Edits here affect all of them.\nDuplicate to make an independent copy, or use Duplicate & Override from a runner's tab.";
-                _cloneBannerBtn.style.display = DisplayStyle.Flex;
+                _banner.style.display = DisplayStyle.Flex;
+                var parts = new List<string>();
+                if (seqNames.Count > 0)
+                    parts.Add($"Used in: {string.Join(", ", seqNames)}");
+                if (runnerNames.Count > 0)
+                    parts.Add($"Active on: {string.Join(", ", runnerNames)}");
+                string who = string.Join(". ", parts) + ".";
+
+                if (seqNames.Count > 1 || runnerNames.Count > 1)
+                {
+                    _bannerText.text = $"{who}\nEdits here affect all of them. Duplicate to make an independent copy.";
+                    _cloneBannerBtn.style.display = DisplayStyle.Flex;
+                }
+                else
+                {
+                    _bannerText.text = who;
+                    _cloneBannerBtn.style.display = DisplayStyle.None;
+                }
             }
             else
             {
-                _bannerText.text = "Edits here apply everywhere this ruleset is used.\nUse Duplicate & Override from a runner's tab to change only one runner.";
-                _cloneBannerBtn.style.display = DisplayStyle.None;
+                _banner.style.display = DisplayStyle.None;
             }
 
             // Name field — placeholder for default names, normal display otherwise

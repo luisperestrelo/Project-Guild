@@ -320,17 +320,22 @@ namespace ProjectGuild.View.UI
             var state = sim.CurrentGameState;
 
             // Shared template banner (update in-place)
-            int usageCount = sim.CountRunnersUsingMacroRuleset(ruleset.Id);
-            _banner.style.display = DisplayStyle.Flex;
-            if (usageCount > 1)
+            var runnerNames = sim.GetRunnerNamesUsingMacroRuleset(ruleset.Id);
+            if (runnerNames.Count > 1)
             {
-                _bannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.\nDuplicate to make an independent copy.";
+                _banner.style.display = DisplayStyle.Flex;
+                _bannerText.text = $"Used by {string.Join(", ", runnerNames)}.\nEdits here affect all of them. Duplicate to make an independent copy.";
                 _cloneBannerBtn.style.display = DisplayStyle.Flex;
+            }
+            else if (runnerNames.Count == 1)
+            {
+                _banner.style.display = DisplayStyle.Flex;
+                _bannerText.text = $"Used by {runnerNames[0]}.";
+                _cloneBannerBtn.style.display = DisplayStyle.None;
             }
             else
             {
-                _bannerText.text = "Edits here apply everywhere this ruleset is used.";
-                _cloneBannerBtn.style.display = DisplayStyle.None;
+                _banner.style.display = DisplayStyle.None;
             }
 
             // Name field — placeholder for default names, normal display otherwise
