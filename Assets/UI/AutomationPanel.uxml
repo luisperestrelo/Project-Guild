@@ -39,7 +39,7 @@
                         <!-- Shared template warning banner -->
                         <ui:VisualElement name="taskseq-shared-banner" class="shared-banner" style="display: none;">
                             <ui:Label name="taskseq-shared-text" class="shared-banner-text" text="" />
-                            <ui:Button name="btn-taskseq-clone-banner" class="shared-banner-button" text="Duplicate to create a personal copy" />
+                            <ui:Button name="btn-taskseq-clone-banner" class="shared-banner-button" text="Duplicate" />
                         </ui:VisualElement>
 
                         <ui:VisualElement class="editor-field-row">

@@ -213,7 +213,7 @@ namespace ProjectGuild.View.UI
             _bannerText.AddToClassList("shared-banner-text");
             _banner.Add(_bannerText);
             _cloneBannerBtn = new Button();
-            _cloneBannerBtn.text = "Duplicate to create a personal copy";
+            _cloneBannerBtn.text = "Duplicate";
             _cloneBannerBtn.AddToClassList("shared-banner-button");
             _cloneBannerBtn.clicked += OnCloneBannerClicked;
             _banner.Add(_cloneBannerBtn);
@@ -324,12 +324,12 @@ namespace ProjectGuild.View.UI
             _banner.style.display = DisplayStyle.Flex;
             if (usageCount > 1)
             {
-                _bannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.";
+                _bannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.\nDuplicate to make an independent copy.";
                 _cloneBannerBtn.style.display = DisplayStyle.Flex;
             }
             else
             {
-                _bannerText.text = "This is a shared library ruleset. Edits apply everywhere it's used.";
+                _bannerText.text = "Edits here apply everywhere this ruleset is used.";
                 _cloneBannerBtn.style.display = DisplayStyle.None;
             }
 

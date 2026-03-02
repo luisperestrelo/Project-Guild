@@ -197,7 +197,7 @@ namespace ProjectGuild.View.UI
             _bannerText.AddToClassList("shared-banner-text");
             _banner.Add(_bannerText);
             _cloneBannerBtn = new Button();
-            _cloneBannerBtn.text = "Clone to create a personal copy";
+            _cloneBannerBtn.text = "Duplicate";
             _cloneBannerBtn.AddToClassList("shared-banner-button");
             _cloneBannerBtn.clicked += OnCloneBannerClicked;
             _banner.Add(_cloneBannerBtn);
@@ -301,14 +301,12 @@ namespace ProjectGuild.View.UI
             _banner.style.display = DisplayStyle.Flex;
             if (seqCount > 1)
             {
-                _bannerText.text = $"Shared by {seqCount} sequences. Edits here affect all of them.\n" +
-                    "Use Duplicate & Override from a runner's tab to change only that runner.";
+                _bannerText.text = $"Shared by {seqCount} sequences. Edits here affect all of them.\nDuplicate to make an independent copy, or use Duplicate & Override from a runner's tab.";
                 _cloneBannerBtn.style.display = DisplayStyle.Flex;
             }
             else
             {
-                _bannerText.text = "This is a shared library ruleset. Edits apply everywhere it's used.\n" +
-                    "Use Duplicate & Override from a runner's tab to change only that runner.";
+                _bannerText.text = "Edits here apply everywhere this ruleset is used.\nUse Duplicate & Override from a runner's tab to change only one runner.";
                 _cloneBannerBtn.style.display = DisplayStyle.None;
             }
 

@@ -309,12 +309,12 @@ namespace ProjectGuild.View.UI
             _sharedBanner.style.display = DisplayStyle.Flex;
             if (usageCount > 1)
             {
-                _sharedBannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.";
+                _sharedBannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.\nDuplicate to make an independent copy.";
                 _btnCloneBanner.style.display = DisplayStyle.Flex;
             }
             else
             {
-                _sharedBannerText.text = "This is a shared library sequence. Edits apply everywhere it's used.";
+                _sharedBannerText.text = "Edits here apply everywhere this sequence is used.";
                 _btnCloneBanner.style.display = DisplayStyle.None;
             }
 
