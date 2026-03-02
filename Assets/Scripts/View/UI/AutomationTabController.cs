@@ -699,7 +699,7 @@ namespace ProjectGuild.View.UI
                     actionsRow.Add(editBtn);
                     sectionCache.editButton = editBtn;
                     _uiManager.RegisterTooltip(editBtn, () =>
-                        "Edits the shared ruleset — changes affect all sequences using it.\n" +
+                        "Edits the shared ruleset. Changes affect all sequences using it.\n" +
                         "Use Duplicate & Override to change only this runner.");
 
                     // Duplicate & Override button
