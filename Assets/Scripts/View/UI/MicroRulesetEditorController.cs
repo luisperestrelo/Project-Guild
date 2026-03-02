@@ -127,6 +127,8 @@ namespace ProjectGuild.View.UI
 
                 var nameLabel = new Label(name);
                 nameLabel.AddToClassList("list-item-name");
+                if (AutomationUIHelpers.IsDefaultName(name))
+                    AutomationUIHelpers.ApplyDefaultNameStyle(nameLabel);
                 nameLabel.pickingMode = PickingMode.Ignore;
                 textContainer.Add(nameLabel);
 
@@ -223,6 +225,10 @@ namespace ProjectGuild.View.UI
             _rulesHeader = new Label("Rules");
             _rulesHeader.AddToClassList("editor-section-label");
             _editorContent.Add(_rulesHeader);
+
+            var rulesHint = new Label("Checked top to bottom \u2014 the first match wins, the rest are ignored.");
+            rulesHint.AddToClassList("rules-hint-label");
+            _editorContent.Add(rulesHint);
 
             // Rules container (only this part rebuilds on structure change)
             _rulesContainer = new VisualElement();

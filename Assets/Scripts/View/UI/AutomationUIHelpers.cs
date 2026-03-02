@@ -259,5 +259,29 @@ namespace ProjectGuild.View.UI
 
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Check if a name is an auto-generated default (e.g. "Sequence 3", "Macro Ruleset 1").
+        /// </summary>
+        public static bool IsDefaultName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return true;
+            return System.Text.RegularExpressions.Regex.IsMatch(name,
+                @"^(Sequence|Macro Ruleset|Micro Ruleset) \d+$");
+        }
+
+        /// <summary>
+        /// Apply dim + pulse styling to a name label that still has a default/placeholder name.
+        /// Nudges the player to rename without being aggressive.
+        /// </summary>
+        public static void ApplyDefaultNameStyle(UnityEngine.UIElements.Label label)
+        {
+            label.AddToClassList("list-item-name-default");
+            // Pulse: toggle dim class every 1.2s, USS transition handles the smooth fade
+            label.schedule.Execute(() =>
+            {
+                label.ToggleInClassList("list-item-name-default-dim");
+            }).Every(1200);
+        }
     }
 }
