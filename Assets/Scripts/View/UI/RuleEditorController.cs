@@ -343,11 +343,11 @@ namespace ProjectGuild.View.UI
             return container;
         }
 
-        private static readonly string[] OpLabels = { ">", "\u2265", "<", "\u2264", "=", "\u2260" };
+        private static readonly string[] OpLabels = { "\u2265", ">", "\u2264", "<", "=", "\u2260" };
         private static readonly ComparisonOperator[] OpValues =
         {
-            ComparisonOperator.GreaterThan, ComparisonOperator.GreaterOrEqual,
-            ComparisonOperator.LessThan, ComparisonOperator.LessOrEqual,
+            ComparisonOperator.GreaterOrEqual, ComparisonOperator.GreaterThan,
+            ComparisonOperator.LessOrEqual, ComparisonOperator.LessThan,
             ComparisonOperator.Equal, ComparisonOperator.NotEqual
         };
 

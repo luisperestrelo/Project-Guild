@@ -876,7 +876,7 @@ namespace ProjectGuild.Simulation.Core
                 if (action.Type == ActionType.FinishTask)
                 {
                     LogDecision(runner, ruleIndex, rule, "MicroEval",
-                        "FinishTask", false, DecisionLayer.Micro);
+                        "Finish Task", false, DecisionLayer.Micro);
                     return MicroResultFinishTask;
                 }
 
@@ -885,8 +885,9 @@ namespace ProjectGuild.Simulation.Core
                     int index = ResolveGatherHereIndex(action, node, runner, itemJustProduced);
                     if (index >= 0 && index < node.Gatherables.Length)
                     {
-                        string actionLabel = action.IntParam == -1
-                            ? $"GatherAny→{index}" : $"GatherHere({index})";
+                        string itemId = node.Gatherables[index].ProducedItemId;
+                        string itemName = ItemRegistry?.Get(itemId)?.Name ?? itemId;
+                        string actionLabel = $"Gather {itemName}";
                         LogDecision(runner, ruleIndex, rule, "MicroEval",
                             actionLabel, false, DecisionLayer.Micro);
                         return index;
