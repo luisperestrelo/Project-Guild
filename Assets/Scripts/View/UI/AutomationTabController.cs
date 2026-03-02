@@ -49,6 +49,7 @@ namespace ProjectGuild.View.UI
         // ─── Task Sequence cached step rows ──────
         private string _cachedTaskSeqShapeKey;
         private readonly List<(VisualElement row, Label indicator, Label index, Label text, Label microLink)> _stepRowCache = new();
+        private VisualElement _overrideRow;
         private Button _btnForkWithOverrides;
         private Button _btnClearAllOverrides;
 
@@ -123,22 +124,23 @@ namespace ProjectGuild.View.UI
             _btnResumeMacros.clicked += OnResumeMacrosClicked;
 
             // Override action buttons (dynamically shown)
-            var overrideRow = new VisualElement();
-            overrideRow.AddToClassList("auto-override-row");
+            _overrideRow = new VisualElement();
+            _overrideRow.AddToClassList("auto-override-row");
+            _overrideRow.style.display = DisplayStyle.None; // hidden until overrides exist
 
             _btnForkWithOverrides = new Button(OnForkWithOverridesClicked);
             _btnForkWithOverrides.text = "Save as new Task Sequence";
             _btnForkWithOverrides.AddToClassList("auto-action-button");
             _btnForkWithOverrides.AddToClassList("auto-edit-button");
-            overrideRow.Add(_btnForkWithOverrides);
+            _overrideRow.Add(_btnForkWithOverrides);
 
             _btnClearAllOverrides = new Button(OnClearAllOverridesClicked);
             _btnClearAllOverrides.text = "Clear All Overrides";
             _btnClearAllOverrides.AddToClassList("auto-action-button");
             _btnClearAllOverrides.AddToClassList("auto-clear-button");
-            overrideRow.Add(_btnClearAllOverrides);
+            _overrideRow.Add(_btnClearAllOverrides);
 
-            _contentTaskSeq.Add(overrideRow);
+            _contentTaskSeq.Add(_overrideRow);
 
             // Macro elements
             _macroNameLabel = root.Q<Label>("macro-name-label");
@@ -277,6 +279,10 @@ namespace ProjectGuild.View.UI
             // CHANGE and + NEW always visible
             _btnChangeTaskSeq.style.display = DisplayStyle.Flex;
             _btnNewTaskSeq.style.display = DisplayStyle.Flex;
+
+            // Override row: only when sequence assigned AND overrides exist
+            bool hasOverrides = hasSeq && sim.RunnerHasMicroOverrides(runner);
+            _overrideRow.style.display = hasOverrides ? DisplayStyle.Flex : DisplayStyle.None;
 
             if (!hasSeq) return;
 
@@ -422,10 +428,6 @@ namespace ProjectGuild.View.UI
                 _pendingSection.style.display = DisplayStyle.None;
             }
 
-            // Override action buttons — visible only when runner has overrides
-            bool hasOverrides = sim.RunnerHasMicroOverrides(runner);
-            _btnForkWithOverrides.style.display = hasOverrides ? DisplayStyle.Flex : DisplayStyle.None;
-            _btnClearAllOverrides.style.display = hasOverrides ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         // ─── Macro Rules Sub-Tab ────────────────────────
@@ -1034,15 +1036,10 @@ namespace ProjectGuild.View.UI
             popup.Add(btnRow);
 
             // Insert after the override row
-            var overrideRow = _btnForkWithOverrides.parent;
-            if (overrideRow?.parent != null)
+            if (_overrideRow?.parent != null)
             {
-                int idx = overrideRow.parent.IndexOf(overrideRow);
-                overrideRow.parent.Insert(idx + 1, popup);
-            }
-            else
-            {
-                _contentTaskSeq.Add(popup);
+                int idx = _overrideRow.parent.IndexOf(_overrideRow);
+                _overrideRow.parent.Insert(idx + 1, popup);
             }
 
             // Auto-focus and select all text
@@ -1157,7 +1154,8 @@ namespace ProjectGuild.View.UI
                     Refresh();
                 });
                 clearBtn.text = "Clear Override";
-                clearBtn.AddToClassList("assign-popup-cancel");
+                clearBtn.AddToClassList("assign-popup-runner");
+                clearBtn.AddToClassList("swap-picker-clear-btn");
                 popup.Add(clearBtn);
             }
 

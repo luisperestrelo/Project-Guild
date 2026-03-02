@@ -470,6 +470,16 @@
     border-color: rgba(130, 220, 130, 0.5);
 }
 
+.swap-picker-clear-btn {
+    color: rgb(200, 100, 100);
+    border-color: rgba(200, 100, 100, 0.3);
+}
+
+.swap-picker-clear-btn:hover {
+    color: rgb(240, 130, 130);
+    border-color: rgba(240, 130, 130, 0.5);
+}
+
 .fork-name-field {
     margin: 4px 0;
     font-size: 12px;
