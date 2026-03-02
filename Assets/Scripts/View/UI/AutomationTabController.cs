@@ -74,6 +74,10 @@ namespace ProjectGuild.View.UI
 
         private string _currentRunnerId;
 
+        // ─── Copy Setup / Copy From buttons ──────
+        private readonly Button _btnCopySetup;
+        private readonly Button _btnCopyFrom;
+
         public AutomationTabController(VisualElement root, UIManager uiManager)
         {
             _root = root;
@@ -137,6 +141,24 @@ namespace ProjectGuild.View.UI
             // Micro elements
             _microNoTaskLabel = root.Q<Label>("micro-no-task-label");
             _microStepsContainer = root.Q("micro-steps-container");
+
+            // Copy Setup / Copy from... buttons (below sub-tab bar)
+            var copyRow = new VisualElement();
+            copyRow.AddToClassList("auto-copy-row");
+
+            _btnCopySetup = new Button(OnCopySetupClicked);
+            _btnCopySetup.text = "Copy Setup To\u2026";
+            _btnCopySetup.AddToClassList("auto-action-button");
+            _btnCopySetup.AddToClassList("auto-copy-button");
+            copyRow.Add(_btnCopySetup);
+
+            _btnCopyFrom = new Button(OnCopyFromClicked);
+            _btnCopyFrom.text = "Copy From\u2026";
+            _btnCopyFrom.AddToClassList("auto-action-button");
+            _btnCopyFrom.AddToClassList("auto-copy-button");
+            copyRow.Add(_btnCopyFrom);
+
+            root.Add(copyRow);
         }
 
         public void ShowRunner(string runnerId)
@@ -179,6 +201,10 @@ namespace ProjectGuild.View.UI
 
             var runner = sim.FindRunner(_currentRunnerId);
             if (runner == null) return;
+
+            // Copy Setup visible only when runner has something to copy
+            bool hasSetup = !string.IsNullOrEmpty(runner.TaskSequenceId) || !string.IsNullOrEmpty(runner.MacroRulesetId);
+            _btnCopySetup.SetEnabled(hasSetup);
 
             // Config warning on Macro sub-tab button (reads stored state, not computed per-tick)
             bool hasBrokenMacro = !string.IsNullOrEmpty(runner.MacroConfigWarning);
@@ -793,6 +819,90 @@ namespace ProjectGuild.View.UI
 
             string id = sim.CommandCreateMacroRuleset();
             _uiManager.OpenAutomationPanelToItemForNewAssignment("macro", id, _currentRunnerId);
+        }
+
+        // ─── Copy Setup / Copy From ─────────────────────
+
+        private void OnCopySetupClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+            var sourceRunner = sim.FindRunner(_currentRunnerId);
+            if (sourceRunner == null) return;
+
+            // Need something to copy
+            if (string.IsNullOrEmpty(sourceRunner.TaskSequenceId) && string.IsNullOrEmpty(sourceRunner.MacroRulesetId))
+                return;
+
+            ShowRunnerPicker(_btnCopySetup, $"Copy {sourceRunner.Name}'s setup to:", runner =>
+            {
+                if (!string.IsNullOrEmpty(sourceRunner.TaskSequenceId))
+                    sim.CommandAssignTaskSequenceToRunner(runner.Id, sourceRunner.TaskSequenceId);
+                if (!string.IsNullOrEmpty(sourceRunner.MacroRulesetId))
+                    sim.CommandAssignMacroRulesetToRunner(runner.Id, sourceRunner.MacroRulesetId);
+            }, excludeRunnerId: _currentRunnerId);
+        }
+
+        private void OnCopyFromClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            ShowRunnerPicker(_btnCopyFrom, "Copy setup from:", runner =>
+            {
+                if (!string.IsNullOrEmpty(runner.TaskSequenceId))
+                    sim.CommandAssignTaskSequenceToRunner(_currentRunnerId, runner.TaskSequenceId);
+                if (!string.IsNullOrEmpty(runner.MacroRulesetId))
+                    sim.CommandAssignMacroRulesetToRunner(_currentRunnerId, runner.MacroRulesetId);
+            }, excludeRunnerId: _currentRunnerId);
+        }
+
+        private void ShowRunnerPicker(Button anchor, string headerText,
+            Action<Simulation.Core.Runner> onPick, string excludeRunnerId = null)
+        {
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            // Toggle: remove if already open
+            var copyRow = anchor.parent;
+            var existing = copyRow?.parent?.Q("copy-runner-popup");
+            if (existing != null) { existing.RemoveFromHierarchy(); return; }
+
+            var popup = new VisualElement();
+            popup.name = "copy-runner-popup";
+            popup.AddToClassList("assign-popup");
+
+            var header = new Label(headerText);
+            header.AddToClassList("assign-popup-header");
+            popup.Add(header);
+
+            foreach (var runner in sim.CurrentGameState.Runners)
+            {
+                if (runner.Id == excludeRunnerId) continue;
+
+                var capturedRunner = runner;
+                var btn = new Button(() =>
+                {
+                    onPick(capturedRunner);
+                    popup.RemoveFromHierarchy();
+                    Refresh();
+                });
+                btn.text = runner.Name;
+                btn.AddToClassList("assign-popup-runner");
+                popup.Add(btn);
+            }
+
+            var cancelBtn = new Button(() => popup.RemoveFromHierarchy());
+            cancelBtn.text = "Cancel";
+            cancelBtn.AddToClassList("assign-popup-cancel");
+            popup.Add(cancelBtn);
+
+            // Insert after the copy row in the tab root (not inside the row)
+            var tabRoot = copyRow.parent;
+            int rowIdx = tabRoot.IndexOf(copyRow);
+            tabRoot.Insert(rowIdx + 1, popup);
         }
     }
 }

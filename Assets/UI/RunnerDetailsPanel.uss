@@ -9,6 +9,7 @@
     border-bottom-width: 1px;
     border-bottom-color: rgba(80, 80, 100, 0.4);
     padding: 2px;
+    flex-shrink: 0;
 }
 
 .tab-button {

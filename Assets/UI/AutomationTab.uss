@@ -10,6 +10,7 @@
     margin-bottom: 4px;
     border-bottom-width: 1px;
     border-bottom-color: rgba(60, 60, 80, 0.3);
+    flex-shrink: 0;
 }
 
 .sub-tab-button {
@@ -337,4 +338,77 @@
 
 .auto-danger-button:hover {
     border-color: rgba(200, 100, 100, 0.6);
+}
+
+/* ─── Copy Setup / Copy From row ───────────────── */
+
+.auto-copy-row {
+    flex-direction: row;
+    justify-content: flex-end;
+    padding: 2px 4px;
+    margin-bottom: 2px;
+    flex-shrink: 0;
+}
+
+.auto-copy-button {
+    font-size: 11px;
+    padding: 2px 8px;
+    color: rgb(160, 170, 190);
+    border-color: rgba(80, 90, 110, 0.4);
+    background-color: rgba(35, 38, 50, 0.7);
+}
+
+.auto-copy-button:hover {
+    border-color: rgba(100, 120, 150, 0.6);
+    background-color: rgba(45, 50, 65, 0.8);
+}
+
+/* ─── Runner picker popup (shared with AutomationPanel.uss) ── */
+
+.assign-popup {
+    background-color: rgba(20, 20, 35, 0.95);
+    border-width: 1px;
+    border-color: rgba(80, 80, 100, 0.6);
+    border-radius: 4px;
+    padding: 6px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+.assign-popup-header {
+    font-size: 12px;
+    color: rgb(180, 180, 200);
+    margin-bottom: 4px;
+    -unity-font-style: bold;
+}
+
+.assign-popup-runner {
+    background-color: rgba(35, 35, 55, 0.8);
+    color: rgb(200, 200, 215);
+    border-width: 1px;
+    border-color: rgba(60, 60, 80, 0.4);
+    border-radius: 2px;
+    padding: 3px 8px;
+    margin-bottom: 2px;
+    font-size: 12px;
+}
+
+.assign-popup-runner:hover {
+    background-color: rgba(50, 50, 70, 0.9);
+    border-color: rgba(100, 100, 120, 0.7);
+}
+
+.assign-popup-runner:disabled {
+    opacity: 0.5;
+}
+
+.assign-popup-cancel {
+    background-color: rgba(25, 25, 40, 0.6);
+    color: rgb(140, 140, 160);
+    border-width: 1px;
+    border-color: rgba(60, 60, 80, 0.3);
+    border-radius: 2px;
+    padding: 3px 8px;
+    margin-top: 4px;
+    font-size: 12px;
 }
