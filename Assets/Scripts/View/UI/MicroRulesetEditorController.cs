@@ -224,7 +224,7 @@ namespace ProjectGuild.View.UI
             _rulesHeader.AddToClassList("editor-section-label");
             _editorContent.Add(_rulesHeader);
 
-            var rulesHint = new Label("Checked top to bottom \u2014 the first match wins, the rest are ignored.");
+            var rulesHint = new Label("Checked Top to Bottom. First match wins, the rest are ignored.");
             rulesHint.AddToClassList("rules-hint-label");
             _editorContent.Add(rulesHint);
 
