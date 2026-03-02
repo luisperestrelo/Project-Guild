@@ -431,6 +431,16 @@
     padding-left: 6px;
 }
 
+.auto-clear-button {
+    color: rgb(200, 100, 100);
+    border-color: rgba(200, 100, 100, 0.3);
+}
+
+.auto-clear-button:hover {
+    color: rgb(240, 130, 130);
+    border-color: rgba(240, 130, 130, 0.5);
+}
+
 .auto-override-row {
     flex-direction: row;
     margin-top: 6px;
