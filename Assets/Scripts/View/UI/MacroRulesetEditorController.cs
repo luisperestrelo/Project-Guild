@@ -321,14 +321,16 @@ namespace ProjectGuild.View.UI
 
             // Shared template banner (update in-place)
             int usageCount = sim.CountRunnersUsingMacroRuleset(ruleset.Id);
+            _banner.style.display = DisplayStyle.Flex;
             if (usageCount > 1)
             {
-                _banner.style.display = DisplayStyle.Flex;
-                _bannerText.text = $"Changes affect all {usageCount} runners using this template.";
+                _bannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.";
+                _cloneBannerBtn.style.display = DisplayStyle.Flex;
             }
             else
             {
-                _banner.style.display = DisplayStyle.None;
+                _bannerText.text = "This is a shared library ruleset. Edits apply everywhere it's used.";
+                _cloneBannerBtn.style.display = DisplayStyle.None;
             }
 
             // Name field — placeholder for default names, normal display otherwise

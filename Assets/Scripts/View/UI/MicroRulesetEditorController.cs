@@ -298,14 +298,18 @@ namespace ProjectGuild.View.UI
 
             // Shared template banner (update in-place)
             int seqCount = sim.CountSequencesUsingMicroRuleset(ruleset.Id);
+            _banner.style.display = DisplayStyle.Flex;
             if (seqCount > 1)
             {
-                _banner.style.display = DisplayStyle.Flex;
-                _bannerText.text = $"Changes affect all {seqCount} sequences using this template.";
+                _bannerText.text = $"Shared by {seqCount} sequences. Edits here affect all of them.\n" +
+                    "Use Duplicate & Override from a runner's tab to change only that runner.";
+                _cloneBannerBtn.style.display = DisplayStyle.Flex;
             }
             else
             {
-                _banner.style.display = DisplayStyle.None;
+                _bannerText.text = "This is a shared library ruleset. Edits apply everywhere it's used.\n" +
+                    "Use Duplicate & Override from a runner's tab to change only that runner.";
+                _cloneBannerBtn.style.display = DisplayStyle.None;
             }
 
             // Name field — placeholder for default names, normal display otherwise

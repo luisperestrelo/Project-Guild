@@ -306,14 +306,16 @@ namespace ProjectGuild.View.UI
 
             // Shared template banner
             int usageCount = sim.CountRunnersUsingTaskSequence(seq.Id);
+            _sharedBanner.style.display = DisplayStyle.Flex;
             if (usageCount > 1)
             {
-                _sharedBanner.style.display = DisplayStyle.Flex;
-                _sharedBannerText.text = $"Changes affect all {usageCount} runners using this template.";
+                _sharedBannerText.text = $"Shared by {usageCount} runners. Edits here affect all of them.";
+                _btnCloneBanner.style.display = DisplayStyle.Flex;
             }
             else
             {
-                _sharedBanner.style.display = DisplayStyle.None;
+                _sharedBannerText.text = "This is a shared library sequence. Edits apply everywhere it's used.";
+                _btnCloneBanner.style.display = DisplayStyle.None;
             }
 
             // Steps
