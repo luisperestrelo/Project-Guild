@@ -29,7 +29,8 @@ namespace ProjectGuild.View.UI
             bool isMacro,
             GameSimulation sim,
             Action onStructuralChange,
-            Action<string, Action<string>> onCreateNewSequence = null)
+            Action<string, Action<string>> onCreateNewSequence = null,
+            Action<string, Action<string>> onNavigateToSequence = null)
         {
             var state = sim.CurrentGameState;
             var row = new VisualElement();
@@ -191,7 +192,7 @@ namespace ProjectGuild.View.UI
                 // handles this internally — we always rebuild here since action type
                 // changes swap the entire parameter UI.
                 onStructuralChange();
-            }, onCreateNewSequence);
+            }, onCreateNewSequence, onNavigateToSequence);
             actionCard.Add(actionEditor);
 
             // Timing toggle (macro only) — two radio-style buttons
@@ -541,7 +542,8 @@ namespace ProjectGuild.View.UI
         private static VisualElement BuildActionEditor(
             AutomationAction action, bool isMacro, GameState state,
             GameSimulation sim, Action<AutomationAction> onUpdate,
-            Action<string, Action<string>> onCreateNewSequence = null)
+            Action<string, Action<string>> onCreateNewSequence = null,
+            Action<string, Action<string>> onNavigateToSequence = null)
         {
             var container = new VisualElement();
             container.AddToClassList("action-editor");
@@ -602,6 +604,22 @@ namespace ProjectGuild.View.UI
                 });
 
                 container.Add(dropdown);
+
+                // Navigate icon — view/edit the referenced task sequence
+                if (onNavigateToSequence != null
+                    && action.Type == ActionType.AssignSequence
+                    && !string.IsNullOrEmpty(action.StringParam))
+                {
+                    var navBtn = new Button(() =>
+                    {
+                        if (string.IsNullOrEmpty(action.StringParam)) return;
+                        Action<string> wireAction = id => onUpdate(AutomationAction.AssignSequence(id));
+                        onNavigateToSequence(action.StringParam, wireAction);
+                    });
+                    navBtn.text = "\u25B8"; // right-pointing triangle
+                    navBtn.AddToClassList("editor-step-nav-btn");
+                    container.Add(navBtn);
+                }
             }
             else
             {

@@ -13,9 +13,6 @@ DropdownField .unity-base-popup-field__input {
     padding: 1px 4px;
 }
 
-DropdownField:focus .unity-base-popup-field__input {
-    border-color: rgba(220, 180, 60, 0.6);
-}
 
 DropdownField .unity-base-popup-field__arrow {
     -unity-background-image-tint-color: rgb(160, 160, 180);

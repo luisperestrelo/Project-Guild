@@ -104,8 +104,12 @@ namespace ProjectGuild.View.UI
             // Wire navigation callbacks from editors
             _macroEditor.OnRequestNavigateToNewSequence = (newId, wireAction) =>
                 PushNavigationAndSwitchTo("taskseq", newId, wireAction);
+            _macroEditor.OnRequestNavigateToSequence = (seqId, wireAction) =>
+                NavigateToExistingItem("taskseq", seqId, wireAction);
             _taskSeqEditor.OnRequestNavigateToNewMicroRuleset = (newId, wireAction) =>
                 PushNavigationAndSwitchTo("micro", newId, wireAction);
+            _taskSeqEditor.OnRequestNavigateToMicroRuleset = (microId, wireAction) =>
+                NavigateToExistingItem("micro", microId, wireAction);
 
             // Start hidden
             _root.style.display = DisplayStyle.None;
@@ -229,6 +233,36 @@ namespace ProjectGuild.View.UI
         // ─── Navigation Stack ─────────────────────────────────
 
         /// <summary>
+        /// Push the current state and navigate to an existing item for viewing/editing.
+        /// No pending item to clean up — Cancel just pops back. Done wires the currently
+        /// selected item (which may differ from the original if the user browsed around).
+        /// </summary>
+        public void NavigateToExistingItem(string targetTab, string targetItemId, Action<string> wireAction)
+        {
+            string currentSelectedId = null;
+            if (_activeTab == "taskseq") currentSelectedId = _taskSeqEditor.SelectedId;
+            else if (_activeTab == "macro") currentSelectedId = _macroEditor.SelectedId;
+            else if (_activeTab == "micro") currentSelectedId = _microEditor.SelectedId;
+
+            var entry = new NavigationEntry
+            {
+                TabName = _activeTab,
+                SelectedItemId = currentSelectedId,
+                PendingItemId = null, // no item to clean up
+                PendingItemTab = targetTab,
+                PendingItemOriginalName = null,
+                WireAction = wireAction,
+            };
+            _navigationStack.Push(entry);
+
+            SwitchTab(targetTab);
+            SelectItemOnTab(targetTab, targetItemId);
+
+            UpdateNavHeaderVisibility();
+            _panelRoot.schedule.Execute(() => _panelRoot.Focus());
+        }
+
+        /// <summary>
         /// Push the current state onto the nav stack and switch to a target tab/item.
         /// Called when "+ New Sequence..." or "+ New Micro Ruleset..." is selected.
         /// </summary>
@@ -267,6 +301,7 @@ namespace ProjectGuild.View.UI
             SelectNewItemOnTab(targetTab, targetItemId);
 
             UpdateNavHeaderVisibility();
+            _panelRoot.schedule.Execute(() => _panelRoot.Focus());
         }
 
         /// <summary>
@@ -366,11 +401,20 @@ namespace ProjectGuild.View.UI
         }
 
         /// <summary>
-        /// Cancel: show confirmation, then delete the temporary item and pop back.
+        /// Cancel: for creation nav, show confirmation then delete the temporary item.
+        /// For view nav (no pending item), just pop back immediately.
         /// </summary>
         private void CancelNavigation()
         {
             if (_navigationStack.Count == 0) return;
+
+            // View nav (no pending item) — no confirmation needed, just pop back
+            var top = _navigationStack.Peek();
+            if (string.IsNullOrEmpty(top.PendingItemId))
+            {
+                ExecuteCancelNavigation();
+                return;
+            }
 
             // Don't stack multiple confirmation dialogs (e.g. repeated Escape presses)
             if (_panelRoot.Q(className: "delete-confirm-overlay") != null) return;

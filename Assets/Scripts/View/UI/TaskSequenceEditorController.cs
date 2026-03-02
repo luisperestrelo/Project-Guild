@@ -61,6 +61,12 @@ namespace ProjectGuild.View.UI
         /// </summary>
         public Action<string, Action<string>> OnRequestNavigateToNewMicroRuleset { get; set; }
 
+        /// <summary>
+        /// Callback invoked when the player clicks the navigate icon on a Work step's micro dropdown.
+        /// Params: (microRulesetId, wireAction). Opens the micro in-place for viewing/editing.
+        /// </summary>
+        public Action<string, Action<string>> OnRequestNavigateToMicroRuleset { get; set; }
+
         public TaskSequenceEditorController(VisualElement root, UIManager uiManager)
         {
             _uiManager = uiManager;
@@ -372,7 +378,24 @@ namespace ProjectGuild.View.UI
                             // No RefreshEditor — dropdown already shows the new value.
                         });
                         microDropdown.AddToClassList("editor-step-dropdown");
+                        microDropdown.AddToClassList("editor-step-dropdown-navigable");
                         row.Add(microDropdown);
+
+                        // Navigate icon — view/edit the referenced micro ruleset
+                        if (OnRequestNavigateToMicroRuleset != null && !string.IsNullOrEmpty(step.MicroRulesetId))
+                        {
+                            var navBtn = new Button(() =>
+                            {
+                                string currentMicroId = step.MicroRulesetId;
+                                if (string.IsNullOrEmpty(currentMicroId)) return;
+                                Action<string> wireAction = id =>
+                                    sim.CommandSetWorkStepMicroRuleset(seq.Id, stepIndex, id);
+                                OnRequestNavigateToMicroRuleset(currentMicroId, wireAction);
+                            });
+                            navBtn.text = "\u25B8"; // right-pointing triangle
+                            navBtn.AddToClassList("editor-step-nav-btn");
+                            row.Add(navBtn);
+                        }
                         break;
 
                     case TaskStepType.Deposit:

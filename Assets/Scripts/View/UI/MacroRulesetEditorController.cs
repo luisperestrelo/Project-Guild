@@ -65,6 +65,12 @@ namespace ProjectGuild.View.UI
         /// </summary>
         public Action<string, Action<string>> OnRequestNavigateToNewSequence { get; set; }
 
+        /// <summary>
+        /// Callback invoked when the player clicks the navigate icon on a THEN action's
+        /// task sequence reference. Opens the sequence for viewing/editing.
+        /// </summary>
+        public Action<string, Action<string>> OnRequestNavigateToSequence { get; set; }
+
         public MacroRulesetEditorController(VisualElement root, UIManager uiManager)
         {
             _uiManager = uiManager;
@@ -435,7 +441,8 @@ namespace ProjectGuild.View.UI
                             _cachedRulesShapeKey = null; // force rebuild
                             RefreshEditor();
                         },
-                        onCreateNewSequence: OnRequestNavigateToNewSequence);
+                        onCreateNewSequence: OnRequestNavigateToNewSequence,
+                        onNavigateToSequence: OnRequestNavigateToSequence);
                     _rulesContainer.Add(ruleRow);
                 }
             }
