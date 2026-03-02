@@ -36,6 +36,7 @@ namespace ProjectGuild.View.UI
         private readonly Label _sharedBannerText;
         private readonly Button _btnCloneBanner;
         private readonly TextField _nameField;
+        private readonly NameFieldPlaceholder _namePlaceholder;
         private readonly Toggle _autoNameToggle;
         private readonly Toggle _loopToggle;
         private readonly VisualElement _stepsEditor;
@@ -112,6 +113,7 @@ namespace ProjectGuild.View.UI
             _nameField.RegisterValueChangedCallback(evt =>
             {
                 if (_selectedId == null) return;
+                if (string.IsNullOrEmpty(evt.newValue)) return; // placeholder guard
                 var sim = _uiManager.Simulation;
                 if (sim == null) return;
 
@@ -126,6 +128,12 @@ namespace ProjectGuild.View.UI
                 sim.CommandRenameTaskSequence(_selectedId, evt.newValue);
                 // Update list item name in-place — no full list rebuild
                 UpdateListItemName(_selectedId, evt.newValue);
+            });
+            _namePlaceholder = new NameFieldPlaceholder(_nameField, () =>
+            {
+                var sim = _uiManager.Simulation;
+                if (sim == null || _selectedId == null) return null;
+                return sim.FindTaskSequenceInLibrary(_selectedId)?.Name;
             });
             _autoNameToggle.RegisterValueChangedCallback(evt =>
             {
@@ -282,18 +290,17 @@ namespace ProjectGuild.View.UI
             _editorContent.style.display = DisplayStyle.Flex;
 
             // Update fields without triggering change callbacks
-            _nameField.SetValueWithoutNotify(seq.Name ?? "");
+            _namePlaceholder.UpdateDisplay(seq.Name);
             _autoNameToggle.SetValueWithoutNotify(seq.AutoGenerateName);
             _loopToggle.SetValueWithoutNotify(seq.Loop);
 
-            // Auto-focus and select name field text on new item creation
+            // Auto-focus name field on new item creation
             if (_focusNameFieldOnNextRefresh)
             {
                 _focusNameFieldOnNextRefresh = false;
                 _nameField.schedule.Execute(() =>
                 {
                     _nameField.Focus();
-                    _nameField.SelectAll();
                 });
             }
 

@@ -1,7 +1,10 @@
+using System;
 using System.Text;
+using System.Text.RegularExpressions;
 using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.World;
+using UnityEngine.UIElements;
 
 namespace ProjectGuild.View.UI
 {
@@ -260,5 +263,66 @@ namespace ProjectGuild.View.UI
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Check if a name is an auto-generated default (e.g. "Sequence 3", "Macro Ruleset 1").
+        /// </summary>
+        public static bool IsDefaultName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return true;
+            return Regex.IsMatch(name, @"^(Sequence|Macro Ruleset|Micro Ruleset) \d+$");
+        }
+    }
+
+    /// <summary>
+    /// Placeholder behavior for name TextFields in automation editors.
+    /// Default names (e.g. "Macro Ruleset 1") appear as greyed placeholder text.
+    /// Clicking the field clears it so the user can type from scratch.
+    /// Leaving the field empty restores the default name.
+    /// </summary>
+    public class NameFieldPlaceholder
+    {
+        private readonly TextField _field;
+        private readonly Func<string> _getDataName;
+        private const string PlaceholderClass = "name-field-placeholder";
+
+        public NameFieldPlaceholder(TextField field, Func<string> getDataName)
+        {
+            _field = field;
+            _getDataName = getDataName;
+
+            field.RegisterCallback<FocusInEvent>(_ =>
+            {
+                if (_field.ClassListContains(PlaceholderClass))
+                    _field.SelectAll();
+            });
+
+            // Remove placeholder styling as soon as the user types
+            field.RegisterValueChangedCallback(evt =>
+            {
+                if (!string.IsNullOrEmpty(evt.newValue))
+                    _field.RemoveFromClassList(PlaceholderClass);
+            });
+
+            field.RegisterCallback<FocusOutEvent>(_ =>
+            {
+                string name = _getDataName();
+                if (string.IsNullOrEmpty(_field.value))
+                    _field.SetValueWithoutNotify(name ?? "");
+                if (AutomationUIHelpers.IsDefaultName(name))
+                    _field.AddToClassList(PlaceholderClass);
+            });
+        }
+
+        /// <summary>
+        /// Call from RefreshEditor to sync the field display with the data model.
+        /// </summary>
+        public void UpdateDisplay(string name)
+        {
+            _field.SetValueWithoutNotify(name ?? "");
+            if (AutomationUIHelpers.IsDefaultName(name))
+                _field.AddToClassList(PlaceholderClass);
+            else
+                _field.RemoveFromClassList(PlaceholderClass);
+        }
     }
 }

@@ -410,6 +410,11 @@
     padding: 3px 6px;
 }
 
+.name-field-placeholder > #unity-text-input {
+    color: rgb(110, 110, 130);
+    -unity-font-style: italic;
+}
+
 /* Auto-generate name toggle — compact checkbox next to name field */
 .auto-name-toggle {
     margin-left: 6px;

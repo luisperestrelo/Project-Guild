@@ -37,6 +37,7 @@ namespace ProjectGuild.View.UI
         private Label _bannerText;
         private Button _cloneBannerBtn;
         private TextField _nameField;
+        private NameFieldPlaceholder _namePlaceholder;
         private Label _rulesHeader;
         private VisualElement _rulesContainer;
         private Button _addRuleBtn;
@@ -213,10 +214,17 @@ namespace ProjectGuild.View.UI
             _nameField.RegisterValueChangedCallback(evt =>
             {
                 if (_selectedId == null) return;
+                if (string.IsNullOrEmpty(evt.newValue)) return; // placeholder guard
                 _uiManager.Simulation?.CommandRenameRuleset(_selectedId, evt.newValue);
                 UpdateListItemName(_selectedId, evt.newValue);
             });
             nameRow.Add(_nameField);
+            _namePlaceholder = new NameFieldPlaceholder(_nameField, () =>
+            {
+                var sim = _uiManager.Simulation;
+                if (sim == null || _selectedId == null) return null;
+                return sim.FindMicroRulesetInLibrary(_selectedId)?.Name;
+            });
             _editorContent.Add(nameRow);
 
             // Rules header
@@ -300,8 +308,8 @@ namespace ProjectGuild.View.UI
                 _banner.style.display = DisplayStyle.None;
             }
 
-            // Name field (update without triggering callback)
-            _nameField.SetValueWithoutNotify(ruleset.Name ?? "");
+            // Name field — placeholder for default names, normal display otherwise
+            _namePlaceholder.UpdateDisplay(ruleset.Name);
 
             if (_focusNameFieldOnNextRefresh)
             {
@@ -309,7 +317,6 @@ namespace ProjectGuild.View.UI
                 _nameField.schedule.Execute(() =>
                 {
                     _nameField.Focus();
-                    _nameField.SelectAll();
                 });
             }
 
