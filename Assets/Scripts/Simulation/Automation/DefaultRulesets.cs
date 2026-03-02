@@ -4,13 +4,22 @@ using ProjectGuild.Simulation.Core;
 namespace ProjectGuild.Simulation.Automation
 {
     /// <summary>
-    /// Factory methods for default rulesets and well-known library sequences.
-    /// Well-known IDs for the default templates.
+    /// Factory methods for default rulesets, well-known library sequences,
+    /// and built-in automation templates.
     /// </summary>
     public static class DefaultRulesets
     {
         public const string DefaultMicroId = "default-micro";
         public const string ReturnToHubSequenceId = "return-to-hub";
+        public const string DefaultGatherSequenceId = "default-gather-copper";
+
+        // Built-in step template IDs
+        public const string GatherLoopTemplateId = "builtin-gather-loop";
+        public const string TravelAndWorkTemplateId = "builtin-travel-work";
+        public const string ReturnAndDepositTemplateId = "builtin-return-deposit";
+
+        // Built-in rule template IDs
+        public const string BasicGatherTemplateId = "builtin-basic-gather";
 
         /// <summary>
         /// Default micro ruleset: Always → GatherAny (random resource).
@@ -67,6 +76,28 @@ namespace ProjectGuild.Simulation.Automation
         }
 
         /// <summary>
+        /// Pre-created example sequence: standard gather loop at the first non-hub node.
+        /// Gives new players a working example to duplicate and modify.
+        /// </summary>
+        public static TaskSequence CreateDefaultGatherSequence(string hubNodeId, string targetNodeId, string targetNodeName)
+        {
+            return new TaskSequence
+            {
+                Id = DefaultGatherSequenceId,
+                Name = $"Gather at {targetNodeName}",
+                TargetNodeId = targetNodeId,
+                Loop = true,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo, targetNodeId),
+                    new TaskStep(TaskStepType.Work, microRulesetId: DefaultMicroId),
+                    new TaskStep(TaskStepType.TravelTo, hubNodeId),
+                    new TaskStep(TaskStepType.Deposit),
+                },
+            };
+        }
+
+        /// <summary>
         /// Ensure the default micro ruleset and ReturnToHub sequence exist in the library.
         /// Called during StartNewGame and LoadState. Idempotent — skips if already present.
         /// Macro rulesets have no default — runners start with null (no auto-switching)
@@ -87,6 +118,121 @@ namespace ProjectGuild.Simulation.Automation
                 if (s.Id == ReturnToHubSequenceId) { hasReturnToHub = true; break; }
 
             if (!hasReturnToHub) state.TaskSequenceLibrary.Add(CreateReturnToHubSequence(hubId));
+
+            // Ensure default gather sequence exists — targets the first non-hub node
+            bool hasGather = false;
+            foreach (var s in state.TaskSequenceLibrary)
+                if (s.Id == DefaultGatherSequenceId) { hasGather = true; break; }
+
+            if (!hasGather && state.Map?.Nodes != null)
+            {
+                // Use the first non-hub node as the gather target
+                foreach (var node in state.Map.Nodes)
+                {
+                    if (node.Id != hubId)
+                    {
+                        state.TaskSequenceLibrary.Add(
+                            CreateDefaultGatherSequence(hubId, node.Id, node.Name ?? node.Id));
+                        break;
+                    }
+                }
+            }
+        }
+
+        // ─── Built-in Templates ─────────────────────────────────
+
+        /// <summary>
+        /// Ensure built-in step and rule templates exist in the library.
+        /// Called alongside EnsureInLibrary during StartNewGame and LoadState.
+        /// Idempotent — skips templates that already exist.
+        /// </summary>
+        public static void EnsureTemplatesInLibrary(GameState state)
+        {
+            string hubId = state.Map?.HubNodeId ?? "hub";
+
+            // ─── Step Templates ───
+            EnsureStepTemplate(state, new StepTemplate
+            {
+                Id = GatherLoopTemplateId,
+                Name = "Gather Loop",
+                IsBuiltIn = true,
+                IsFavorite = true,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo), // null TargetNodeId — resolved on apply
+                    new TaskStep(TaskStepType.Work, microRulesetId: DefaultMicroId),
+                    new TaskStep(TaskStepType.TravelTo, hubId),
+                    new TaskStep(TaskStepType.Deposit),
+                },
+            });
+
+            EnsureStepTemplate(state, new StepTemplate
+            {
+                Id = TravelAndWorkTemplateId,
+                Name = "Travel & Work",
+                IsBuiltIn = true,
+                IsFavorite = true,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo), // null TargetNodeId — resolved on apply
+                    new TaskStep(TaskStepType.Work, microRulesetId: DefaultMicroId),
+                },
+            });
+
+            EnsureStepTemplate(state, new StepTemplate
+            {
+                Id = ReturnAndDepositTemplateId,
+                Name = "Return & Deposit",
+                IsBuiltIn = true,
+                IsFavorite = true,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo, hubId),
+                    new TaskStep(TaskStepType.Deposit),
+                },
+            });
+
+            // ─── Micro Rule Templates ───
+            EnsureRuleTemplate(state.MicroRuleTemplateLibrary, new RuleTemplate
+            {
+                Id = BasicGatherTemplateId,
+                Name = "Basic Gather",
+                IsBuiltIn = true,
+                IsFavorite = true,
+                Rules = new List<Rule>
+                {
+                    new Rule
+                    {
+                        Label = "Deposit when full",
+                        Conditions = { Condition.InventoryFull() },
+                        Action = AutomationAction.FinishTask(),
+                        Enabled = true,
+                    },
+                    new Rule
+                    {
+                        Label = "Gather any resource",
+                        Conditions = { Condition.Always() },
+                        Action = AutomationAction.GatherAny(),
+                        Enabled = true,
+                    },
+                },
+            });
+
+            // No built-in macro rule templates (intentionally blank-slate).
+        }
+
+        private static void EnsureStepTemplate(GameState state, StepTemplate template)
+        {
+            foreach (var t in state.StepTemplateLibrary)
+                if (t.Id == template.Id) return;
+            state.StepTemplateLibrary.Add(template);
+        }
+
+        private static void EnsureRuleTemplate(List<RuleTemplate> library, RuleTemplate template)
+        {
+            foreach (var t in library)
+                if (t.Id == template.Id) return;
+            library.Add(template);
         }
     }
 }

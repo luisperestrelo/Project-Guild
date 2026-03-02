@@ -56,6 +56,7 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState = state;
             CurrentGameState.Map?.Initialize();
             DefaultRulesets.EnsureInLibrary(CurrentGameState);
+            DefaultRulesets.EnsureTemplatesInLibrary(CurrentGameState);
             RefreshMacroConfigWarnings();
         }
 
@@ -78,8 +79,9 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState.MacroDecisionLog.SetMaxEntries(Config.MacroDecisionLogMaxEntries);
             CurrentGameState.MicroDecisionLog.SetMaxEntries(Config.MicroDecisionLogMaxEntries);
 
-            // Ensure default rulesets exist in the library before creating runners
+            // Ensure default rulesets and templates exist in the library before creating runners
             DefaultRulesets.EnsureInLibrary(CurrentGameState);
+            DefaultRulesets.EnsureTemplatesInLibrary(CurrentGameState);
 
             var rng = new Random();
             foreach (var def in starterDefinitions)
@@ -1400,13 +1402,15 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
-        /// Create a new micro ruleset with default rules. Single entry point for all "new micro" flows.
+        /// Create a new empty micro ruleset. Players populate it via templates or manual rule addition.
         /// </summary>
         public string CommandCreateMicroRuleset()
         {
-            var ruleset = DefaultRulesets.CreateDefaultMicro();
-            ruleset.Id = null; // let the overload generate a new ID
-            ruleset.Name = GenerateNextName("Micro Ruleset", CurrentGameState.MicroRulesetLibrary, r => r.Name);
+            var ruleset = new Ruleset
+            {
+                Name = GenerateNextName("Micro Ruleset", CurrentGameState.MicroRulesetLibrary, r => r.Name),
+                Category = RulesetCategory.Gathering,
+            };
             return CommandCreateMicroRuleset(ruleset);
         }
 
@@ -1534,6 +1538,275 @@ namespace ProjectGuild.Simulation.Core
             clone.Name = (source.Name ?? "Micro") + " (copy)";
             CurrentGameState.MicroRulesetLibrary.Add(clone);
             return clone.Id;
+        }
+
+        // ─── Template Commands ──────────────────────────────────────
+
+        /// <summary>
+        /// Find a step template by ID. Returns null if not found.
+        /// </summary>
+        public StepTemplate FindStepTemplate(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            foreach (var t in CurrentGameState.StepTemplateLibrary)
+                if (t.Id == id) return t;
+            return null;
+        }
+
+        /// <summary>
+        /// Find a rule template by ID in the specified library.
+        /// </summary>
+        public RuleTemplate FindRuleTemplate(string id, bool isMacro)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            var library = isMacro
+                ? CurrentGameState.MacroRuleTemplateLibrary
+                : CurrentGameState.MicroRuleTemplateLibrary;
+            foreach (var t in library)
+                if (t.Id == id) return t;
+            return null;
+        }
+
+        /// <summary>
+        /// Apply a step template to a task sequence — batch-inserts all template steps.
+        /// Null TargetNodeId on TravelTo steps is resolved to the first map node.
+        /// </summary>
+        public void CommandApplyStepTemplate(string seqId, string templateId)
+        {
+            var seq = FindTaskSequenceInLibrary(seqId);
+            if (seq == null) return;
+            var template = FindStepTemplate(templateId);
+            if (template == null) return;
+
+            string defaultNodeId = CurrentGameState.Map?.Nodes?.Count > 0
+                ? CurrentGameState.Map.Nodes[0].Id : "hub";
+
+            foreach (var templateStep in template.DeepCopySteps())
+            {
+                // Resolve null TargetNodeId on TravelTo steps
+                if (templateStep.Type == TaskStepType.TravelTo
+                    && string.IsNullOrEmpty(templateStep.TargetNodeId))
+                {
+                    templateStep.TargetNodeId = defaultNodeId;
+                }
+
+                CommandAddStepToTaskSequence(seqId, templateStep);
+            }
+        }
+
+        /// <summary>
+        /// Apply a rule template to a ruleset — batch-inserts all template rules (deep-copied).
+        /// </summary>
+        public void CommandApplyRuleTemplate(string rulesetId, string templateId, bool isMacro)
+        {
+            var (ruleset, _) = FindRulesetInAnyLibrary(rulesetId);
+            if (ruleset == null) return;
+            var template = FindRuleTemplate(templateId, isMacro);
+            if (template == null) return;
+
+            foreach (var rule in template.DeepCopyRules())
+                CommandAddRuleToRuleset(rulesetId, rule);
+        }
+
+        /// <summary>
+        /// Create a custom step template from a list of steps. Returns the new template's Id.
+        /// </summary>
+        public string CommandCreateStepTemplate(string name, List<TaskStep> steps)
+        {
+            var template = new StepTemplate
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = name,
+                IsBuiltIn = false,
+                Steps = new List<TaskStep>(),
+            };
+            // Deep-copy steps into the template
+            foreach (var step in steps)
+                template.Steps.Add(new TaskStep(step.Type, step.TargetNodeId, step.MicroRulesetId));
+            CurrentGameState.StepTemplateLibrary.Add(template);
+            return template.Id;
+        }
+
+        /// <summary>
+        /// Create a custom rule template from a list of rules. Returns the new template's Id.
+        /// </summary>
+        public string CommandCreateRuleTemplate(string name, List<Rule> rules, bool isMacro)
+        {
+            var template = new RuleTemplate
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = name,
+                IsBuiltIn = false,
+            };
+            // Deep-copy rules via the template's own method (after setting Rules)
+            template.Rules = new List<Rule>();
+            foreach (var rule in rules)
+            {
+                var newRule = new Rule
+                {
+                    Action = new AutomationAction
+                    {
+                        Type = rule.Action.Type,
+                        StringParam = rule.Action.StringParam,
+                        IntParam = rule.Action.IntParam,
+                    },
+                    Enabled = rule.Enabled,
+                    FinishCurrentSequence = rule.FinishCurrentSequence,
+                    Label = rule.Label,
+                };
+                foreach (var cond in rule.Conditions)
+                {
+                    newRule.Conditions.Add(new Condition
+                    {
+                        Type = cond.Type,
+                        Operator = cond.Operator,
+                        NumericValue = cond.NumericValue,
+                        StringParam = cond.StringParam,
+                        IntParam = cond.IntParam,
+                    });
+                }
+                template.Rules.Add(newRule);
+            }
+
+            var library = isMacro
+                ? CurrentGameState.MacroRuleTemplateLibrary
+                : CurrentGameState.MicroRuleTemplateLibrary;
+            library.Add(template);
+            return template.Id;
+        }
+
+        /// <summary>
+        /// Delete a step template. Refuses if the template is built-in.
+        /// </summary>
+        public bool CommandDeleteStepTemplate(string id)
+        {
+            var template = FindStepTemplate(id);
+            if (template == null || template.IsBuiltIn) return false;
+            CurrentGameState.StepTemplateLibrary.Remove(template);
+            return true;
+        }
+
+        /// <summary>
+        /// Delete a rule template. Refuses if the template is built-in.
+        /// </summary>
+        public bool CommandDeleteRuleTemplate(string id, bool isMacro)
+        {
+            var template = FindRuleTemplate(id, isMacro);
+            if (template == null || template.IsBuiltIn) return false;
+            var library = isMacro
+                ? CurrentGameState.MacroRuleTemplateLibrary
+                : CurrentGameState.MicroRuleTemplateLibrary;
+            library.Remove(template);
+            return true;
+        }
+
+        /// <summary>
+        /// Rename any template (step, macro rule, or micro rule).
+        /// </summary>
+        public void CommandRenameTemplate(string id, string newName, TemplateKind kind)
+        {
+            switch (kind)
+            {
+                case TemplateKind.Step:
+                    var step = FindStepTemplate(id);
+                    if (step != null) step.Name = newName?.Trim() ?? "";
+                    break;
+                case TemplateKind.MacroRule:
+                    var macro = FindRuleTemplate(id, isMacro: true);
+                    if (macro != null) macro.Name = newName?.Trim() ?? "";
+                    break;
+                case TemplateKind.MicroRule:
+                    var micro = FindRuleTemplate(id, isMacro: false);
+                    if (micro != null) micro.Name = newName?.Trim() ?? "";
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Reorder a template within its library (move to newIndex).
+        /// </summary>
+        public void CommandReorderTemplate(string id, int newIndex, TemplateKind kind)
+        {
+            switch (kind)
+            {
+                case TemplateKind.Step:
+                    ReorderInList(CurrentGameState.StepTemplateLibrary, id, newIndex, t => t.Id);
+                    break;
+                case TemplateKind.MacroRule:
+                    ReorderInList(CurrentGameState.MacroRuleTemplateLibrary, id, newIndex, t => t.Id);
+                    break;
+                case TemplateKind.MicroRule:
+                    ReorderInList(CurrentGameState.MicroRuleTemplateLibrary, id, newIndex, t => t.Id);
+                    break;
+            }
+        }
+
+        private static void ReorderInList<T>(List<T> list, string id, int newIndex, Func<T, string> getId)
+        {
+            int fromIndex = -1;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (getId(list[i]) == id) { fromIndex = i; break; }
+            }
+            if (fromIndex < 0) return;
+            if (newIndex < 0) newIndex = 0;
+            if (newIndex >= list.Count) newIndex = list.Count - 1;
+            if (fromIndex == newIndex) return;
+
+            var item = list[fromIndex];
+            list.RemoveAt(fromIndex);
+            list.Insert(newIndex, item);
+        }
+
+        /// <summary>
+        /// Maximum number of favorited templates per library.
+        /// Prevents the quick-access row from overflowing.
+        /// </summary>
+        public const int MaxTemplateFavorites = 20;
+
+        /// <summary>
+        /// Toggle the IsFavorite flag on a template. Favorited templates appear
+        /// as quick-access buttons in the editor. Refuses to add more than
+        /// MaxTemplateFavorites per library.
+        /// </summary>
+        public bool CommandToggleTemplateFavorite(string id, TemplateKind kind)
+        {
+            switch (kind)
+            {
+                case TemplateKind.Step:
+                    var step = FindStepTemplate(id);
+                    if (step == null) return false;
+                    if (step.IsFavorite) { step.IsFavorite = false; return true; }
+                    if (CountFavorites(CurrentGameState.StepTemplateLibrary, t => t.IsFavorite) >= MaxTemplateFavorites)
+                        return false;
+                    step.IsFavorite = true;
+                    return true;
+                case TemplateKind.MacroRule:
+                    var macro = FindRuleTemplate(id, isMacro: true);
+                    if (macro == null) return false;
+                    if (macro.IsFavorite) { macro.IsFavorite = false; return true; }
+                    if (CountFavorites(CurrentGameState.MacroRuleTemplateLibrary, t => t.IsFavorite) >= MaxTemplateFavorites)
+                        return false;
+                    macro.IsFavorite = true;
+                    return true;
+                case TemplateKind.MicroRule:
+                    var micro = FindRuleTemplate(id, isMacro: false);
+                    if (micro == null) return false;
+                    if (micro.IsFavorite) { micro.IsFavorite = false; return true; }
+                    if (CountFavorites(CurrentGameState.MicroRuleTemplateLibrary, t => t.IsFavorite) >= MaxTemplateFavorites)
+                        return false;
+                    micro.IsFavorite = true;
+                    return true;
+            }
+            return false;
+        }
+
+        private static int CountFavorites<T>(List<T> list, Func<T, bool> isFavorite)
+        {
+            int count = 0;
+            foreach (var item in list)
+                if (isFavorite(item)) count++;
+            return count;
         }
 
         // ─── Ruleset Mutation Commands ──────────────────────────────

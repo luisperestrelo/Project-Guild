@@ -45,6 +45,8 @@ namespace ProjectGuild.View.UI
         private readonly Button _btnClone;
         private readonly Button _btnDelete;
 
+        private TemplateRowBuilder<StepTemplate> _templateRowBuilder;
+
         private string _selectedId;
         public string SelectedId => _selectedId;
         private string _searchFilter = "";
@@ -304,6 +306,10 @@ namespace ProjectGuild.View.UI
             // Steps
             RebuildStepsEditor(seq, sim);
 
+            // Templates
+            EnsureTemplateRow(sim);
+            _templateRowBuilder.RefreshIfNeeded();
+
             // Used by
             var names = sim.GetRunnerNamesUsingTaskSequence(seq.Id);
             _usedByLabel.text = names.Count > 0
@@ -424,6 +430,72 @@ namespace ProjectGuild.View.UI
 
                 _stepsEditor.Add(row);
             }
+        }
+
+        private void EnsureTemplateRow(GameSimulation sim)
+        {
+            if (_templateRowBuilder != null) return;
+
+            _templateRowBuilder = new TemplateRowBuilder<StepTemplate>(
+                sim.CurrentGameState.StepTemplateLibrary,
+                getId: t => t.Id,
+                getName: t => t.Name,
+                getIsFavorite: t => t.IsFavorite,
+                onApply: templateId =>
+                {
+                    sim.CommandApplyStepTemplate(_selectedId, templateId);
+                    TryAutoNameFromSteps(_selectedId);
+                    _cachedStepsShapeKey = null;
+                    RefreshEditor();
+                    RebuildList();
+                },
+                onManage: () => ShowTemplateManagePopup(sim),
+                registerTooltip: (el, getText) => _uiManager.RegisterTooltip(el, getText));
+
+            int addBtnIndex = _btnAddStep.parent.IndexOf(_btnAddStep);
+            _btnAddStep.parent.Insert(addBtnIndex + 1, _templateRowBuilder.Root);
+        }
+
+        private void ShowTemplateManagePopup(GameSimulation sim)
+        {
+            // Toggle: remove existing popup if already open
+            var container = _templateRowBuilder?.Root?.parent;
+            var existing = container?.Q("template-manage-popup");
+            if (existing != null)
+            {
+                existing.RemoveFromHierarchy();
+                return;
+            }
+
+            var templates = sim.CurrentGameState.StepTemplateLibrary;
+            var popup = TemplateManagePopup.Build(
+                templates,
+                getId: t => t.Id,
+                getName: t => t.Name,
+                getIsBuiltIn: t => t.IsBuiltIn,
+                getIsFavorite: t => t.IsFavorite,
+                onToggleFavorite: id =>
+                    sim.CommandToggleTemplateFavorite(id, Simulation.Automation.TemplateKind.Step),
+                onReorder: (id, newIndex) =>
+                    sim.CommandReorderTemplate(id, newIndex, Simulation.Automation.TemplateKind.Step),
+                onRename: (id, newName) =>
+                    sim.CommandRenameTemplate(id, newName, Simulation.Automation.TemplateKind.Step),
+                onDelete: id => sim.CommandDeleteStepTemplate(id),
+                onSaveCurrentAsTemplate: _selectedId != null ? () =>
+                {
+                    var seq = sim.FindTaskSequenceInLibrary(_selectedId);
+                    if (seq?.Steps != null && seq.Steps.Count > 0)
+                    {
+                        string baseName = seq.Name ?? "Custom Template";
+                        string templateName = TemplateRowBuilder<StepTemplate>.NextSnapshotName(baseName, templates, t => t.Name);
+                        sim.CommandCreateStepTemplate(templateName, seq.Steps);
+                    }
+                } : null,
+                onClose: () => { },
+                onTemplatesChanged: () => _templateRowBuilder?.ForceRefresh(),
+                registerTooltip: (el, getText) => _uiManager.RegisterTooltip(el, getText));
+
+            container?.Add(popup);
         }
 
         private DropdownField CreateNodeDropdown(string currentNodeId,

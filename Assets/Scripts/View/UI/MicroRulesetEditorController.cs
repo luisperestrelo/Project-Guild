@@ -47,6 +47,8 @@ namespace ProjectGuild.View.UI
         private Button _deleteBtn;
         private bool _editorShellBuilt;
 
+        private TemplateRowBuilder<RuleTemplate> _templateRowBuilder;
+
         private string _selectedId;
         public string SelectedId => _selectedId;
         private string _searchFilter = "";
@@ -119,10 +121,14 @@ namespace ProjectGuild.View.UI
                 item.AddToClassList("list-item");
                 if (ruleset.Id == _selectedId) item.AddToClassList("list-item-selected");
 
+                var textContainer = new VisualElement();
+                textContainer.AddToClassList("list-item-text");
+                textContainer.pickingMode = PickingMode.Ignore;
+
                 var nameLabel = new Label(name);
                 nameLabel.AddToClassList("list-item-name");
                 nameLabel.pickingMode = PickingMode.Ignore;
-                item.Add(nameLabel);
+                textContainer.Add(nameLabel);
 
                 int seqCount = sim.CountSequencesUsingMicroRuleset(ruleset.Id);
                 string infoText = $"{ruleset.Rules.Count} rule{(ruleset.Rules.Count != 1 ? "s" : "")}";
@@ -130,10 +136,36 @@ namespace ProjectGuild.View.UI
                 var infoLabel = new Label(infoText);
                 infoLabel.AddToClassList("list-item-info");
                 infoLabel.pickingMode = PickingMode.Ignore;
-                item.Add(infoLabel);
+                textContainer.Add(infoLabel);
+
+                item.Add(textContainer);
+
+                // Hover-reveal action icons
+                var actions = new VisualElement();
+                actions.AddToClassList("list-item-actions");
 
                 string capturedId = ruleset.Id;
-                item.RegisterCallback<ClickEvent>(evt => SelectItem(capturedId));
+
+                var dupeBtn = new Button(() => DuplicateItem(capturedId));
+                dupeBtn.text = "\u2750"; // ❐
+                dupeBtn.AddToClassList("list-item-icon-btn");
+                dupeBtn.tooltip = "Duplicate";
+                actions.Add(dupeBtn);
+
+                var delBtn = new Button(() => DeleteItemWithConfirmation(capturedId));
+                delBtn.text = "\u2715"; // ✕
+                delBtn.AddToClassList("list-item-icon-btn");
+                delBtn.AddToClassList("list-item-icon-delete");
+                delBtn.tooltip = "Delete";
+                actions.Add(delBtn);
+
+                item.Add(actions);
+
+                item.RegisterCallback<ClickEvent>(evt =>
+                {
+                    if (evt.target is Button) return;
+                    SelectItem(capturedId);
+                });
 
                 _listScroll.Add(item);
                 _listItemCache[ruleset.Id] = (item, nameLabel, infoLabel);
@@ -213,8 +245,8 @@ namespace ProjectGuild.View.UI
             var footerButtons = new VisualElement();
             footerButtons.AddToClassList("editor-footer-buttons");
 
-            _cloneBtn = new Button(OnCloneClicked);
-            _cloneBtn.text = "Clone";
+            _cloneBtn = new Button(() => DuplicateItem(_selectedId));
+            _cloneBtn.text = "Duplicate";
             _cloneBtn.AddToClassList("editor-footer-button");
             footerButtons.Add(_cloneBtn);
 
@@ -223,7 +255,7 @@ namespace ProjectGuild.View.UI
             _resetBtn.AddToClassList("editor-footer-button");
             footerButtons.Add(_resetBtn);
 
-            _deleteBtn = new Button(OnDeleteClicked);
+            _deleteBtn = new Button(() => DeleteItemWithConfirmation(_selectedId));
             _deleteBtn.text = "Delete";
             _deleteBtn.AddToClassList("editor-footer-button");
             _deleteBtn.AddToClassList("editor-delete-button");
@@ -280,11 +312,79 @@ namespace ProjectGuild.View.UI
             // Rules container — only rebuild on structural change
             RefreshRulesContainer(ruleset, sim);
 
+            // Templates
+            EnsureTemplateRow(sim);
+            _templateRowBuilder.RefreshIfNeeded();
+
             // Footer (update in-place)
             var names = sim.GetRunnerNamesUsingMicroRuleset(ruleset.Id);
             _usedByLabel.text = names.Count > 0
                 ? $"Used by: {string.Join(", ", names)}"
                 : "Not assigned to any runner";
+        }
+
+        private void EnsureTemplateRow(GameSimulation sim)
+        {
+            if (_templateRowBuilder != null) return;
+
+            _templateRowBuilder = new TemplateRowBuilder<RuleTemplate>(
+                sim.CurrentGameState.MicroRuleTemplateLibrary,
+                getId: t => t.Id,
+                getName: t => t.Name,
+                getIsFavorite: t => t.IsFavorite,
+                onApply: templateId =>
+                {
+                    sim.CommandApplyRuleTemplate(_selectedId, templateId, isMacro: false);
+                    _cachedRulesShapeKey = null;
+                    RefreshEditor();
+                    RebuildList();
+                },
+                onManage: () => ShowTemplateManagePopup(sim),
+                registerTooltip: (el, getText) => _uiManager.RegisterTooltip(el, getText));
+
+            int addBtnIndex = _addRuleBtn.parent.IndexOf(_addRuleBtn);
+            _addRuleBtn.parent.Insert(addBtnIndex + 1, _templateRowBuilder.Root);
+        }
+
+        private void ShowTemplateManagePopup(GameSimulation sim)
+        {
+            var container = _templateRowBuilder?.Root?.parent;
+            var existing = container?.Q("template-manage-popup");
+            if (existing != null)
+            {
+                existing.RemoveFromHierarchy();
+                return;
+            }
+
+            var templates = sim.CurrentGameState.MicroRuleTemplateLibrary;
+            var popup = TemplateManagePopup.Build(
+                templates,
+                getId: t => t.Id,
+                getName: t => t.Name,
+                getIsBuiltIn: t => t.IsBuiltIn,
+                getIsFavorite: t => t.IsFavorite,
+                onToggleFavorite: id =>
+                    sim.CommandToggleTemplateFavorite(id, Simulation.Automation.TemplateKind.MicroRule),
+                onReorder: (id, newIndex) =>
+                    sim.CommandReorderTemplate(id, newIndex, Simulation.Automation.TemplateKind.MicroRule),
+                onRename: (id, newName) =>
+                    sim.CommandRenameTemplate(id, newName, Simulation.Automation.TemplateKind.MicroRule),
+                onDelete: id => sim.CommandDeleteRuleTemplate(id, isMacro: false),
+                onSaveCurrentAsTemplate: _selectedId != null ? () =>
+                {
+                    var ruleset = sim.FindMicroRulesetInLibrary(_selectedId);
+                    if (ruleset?.Rules != null && ruleset.Rules.Count > 0)
+                    {
+                        string baseName = ruleset.Name ?? "Custom Micro Template";
+                        string templateName = TemplateRowBuilder<RuleTemplate>.NextSnapshotName(baseName, templates, t => t.Name);
+                        sim.CommandCreateRuleTemplate(templateName, ruleset.Rules, isMacro: false);
+                    }
+                } : null,
+                onClose: () => { },
+                onTemplatesChanged: () => _templateRowBuilder?.ForceRefresh(),
+                registerTooltip: (el, getText) => _uiManager.RegisterTooltip(el, getText));
+
+            container?.Add(popup);
         }
 
         private void RefreshRulesContainer(Ruleset ruleset, GameSimulation sim)
@@ -357,15 +457,15 @@ namespace ProjectGuild.View.UI
 
         private void OnCloneBannerClicked()
         {
-            OnCloneClicked();
+            DuplicateItem(_selectedId);
         }
 
-        private void OnCloneClicked()
+        private void DuplicateItem(string sourceId)
         {
             var sim = _uiManager.Simulation;
-            if (sim == null || _selectedId == null) return;
+            if (sim == null || string.IsNullOrEmpty(sourceId)) return;
 
-            string newId = sim.CommandCloneMicroRuleset(_selectedId);
+            string newId = sim.CommandCloneMicroRuleset(sourceId);
             if (newId != null)
             {
                 _selectedId = newId;
@@ -385,16 +485,54 @@ namespace ProjectGuild.View.UI
             RefreshEditor();
         }
 
-        private void OnDeleteClicked()
+        private void DeleteItem(string id)
         {
             var sim = _uiManager.Simulation;
-            if (sim == null || _selectedId == null) return;
+            if (sim == null || string.IsNullOrEmpty(id)) return;
 
-            sim.CommandDeleteMicroRuleset(_selectedId);
-            _selectedId = null;
+            sim.CommandDeleteMicroRuleset(id);
+            if (_selectedId == id) _selectedId = null;
             _cachedRulesShapeKey = null;
             RebuildList();
             RefreshEditor();
+        }
+
+        private void DeleteItemWithConfirmation(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+
+            var prefs = _uiManager.Preferences;
+            if (prefs != null && prefs.SkipDeleteConfirmation)
+            {
+                DeleteItem(id);
+                return;
+            }
+
+            var sim = _uiManager.Simulation;
+            var ruleset = sim?.FindMicroRulesetInLibrary(id);
+            if (ruleset == null) return;
+
+            int seqCount = sim.CountSequencesUsingMicroRuleset(id);
+            var runnerNames = sim.GetRunnerNamesUsingMicroRuleset(id);
+
+            var warningParts = new List<string>();
+            warningParts.Add($"Delete \"{ruleset.Name}\"?");
+
+            if (runnerNames.Count > 0)
+            {
+                string list = string.Join("\n", runnerNames.ConvertAll(n => $"  - {n}"));
+                warningParts.Add($"Active on:\n{list}\nThey will have no micro rules at their Work step.");
+            }
+
+            if (seqCount > 0)
+            {
+                warningParts.Add($"{seqCount} task sequence{(seqCount != 1 ? "s" : "")} reference this micro ruleset.");
+            }
+
+            string warning = string.Join("\n\n", warningParts);
+
+            var panelRoot = _root.panel.visualTree.Q("automation-panel-root") ?? _root;
+            UIDialogs.ShowDeleteConfirmation(panelRoot, warning, prefs, () => DeleteItem(id));
         }
     }
 }

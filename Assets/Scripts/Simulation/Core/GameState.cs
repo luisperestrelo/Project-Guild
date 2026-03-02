@@ -30,6 +30,12 @@ namespace ProjectGuild.Simulation.Core
         public List<Ruleset> MacroRulesetLibrary = new();
         public List<Ruleset> MicroRulesetLibrary = new();
 
+        // ─── Automation Template Libraries ─────────────────────────
+        // Reusable step/rule snippets for batch-insertion into sequences and rulesets.
+        public List<StepTemplate> StepTemplateLibrary = new();
+        public List<RuleTemplate> MacroRuleTemplateLibrary = new();
+        public List<RuleTemplate> MicroRuleTemplateLibrary = new();
+
         // Economy state (TODO)
     }
 }

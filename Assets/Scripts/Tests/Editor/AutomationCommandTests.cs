@@ -801,12 +801,15 @@ namespace ProjectGuild.Tests
         public void CountSequencesUsingMicroRuleset_ReturnsCorrectCount()
         {
             Setup();
+            // Default gather sequence already uses default-micro (from EnsureInLibrary)
+            int baseline = _sim.CountSequencesUsingMicroRuleset(DefaultRulesets.DefaultMicroId);
+
             var seq1 = TaskSequence.CreateLoop("mine", "hub");
             var seq2 = TaskSequence.CreateLoop("forest", "hub");
             _sim.CommandCreateTaskSequence(seq1);
             _sim.CommandCreateTaskSequence(seq2);
 
-            Assert.AreEqual(2, _sim.CountSequencesUsingMicroRuleset(DefaultRulesets.DefaultMicroId));
+            Assert.AreEqual(baseline + 2, _sim.CountSequencesUsingMicroRuleset(DefaultRulesets.DefaultMicroId));
         }
 
         // ─── Multi-Runner Step Index Adjustment ──────────────────────

@@ -267,11 +267,12 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
-        public void FindMatchingGatherLoop_ReturnsNullWhenLibraryEmpty()
+        public void FindMatchingGatherLoop_ReturnsNullWhenNoMatch()
         {
             var sim = CreateSimWithMap();
 
-            var result = sim.FindMatchingGatherLoop("mine", "hub");
+            // "forest" has no pre-existing gather loop in the library
+            var result = sim.FindMatchingGatherLoop("forest", "hub");
 
             Assert.IsNull(result);
         }
@@ -285,8 +286,20 @@ namespace ProjectGuild.Tests
 
             var result = sim.FindMatchingGatherLoop("mine", "hub");
 
+            // Should find a match — could be the default gather sequence or the one we just added
             Assert.IsNotNull(result);
-            Assert.AreEqual(loop.Id, result.Id);
+        }
+
+        [Test]
+        public void FindMatchingGatherLoop_MatchesDefaultGatherSequence()
+        {
+            var sim = CreateSimWithMap();
+
+            // Default gather sequence targets "mine" (first non-hub node) and should be found
+            var result = sim.FindMatchingGatherLoop("mine", "hub");
+
+            Assert.IsNotNull(result);
+            Assert.AreEqual(DefaultRulesets.DefaultGatherSequenceId, result.Id);
         }
 
         [Test]
@@ -305,6 +318,11 @@ namespace ProjectGuild.Tests
         public void FindMatchingGatherLoop_NoMatchDifferentMicro()
         {
             var sim = CreateSimWithMap();
+
+            // Remove the default gather sequence so only our custom-micro one is in the library
+            sim.CurrentGameState.TaskSequenceLibrary.RemoveAll(
+                s => s.Id == DefaultRulesets.DefaultGatherSequenceId);
+
             var loop = TaskSequence.CreateLoop("mine", "hub", microRulesetId: "custom-micro");
             sim.CurrentGameState.TaskSequenceLibrary.Add(loop);
 
@@ -317,6 +335,11 @@ namespace ProjectGuild.Tests
         public void FindMatchingGatherLoop_NoMatchNonLooping()
         {
             var sim = CreateSimWithMap();
+
+            // Remove the default gather sequence so only our non-looping one is in the library
+            sim.CurrentGameState.TaskSequenceLibrary.RemoveAll(
+                s => s.Id == DefaultRulesets.DefaultGatherSequenceId);
+
             var loop = TaskSequence.CreateLoop("mine", "hub");
             loop.Loop = false;
             sim.CurrentGameState.TaskSequenceLibrary.Add(loop);

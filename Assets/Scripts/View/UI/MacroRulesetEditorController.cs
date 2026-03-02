@@ -49,6 +49,8 @@ namespace ProjectGuild.View.UI
         private Button _deleteBtn;
         private bool _editorShellBuilt;
 
+        private TemplateRowBuilder<RuleTemplate> _templateRowBuilder;
+
         private string _selectedId;
         public string SelectedId => _selectedId;
         private string _searchFilter = "";
@@ -327,11 +329,79 @@ namespace ProjectGuild.View.UI
             // Rules container — only rebuild on structural change
             RefreshRulesContainer(ruleset, sim);
 
+            // Templates
+            EnsureTemplateRow(sim);
+            _templateRowBuilder.RefreshIfNeeded();
+
             // Footer (update in-place)
             var names = sim.GetRunnerNamesUsingMacroRuleset(ruleset.Id);
             _usedByLabel.text = names.Count > 0
                 ? $"Used by: {string.Join(", ", names)}"
                 : "Not assigned to any runner";
+        }
+
+        private void EnsureTemplateRow(GameSimulation sim)
+        {
+            if (_templateRowBuilder != null) return;
+
+            _templateRowBuilder = new TemplateRowBuilder<RuleTemplate>(
+                sim.CurrentGameState.MacroRuleTemplateLibrary,
+                getId: t => t.Id,
+                getName: t => t.Name,
+                getIsFavorite: t => t.IsFavorite,
+                onApply: templateId =>
+                {
+                    sim.CommandApplyRuleTemplate(_selectedId, templateId, isMacro: true);
+                    _cachedRulesShapeKey = null;
+                    RefreshEditor();
+                    RebuildList();
+                },
+                onManage: () => ShowTemplateManagePopup(sim),
+                registerTooltip: (el, getText) => _uiManager.RegisterTooltip(el, getText));
+
+            int addBtnIndex = _addRuleBtn.parent.IndexOf(_addRuleBtn);
+            _addRuleBtn.parent.Insert(addBtnIndex + 1, _templateRowBuilder.Root);
+        }
+
+        private void ShowTemplateManagePopup(GameSimulation sim)
+        {
+            var container = _templateRowBuilder?.Root?.parent;
+            var existing = container?.Q("template-manage-popup");
+            if (existing != null)
+            {
+                existing.RemoveFromHierarchy();
+                return;
+            }
+
+            var templates = sim.CurrentGameState.MacroRuleTemplateLibrary;
+            var popup = TemplateManagePopup.Build(
+                templates,
+                getId: t => t.Id,
+                getName: t => t.Name,
+                getIsBuiltIn: t => t.IsBuiltIn,
+                getIsFavorite: t => t.IsFavorite,
+                onToggleFavorite: id =>
+                    sim.CommandToggleTemplateFavorite(id, Simulation.Automation.TemplateKind.MacroRule),
+                onReorder: (id, newIndex) =>
+                    sim.CommandReorderTemplate(id, newIndex, Simulation.Automation.TemplateKind.MacroRule),
+                onRename: (id, newName) =>
+                    sim.CommandRenameTemplate(id, newName, Simulation.Automation.TemplateKind.MacroRule),
+                onDelete: id => sim.CommandDeleteRuleTemplate(id, isMacro: true),
+                onSaveCurrentAsTemplate: _selectedId != null ? () =>
+                {
+                    var ruleset = sim.FindMacroRulesetInLibrary(_selectedId);
+                    if (ruleset?.Rules != null && ruleset.Rules.Count > 0)
+                    {
+                        string baseName = ruleset.Name ?? "Custom Macro Template";
+                        string templateName = TemplateRowBuilder<RuleTemplate>.NextSnapshotName(baseName, templates, t => t.Name);
+                        sim.CommandCreateRuleTemplate(templateName, ruleset.Rules, isMacro: true);
+                    }
+                } : null,
+                onClose: () => { },
+                onTemplatesChanged: () => _templateRowBuilder?.ForceRefresh(),
+                registerTooltip: (el, getText) => _uiManager.RegisterTooltip(el, getText));
+
+            container?.Add(popup);
         }
 
         private void RefreshRulesContainer(Ruleset ruleset, GameSimulation sim)

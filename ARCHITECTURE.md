@@ -127,6 +127,11 @@ Back to Tick() (continues processing)
 | `RunnerWarnings.cs` | Simulation | Centralized warning message strings and factory methods |
 | `TimeFormatHelper.cs` | View | Formats elapsed game time as M:SS / H:MM:SS / Dd H:MM:SS |
 | `UIDialogs.cs` | View | Modal confirmation dialogs for delete and creation cancel |
+| `TemplateRowBuilder.cs` | View | Generic quick-access template buttons row, shared across all three editors |
+| `TemplateManagePopup.cs` | View | Manage popup for template favorites, reorder, rename, delete |
+| `StepTemplate.cs` | Simulation | Reusable step batch template (serializable data class) |
+| `RuleTemplate.cs` | Simulation | Reusable rule batch template (serializable data class) |
+| `TemplateKind.cs` | Simulation | Enum identifying which template library to operate on |
 | `PlayerPreferences.cs` | Bridge | UX preferences persisted separately from game saves |
 
 ### The Conveyor Belt (Spiral of Death Protection)
@@ -231,7 +236,7 @@ Event definitions — small structs carrying just the data a listener needs:
 | `SimulationTickCompleted` | TickNumber | Every tick |
 
 ### `Simulation/Core/GameState.cs`
-Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, separate MacroDecisionLog and MicroDecisionLog (independent ring buffers so micro spam doesn't evict macro history), and three **global automation libraries**: `TaskSequenceLibrary`, `MacroRulesetLibrary`, `MicroRulesetLibrary` (all `List<T>` indexed by string ID). Runners reference library entries by ID. Editing a library entry immediately affects all runners/sequences using it. Serializing this one object captures the entire game world.
+Root of all saveable state. Holds: list of runners, tick count, total elapsed time, world map, guild Bank, separate MacroDecisionLog and MicroDecisionLog (independent ring buffers so micro spam doesn't evict macro history), three **global automation libraries**: `TaskSequenceLibrary`, `MacroRulesetLibrary`, `MicroRulesetLibrary` (all `List<T>` indexed by string ID), and three **template libraries**: `StepTemplateLibrary`, `MacroRuleTemplateLibrary`, `MicroRuleTemplateLibrary`. Runners reference library entries by ID. Editing a library entry immediately affects all runners/sequences using it. Templates are reusable step/rule batches that can be inserted into sequences or rulesets. Serializing this one object captures the entire game world.
 
 ### `Simulation/Core/GameSimulation.cs`
 The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistry`, and `EventLogService`. Its `Tick()` method processes all runners based on their current state.
@@ -317,9 +322,19 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 
 **`RuleEvaluator.cs`** — Static, pure methods. `EvaluateRuleset()` returns first matching rule index or -1. `EvaluateCondition()` switches on ConditionType. `Compare()` generic numeric comparison. "Always compute, never cache."
 
-**`DefaultRulesets.cs`** — Factory methods:
+**`DefaultRulesets.cs`** — Factory methods and built-in template definitions:
 - `CreateDefaultMicro()` — two rules: `InventoryFull → FinishTask`, `Always → GatherHere(0)`. The default micro for gathering Work steps.
 - `EnsureInLibrary(state)` — ensures default micro exists in library (idempotent). No default macro — runners start with null macro (no auto-switching until player sets up rules).
+- `EnsureTemplatesInLibrary(state)` — creates built-in templates (idempotent). Called during `StartNewGame` and `LoadState`.
+- Built-in step templates: `GatherLoopTemplateId` (TravelTo → Work → TravelTo(hub) → Deposit), `TravelAndWorkTemplateId` (TravelTo → Work), `ReturnAndDepositTemplateId` (TravelTo(hub) → Deposit).
+- Built-in micro rule template: `BasicGatherTemplateId` (InventoryFull → FinishTask, Always → GatherAny).
+- All built-in templates have `IsBuiltIn = true` (prevents deletion) and `IsFavorite = true` (appear in quick-access row by default).
+
+**`StepTemplate.cs`** — `[Serializable]` data class for step batch templates. Fields: `Id`, `Name`, `IsBuiltIn`, `IsFavorite`, `List<TaskStep> Steps`. `DeepCopySteps()` creates independent copies for safe insertion into sequences.
+
+**`RuleTemplate.cs`** — `[Serializable]` data class for rule batch templates. Fields: `Id`, `Name`, `IsBuiltIn`, `IsFavorite`, `List<Rule> Rules`. `DeepCopyRules()` creates independent copies for safe insertion into rulesets.
+
+**`TemplateKind.cs`** — Enum: `Step`, `MacroRule`, `MicroRule`. Identifies which template library a command operates on.
 
 **`DecisionLogEntry.cs`** — `[Serializable]`: TickNumber, GameTime, RunnerId, RunnerName, NodeId, RuleIndex, RuleLabel, TriggerReason, ActionType, ActionDetail, ConditionSnapshot, WasDeferred. One entry per macro/micro rule firing. NodeId captures the runner's current node at the time of the decision, enabling node-scoped filtering in the Decision Log UI.
 
@@ -347,6 +362,14 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 - `CommandCloneTaskSequence(sourceId)` — deep-copy into new library entry.
 - `RefreshMacroConfigWarnings()` — recompute warning state after ruleset edits.
 - `GetMacroRulesReferencingTaskSequence(seqId)` — impact analysis for deletion UX.
+
+**Template commands:**
+- `CommandApplyStepTemplate(seqId, templateId)` — append template's steps (deep-copied) to a task sequence. Null `TargetNodeId` steps resolve to first non-hub node.
+- `CommandApplyRuleTemplate(rulesetId, templateId, isMacro)` — append template's rules (deep-copied) to a ruleset.
+- `CommandCreateStepTemplate(name, steps)` / `CommandCreateRuleTemplate(name, rules, isMacro)` — create custom templates from existing steps/rules (deep-copied).
+- `CommandDeleteStepTemplate(id)` / `CommandDeleteRuleTemplate(id, isMacro)` — delete custom templates (refuses built-in).
+- `CommandRenameTemplate(id, newName, kind)` / `CommandReorderTemplate(id, newIndex, kind)` — manage templates by `TemplateKind`.
+- `CommandToggleTemplateFavorite(id, kind)` — toggle `IsFavorite` flag. Enforces `MaxTemplateFavorites` (20) per library. Favorited templates appear as quick-access buttons in the template row.
 
 **Query helpers:** `CountRunnersUsing*`, `GetRunnerNamesUsing*`, `CountSequencesUsingMicroRuleset`
 
@@ -540,14 +563,20 @@ All [Edit in Library] buttons navigate to the Automation panel via `UIManager.Op
 ### `View/UI/AutomationPanelController.cs`
 Plain C# class. Manages the Automation overlay panel (toggle via top-left button, close with Escape). Three library tabs: Task Sequences, Macro Rulesets, Micro Rulesets. Each tab delegates to a sub-controller. Provides `OpenToItem()` and `OpenToItemFromRunner()` for navigation from the runner tab. Purely event-driven — no tick-driven `Refresh()`. Editors refresh on open, tab switch, and user interaction only.
 
+### `View/UI/TemplateRowBuilder.cs`
+Generic instance class `TemplateRowBuilder<T>`. Builds and owns the "Templates:" quick-access row shown in all three editors. Favorited templates (max 20) appear as buttons; "More..." opens a popup with ALL templates; gear icon opens the manage popup. Structural skeleton (wrapper, row, label, buttons container, info icon, gear) is built once in the constructor — never rebuilt. `RefreshIfNeeded()` (tick-driven) checks a shape key (template count + favorite count + order hash) and only rebuilds buttons when changed. `ForceRefresh()` (event-driven) always rebuilds buttons, used by `onTemplatesChanged` callbacks. `NextSnapshotName()` is a shared static utility for generating "Name (snapshot 1)", "(snapshot 2)" naming.
+
+### `View/UI/TemplateManagePopup.cs`
+Static builder class. Creates a manage popup for template libraries: favorite toggle (star), reorder arrows, lock icon (built-in, with tooltip), inline rename text field (custom), delete button (custom). "Save Current as Template" button (optional). Max favorites enforced — at-max stars are visually dimmed but remain enabled so the tooltip ("Max 20 favorites reached") works via the custom tooltip system. `onTemplatesChanged` callback fires after ALL mutations (favorite, reorder, delete, save, rename) so the parent's quick-access row updates immediately.
+
 ### `View/UI/TaskSequenceEditorController.cs`
-Plain C# class. Master-detail editor for the Task Sequence library. Uses **persistent elements**: editor shell from UXML (name field, loop toggle, banner, used-by label) is updated in-place via `SetValueWithoutNotify`. Steps editor uses shape-key caching (seq ID + step count) — skips rebuild when the same sequence is re-selected. List pane uses item cache (`Dictionary<string, ...>`) for CSS-only selection toggling and in-place name updates on rename. Left pane: searchable list with [+ New]. Right pane: name field, loop toggle, step list with node/micro dropdowns, [+ Add Step] (step type picker), shared template warning banner when used by >1 runner, [Assign To...] (runner picker popup) / [Clone] / [Delete], "Used by: runner names" footer.
+Plain C# class. Master-detail editor for the Task Sequence library. Uses **persistent elements**: editor shell from UXML (name field, loop toggle, banner, used-by label) is updated in-place via `SetValueWithoutNotify`. Steps editor uses shape-key caching (seq ID + step count) — skips rebuild when the same sequence is re-selected. List pane uses item cache (`Dictionary<string, ...>`) for CSS-only selection toggling and in-place name updates on rename. Left pane: searchable list with [+ New]. Right pane: name field, loop toggle, step list with node/micro dropdowns, [+ Add Step] (step type picker), template row (`TemplateRowBuilder<StepTemplate>`), shared template warning banner when used by >1 runner, [Assign To...] (runner picker popup) / [Duplicate] / [Delete], "Used by: runner names" footer. Delete shows confirmation dialog listing affected runners and macro rules.
 
 ### `View/UI/MacroRulesetEditorController.cs`
-Plain C# class. Master-detail editor for the Macro Ruleset library. Uses **persistent editor shell**: banner, name field, rules header, rules container, add button, and footer are built once in `BuildEditorShell()` and updated in-place. Only the rules container rebuilds, gated by shape-key caching (ruleset ID + rule count). List pane uses item cache for CSS-only selection toggling. Left pane: searchable list. Right pane: name field, interactive rule list (via `RuleEditorController`), [+ Add Rule], [Assign To...] (runner picker popup) / [Clone] / [Reset to Default] / [Delete], shared template banner.
+Plain C# class. Master-detail editor for the Macro Ruleset library. Uses **persistent editor shell**: banner, name field, rules header, rules container, add button, and footer are built once in `BuildEditorShell()` and updated in-place. Only the rules container rebuilds, gated by shape-key caching (ruleset ID + rule count). List pane uses item cache for CSS-only selection toggling with hover-reveal duplicate/delete icons. Left pane: searchable list. Right pane: name field, interactive rule list (via `RuleEditorController`), [+ Add Rule], template row (`TemplateRowBuilder<RuleTemplate>`), [Assign To...] (runner picker popup) / [Duplicate] / [Reset to Default] / [Delete], shared template banner. Delete shows confirmation dialog listing affected runners.
 
 ### `View/UI/MicroRulesetEditorController.cs`
-Plain C# class. Master-detail editor for the Micro Ruleset library. Same persistent-element architecture as Macro. Shows "Used by N sequences" instead of runners. Micro-specific action types (GatherHere, FinishTask) and no timing toggle.
+Plain C# class. Master-detail editor for the Micro Ruleset library. Same persistent-element architecture as Macro with hover-reveal duplicate/delete icons on list items. Shows "Used by N sequences" instead of runners. Micro-specific action types (GatherHere, FinishTask) and no timing toggle. Template row (`TemplateRowBuilder<RuleTemplate>`) for micro rule templates. New micro rulesets are created empty (no default rules — templates make population trivial). Delete shows confirmation dialog with affected runner names ("Active on: ...") and referencing sequence count.
 
 ### `View/UI/BankPanelController.cs`
 Plain C# class. OSRS-style bank overlay panel. Follows `AutomationPanelController` pattern: `IsOpen`, `Open()`, `Close()`, `Toggle()`, Escape to close. Shows all stacked items in a flex-wrap grid with category filtering (tab buttons), text search (case-insensitive), and persistent-element caching (shape-keyed by filtered item IDs — quantities update in-place, full rebuild only on shape change). Refreshes on `Open()` and on `RunnerDeposited` events while open (not every tick). Tooltips show item name, quantity, and category. Footer shows total item count. Opened via `UIManager.ToggleBankPanel()` (from bank click) or `UIManager.OpenBankPanel()` (from resource bar click).
