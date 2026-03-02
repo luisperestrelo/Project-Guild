@@ -497,6 +497,17 @@
     color: rgb(220, 200, 130);
 }
 
+.editor-step-info-icon {
+    color: rgb(120, 130, 160);
+    font-size: 13px;
+    padding: 1px 4px;
+    margin-right: 2px;
+}
+
+.editor-step-info-icon:hover {
+    color: rgb(180, 190, 220);
+}
+
 .editor-step-buttons {
     flex-direction: row;
     margin-left: auto;

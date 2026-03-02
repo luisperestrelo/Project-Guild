@@ -362,13 +362,27 @@ namespace ProjectGuild.View.UI
                 switch (step.Type)
                 {
                     case TaskStepType.TravelTo:
+                        // Info icon placeholder — rebuilt when dropdown changes
+                        var infoIconContainer = new VisualElement();
+                        var capturedContainer = infoIconContainer; // capture for closure
+                        var initialIcon = CreateNodeInfoIcon(step.TargetNodeId, sim);
+                        if (initialIcon != null)
+                            capturedContainer.Add(initialIcon);
+
                         var nodeDropdown = CreateNodeDropdown(step.TargetNodeId, state, newNodeId =>
                         {
                             sim.CommandSetStepTargetNode(seq.Id, stepIndex, newNodeId);
                             TryAutoNameFromSteps(seq.Id);
+
+                            // Rebuild info icon for the new node
+                            capturedContainer.Clear();
+                            var newIcon = CreateNodeInfoIcon(newNodeId, sim);
+                            if (newIcon != null)
+                                capturedContainer.Add(newIcon);
                         });
                         nodeDropdown.AddToClassList("editor-step-dropdown");
                         row.Add(nodeDropdown);
+                        row.Add(capturedContainer);
                         break;
 
                     case TaskStepType.Work:
@@ -550,6 +564,35 @@ namespace ProjectGuild.View.UI
             });
 
             return dropdown;
+        }
+
+        private VisualElement CreateNodeInfoIcon(string nodeId, GameSimulation sim)
+        {
+            var node = sim.CurrentGameState.Map?.GetNode(nodeId);
+            if (node == null || node.Gatherables.Length == 0) return null;
+
+            var icon = new Label("\u2139"); // ℹ
+            icon.AddToClassList("editor-step-info-icon");
+
+            _uiManager.RegisterTooltip(icon, () =>
+            {
+                var n = sim.CurrentGameState.Map?.GetNode(nodeId);
+                if (n == null || n.Gatherables.Length == 0) return null;
+
+                string text = "<b>Resources:</b>";
+                foreach (var g in n.Gatherables)
+                {
+                    string itemName = sim.ItemRegistry?.Get(g.ProducedItemId)?.Name
+                        ?? AutomationUIHelpers.HumanizeId(g.ProducedItemId);
+                    string skillName = g.RequiredSkill.ToString();
+                    text += g.MinLevel > 0
+                        ? $"\n  {itemName} ({skillName}, Lv{g.MinLevel}+)"
+                        : $"\n  {itemName} ({skillName})";
+                }
+                return text;
+            });
+
+            return icon;
         }
 
         private DropdownField CreateMicroDropdown(string currentMicroId,
