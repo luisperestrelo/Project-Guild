@@ -911,5 +911,215 @@ namespace ProjectGuild.Tests
             Assert.IsNotNull(failed, "GatheringFailed should fire when mid-gather switch hits MinLevel");
             Assert.AreEqual(GatheringFailureReason.NotEnoughSkill, failed.Value.Reason);
         }
+
+        // ─── GatherBestAvailable tests ───────────────────────────
+
+        private static readonly Simulation.Gathering.GatherableConfig IronGatherable =
+            new Simulation.Gathering.GatherableConfig("iron_ore", SkillType.Mining, 40f, 0.5f, 15);
+
+        private static readonly Simulation.Gathering.GatherableConfig MithrilGatherable =
+            new Simulation.Gathering.GatherableConfig("mithril_ore", SkillType.Mining, 40f, 0.5f, 30);
+
+        /// <summary>
+        /// Helper: set up sim with a multi-tier mine for GatherBestAvailable tests.
+        /// Copper (MinLevel 0), Iron (MinLevel 15), Mithril (MinLevel 30).
+        /// </summary>
+        private void SetupMultiTierMine(int miningLevel)
+        {
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                    new ItemDefinition("iron_ore", "Iron Ore", ItemCategory.Ore),
+                    new ItemDefinition("mithril_ore", "Mithril Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, miningLevel),
+            };
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("mine", "Multi Mine", 0f, 0f, CopperGatherable, IronGatherable, MithrilGatherable);
+            map.AddEdge("hub", "mine", 8f);
+            map.Initialize();
+
+            _sim.StartNewGame(defs, map, "mine");
+            _runner = _sim.CurrentGameState.Runners[0];
+        }
+
+        [Test]
+        public void GatherBestAvailable_PicksHighestEligible()
+        {
+            SetupMultiTierMine(miningLevel: 20); // qualifies for copper (0) and iron (15), not mithril (30)
+
+            var micro = CreateAndRegisterMicroRuleset("best-mining");
+            micro.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherBestAvailable(SkillType.Mining),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "best-mining");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            Assert.AreEqual(1, _runner.Gathering.GatherableIndex,
+                "Mining 20 should pick iron (index 1, MinLevel 15) — highest eligible");
+        }
+
+        [Test]
+        public void GatherBestAvailable_LowSkill_PicksOnlyOption()
+        {
+            SetupMultiTierMine(miningLevel: 1); // qualifies only for copper (MinLevel 0)
+
+            var micro = CreateAndRegisterMicroRuleset("best-mining-low");
+            micro.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherBestAvailable(SkillType.Mining),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "best-mining-low");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
+                "Mining 1 should pick copper (index 0, MinLevel 0) — only eligible");
+        }
+
+        [Test]
+        public void GatherBestAvailable_HighSkill_PicksBest()
+        {
+            SetupMultiTierMine(miningLevel: 50); // qualifies for all three
+
+            var micro = CreateAndRegisterMicroRuleset("best-mining-high");
+            micro.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherBestAvailable(SkillType.Mining),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "best-mining-high");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            Assert.AreEqual(2, _runner.Gathering.GatherableIndex,
+                "Mining 50 should pick mithril (index 2, MinLevel 30) — highest eligible");
+        }
+
+        [Test]
+        public void GatherBestAvailable_NoMatchingSkill_GetsStuck()
+        {
+            SetupMultiTierMine(miningLevel: 10);
+
+            // Use Woodcutting — no gatherables at this mine require Woodcutting
+            var micro = CreateAndRegisterMicroRuleset("best-woodcutting");
+            micro.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherBestAvailable(SkillType.Woodcutting),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "best-woodcutting");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreNotEqual(RunnerState.Gathering, _runner.State,
+                "No Woodcutting gatherables at mine — runner should be stuck");
+        }
+
+        [Test]
+        public void GatherBestAvailable_MidGatherStability()
+        {
+            SetupMultiTierMine(miningLevel: 20);
+
+            var micro = CreateAndRegisterMicroRuleset("best-stable");
+            micro.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherBestAvailable(SkillType.Mining),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "best-stable");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            int initialIndex = _runner.Gathering.GatherableIndex;
+
+            // Tick a few times (not enough to produce an item) — index should stay the same
+            for (int i = 0; i < 3; i++)
+            {
+                _sim.Tick();
+                if (_runner.State != RunnerState.Gathering) break;
+                Assert.AreEqual(initialIndex, _runner.Gathering.GatherableIndex,
+                    $"GatherBestAvailable should not switch resources mid-gather (tick {i + 1})");
+            }
+        }
+
+        [Test]
+        public void GatherBestAvailable_TiesBreakByLowestIndex()
+        {
+            // Two gatherables with the same MinLevel and same skill — should pick lowest index
+            var copperA = new Simulation.Gathering.GatherableConfig("copper_ore", SkillType.Mining, 40f, 0.5f, 10);
+            var copperB = new Simulation.Gathering.GatherableConfig("iron_ore", SkillType.Mining, 40f, 0.5f, 10);
+
+            _config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                    new ItemDefinition("iron_ore", "Iron Ore", ItemCategory.Ore),
+                },
+            };
+            _sim = new GameSimulation(_config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Tester" }
+                    .WithSkill(SkillType.Mining, 10),
+            };
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("mine", "Tied Mine", 0f, 0f, copperA, copperB);
+            map.AddEdge("hub", "mine", 8f);
+            map.Initialize();
+
+            _sim.StartNewGame(defs, map, "mine");
+            _runner = _sim.CurrentGameState.Runners[0];
+
+            var micro = CreateAndRegisterMicroRuleset("best-tied");
+            micro.Rules.Add(new Rule
+            {
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.GatherBestAvailable(SkillType.Mining),
+                Enabled = true,
+            });
+
+            var seq = TaskSequence.CreateLoop("mine", "hub");
+            SetWorkStepMicroRuleset(seq, "best-tied");
+            _sim.AssignRunner(_runner.Id, seq);
+
+            Assert.AreEqual(RunnerState.Gathering, _runner.State);
+            Assert.AreEqual(0, _runner.Gathering.GatherableIndex,
+                "When MinLevel is tied, should pick lowest index (0)");
+        }
     }
 }

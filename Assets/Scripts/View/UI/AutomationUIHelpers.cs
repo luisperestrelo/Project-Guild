@@ -152,6 +152,9 @@ namespace ProjectGuild.View.UI
                 case ActionType.FinishTask:
                     return "Finish Task";
 
+                case ActionType.GatherBestAvailable:
+                    return $"Gather Best Available [{FormatSkillName((SkillType)action.IntParam)}]";
+
                 default:
                     return action.Type.ToString();
             }

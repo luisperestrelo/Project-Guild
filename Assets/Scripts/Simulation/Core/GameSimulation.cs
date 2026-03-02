@@ -898,6 +898,23 @@ namespace ProjectGuild.Simulation.Core
                         return MicroResultNoEligibleGatherable;
                 }
 
+                if (action.Type == ActionType.GatherBestAvailable)
+                {
+                    int index = ResolveGatherBestAvailableIndex(action, node, runner, itemJustProduced);
+                    if (index >= 0 && index < node.Gatherables.Length)
+                    {
+                        string itemId = node.Gatherables[index].ProducedItemId;
+                        string itemName = ItemRegistry?.Get(itemId)?.Name ?? itemId;
+                        string actionLabel = $"Gather Best Available -> {itemName}";
+                        LogDecision(runner, ruleIndex, rule, "MicroEval",
+                            actionLabel, false, DecisionLayer.Micro);
+                        return index;
+                    }
+
+                    if (index == MicroResultNoEligibleGatherable)
+                        return MicroResultNoEligibleGatherable;
+                }
+
                 // Rule matched but action is invalid (wrong type, out-of-bounds index).
                 // This is a broken rule — let it break.
                 return MicroResultNoMatch;
@@ -959,6 +976,51 @@ namespace ProjectGuild.Simulation.Core
 
             // Positional index (default behavior)
             return action.IntParam;
+        }
+
+        /// <summary>
+        /// Resolve GatherBestAvailable action to a gatherable index at the given node.
+        /// Filters by RequiredSkill == chosen skill AND MinLevel &lt;= runner's level,
+        /// then picks the one with the highest MinLevel (deterministic; ties broken by lowest index).
+        /// Mid-gather stability: keeps current resource until an item is produced (same as GatherAny).
+        /// </summary>
+        private int ResolveGatherBestAvailableIndex(AutomationAction action, World.WorldNode node,
+            Runner runner, bool itemJustProduced)
+        {
+            if (node.Gatherables.Length == 0) return MicroResultNoEligibleGatherable;
+
+            var skillType = (SkillType)action.IntParam;
+            int runnerLevel = runner.GetSkill(skillType).Level;
+
+            // Mid-gather stability: keep current resource if still valid for this skill+level
+            if (runner.Gathering != null && !itemJustProduced
+                && runner.Gathering.GatherableIndex >= 0
+                && runner.Gathering.GatherableIndex < node.Gatherables.Length)
+            {
+                var current = node.Gatherables[runner.Gathering.GatherableIndex];
+                if (current.RequiredSkill == skillType && runnerLevel >= current.MinLevel)
+                    return runner.Gathering.GatherableIndex;
+            }
+
+            // Fresh pick: find highest-MinLevel gatherable the runner qualifies for
+            int bestIndex = -1;
+            int bestMinLevel = -1;
+
+            for (int i = 0; i < node.Gatherables.Length; i++)
+            {
+                var g = node.Gatherables[i];
+                if (g.RequiredSkill != skillType) continue;
+                if (runnerLevel < g.MinLevel) continue;
+
+                // Pick highest MinLevel; ties broken by lowest index (first wins)
+                if (g.MinLevel > bestMinLevel)
+                {
+                    bestMinLevel = g.MinLevel;
+                    bestIndex = i;
+                }
+            }
+
+            return bestIndex >= 0 ? bestIndex : MicroResultNoEligibleGatherable;
         }
 
         /// <summary>

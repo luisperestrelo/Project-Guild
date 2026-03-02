@@ -630,8 +630,8 @@ namespace ProjectGuild.View.UI
             else
             {
                 // Micro actions: Gather [Resource], Finish Task
-                var typeChoices = new List<string> { "Gather Here", "Finish Task" };
-                var typeValues = new List<ActionType> { ActionType.GatherHere, ActionType.FinishTask };
+                var typeChoices = new List<string> { "Gather Here", "Gather Best Available", "Finish Task" };
+                var typeValues = new List<ActionType> { ActionType.GatherHere, ActionType.GatherBestAvailable, ActionType.FinishTask };
 
                 int currentIndex = typeValues.IndexOf(action.Type);
                 if (currentIndex < 0) currentIndex = 0;
@@ -686,6 +686,31 @@ namespace ProjectGuild.View.UI
                         });
                         paramContainer.Add(itemDropdown);
                     }
+                    else if (actionType == ActionType.GatherBestAvailable)
+                    {
+                        // Skill dropdown — iterate SkillType enum
+                        var skillChoices = new List<string>();
+                        var skillValues = new List<int>();
+
+                        for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
+                        {
+                            skillChoices.Add(AutomationUIHelpers.FormatSkillName((SkillType)i));
+                            skillValues.Add(i);
+                        }
+
+                        int currentIndex = skillValues.IndexOf(action.IntParam);
+                        if (currentIndex < 0) currentIndex = 0;
+
+                        var skillDropdown = new DropdownField(skillChoices, currentIndex);
+                        skillDropdown.AddToClassList("action-item-dropdown");
+                        skillDropdown.RegisterValueChangedCallback(evt =>
+                        {
+                            int idx = skillDropdown.index;
+                            if (idx >= 0 && idx < skillValues.Count)
+                                onUpdate(AutomationAction.GatherBestAvailable((SkillType)skillValues[idx]));
+                        });
+                        paramContainer.Add(skillDropdown);
+                    }
                 }
 
                 RebuildMicroParams(action.Type);
@@ -699,6 +724,9 @@ namespace ProjectGuild.View.UI
                         {
                             case ActionType.GatherHere:
                                 onUpdate(AutomationAction.GatherAny());
+                                break;
+                            case ActionType.GatherBestAvailable:
+                                onUpdate(AutomationAction.GatherBestAvailable(SkillType.Mining));
                                 break;
                             case ActionType.FinishTask:
                                 onUpdate(AutomationAction.FinishTask());

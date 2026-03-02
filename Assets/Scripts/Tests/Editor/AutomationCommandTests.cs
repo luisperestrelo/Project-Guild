@@ -932,6 +932,22 @@ namespace ProjectGuild.Tests
         }
 
         [Test]
+        public void FormatAction_GatherBestAvailable_Mining()
+        {
+            var result = AutomationUIHelpers.FormatAction(
+                AutomationAction.GatherBestAvailable(SkillType.Mining), null);
+            Assert.AreEqual("Gather Best Available [Mining]", result);
+        }
+
+        [Test]
+        public void FormatAction_GatherBestAvailable_PotionMaking()
+        {
+            var result = AutomationUIHelpers.FormatAction(
+                AutomationAction.GatherBestAvailable(SkillType.PotionMaking), null);
+            Assert.AreEqual("Gather Best Available [Potion Making]", result);
+        }
+
+        [Test]
         public void FormatRule_FullSentence()
         {
             Setup();
@@ -951,7 +967,7 @@ namespace ProjectGuild.Tests
 
             var result = AutomationUIHelpers.FormatRule(rule, _sim.CurrentGameState);
 
-            Assert.AreEqual("IF Bank contains Copper Ore >= 200 THEN Use Gather at Pine Forest", result);
+            Assert.AreEqual("IF Bank contains Copper Ore >= 200 THEN Gather at Pine Forest", result);
         }
 
         [Test]

@@ -1,4 +1,5 @@
 using System;
+using ProjectGuild.Simulation.Core;
 
 namespace ProjectGuild.Simulation.Automation
 {
@@ -11,7 +12,7 @@ namespace ProjectGuild.Simulation.Automation
     {
         public ActionType Type;
         public string StringParam;   // taskSequenceId for AssignSequence, itemId for GatherHere
-        public int IntParam;         // gatherableIndex for GatherHere (-1 = any available, random)
+        public int IntParam;         // gatherableIndex for GatherHere (-1 = any available, random), (int)SkillType for GatherBestAvailable
 
         public AutomationAction() { }
 
@@ -48,5 +49,13 @@ namespace ProjectGuild.Simulation.Automation
 
         public static AutomationAction FinishTask()
             => new AutomationAction { Type = ActionType.FinishTask };
+
+        /// <summary>
+        /// Micro action: gather the highest-tier resource the runner qualifies for at the current node,
+        /// filtered by the given skill type. Picks the gatherable with the highest MinLevel the runner
+        /// can meet. Mid-gather stable: keeps current resource until an item is produced.
+        /// </summary>
+        public static AutomationAction GatherBestAvailable(SkillType skill)
+            => new AutomationAction { Type = ActionType.GatherBestAvailable, IntParam = (int)skill };
     }
 }
