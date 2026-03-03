@@ -45,10 +45,6 @@ namespace ProjectGuild.Data
             "Only used when IsEntranceNode is true.")]
         public Vector3 EntranceOffset;
 
-        [Tooltip("Y rotation (degrees) the entrance faces. For future 'last mile' approach curve.\n" +
-            "Only used when IsEntranceNode is true.")]
-        public float EntranceFacingAngle;
-
         [Header("Visuals")]
         [Tooltip("Prefab to instantiate as this node's entrance marker in the overworld.\n" +
             "If null, a placeholder cylinder is created instead.\n" +

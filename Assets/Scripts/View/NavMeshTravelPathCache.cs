@@ -35,6 +35,10 @@ namespace ProjectGuild.View
         // Cached paths indexed by runner ID
         private readonly Dictionary<string, CachedTravelPath> _cachedPaths = new();
 
+        // Last visual position per runner — updated every frame by GetPositionAlongPath.
+        // Used as redirect departure so the new path starts where the runner visually is.
+        private readonly Dictionary<string, Vector3> _lastPathPositions = new();
+
         // Log NavMesh failures once to avoid console spam
         private bool _loggedNavMeshFallback;
 
@@ -81,6 +85,7 @@ namespace ProjectGuild.View
         public void ClearAll()
         {
             _cachedPaths.Clear();
+            _lastPathPositions.Clear();
             _loggedNavMeshFallback = false;
             _nodeAssetLookup = null;
 
@@ -134,10 +139,10 @@ namespace ProjectGuild.View
 
             // TODO: Remove after verifying NavMesh distances
             float euclidean = map.FindPath(fromNodeId, toNodeId, out _);
-            float delta = cachedPath.TotalPathLengthXZ - euclidean;
-            Debug.Log($"[PathDistance] {fromNodeId} -> {toNodeId}: NavMesh={cachedPath.TotalPathLengthXZ:F1}m, Euclidean={euclidean:F1}m ({(delta >= 0 ? "+" : "")}{delta:F1}m)");
+            float delta = cachedPath.TotalPathLength - euclidean;
+            Debug.Log($"[PathDistance] {fromNodeId} -> {toNodeId}: NavMesh3D={cachedPath.TotalPathLength:F1}m, NavMeshXZ={cachedPath.TotalPathLengthXZ:F1}m, Euclidean={euclidean:F1}m ({(delta >= 0 ? "+" : "")}{delta:F1}m)");
 
-            return cachedPath.TotalPathLengthXZ;
+            return cachedPath.TotalPathLength;
         }
 
         /// <summary>
@@ -153,9 +158,19 @@ namespace ProjectGuild.View
             var toNode = map.GetNode(toNodeId);
             if (toNode == null) return null;
 
-            float y = TerrainHeightSampler.GetHeight(fromX, fromZ);
-            Vector3 departure = new Vector3(fromX, y, fromZ);
-            Vector3 arrival = ComputeArrivalPointFromPosition(fromX, fromZ, toNode);
+            // If the runner was on a NavMesh path, start the new path from their
+            // last visual position (not the sim's straight-line virtual position).
+            float departX = fromX;
+            float departZ = fromZ;
+            if (_lastPathPositions.TryGetValue(runnerId, out var lastPos))
+            {
+                departX = lastPos.x;
+                departZ = lastPos.z;
+            }
+
+            float y = TerrainHeightSampler.GetHeight(departX, departZ);
+            Vector3 departure = new Vector3(departX, y, departZ);
+            Vector3 arrival = ComputeArrivalPointFromPosition(departX, departZ, toNode);
 
             var cachedPath = ComputeNavMeshPath(departure, arrival);
             if (!cachedPath.IsValid)
@@ -167,13 +182,13 @@ namespace ProjectGuild.View
             _cachedPaths[runnerId] = cachedPath;
 
             // TODO: Remove after verifying NavMesh distances
-            float dx = toNode.WorldX - fromX;
-            float dz = toNode.WorldZ - fromZ;
+            float dx = toNode.WorldX - departX;
+            float dz = toNode.WorldZ - departZ;
             float euclidean = Mathf.Sqrt(dx * dx + dz * dz);
-            float delta = cachedPath.TotalPathLengthXZ - euclidean;
-            Debug.Log($"[PathDistance] Redirect ({fromX:F0},{fromZ:F0}) -> {toNodeId}: NavMesh={cachedPath.TotalPathLengthXZ:F1}m, Euclidean={euclidean:F1}m ({(delta >= 0 ? "+" : "")}{delta:F1}m)");
+            float delta = cachedPath.TotalPathLength - euclidean;
+            Debug.Log($"[PathDistance] Redirect ({departX:F0},{departZ:F0}) -> {toNodeId}: NavMesh3D={cachedPath.TotalPathLength:F1}m, NavMeshXZ={cachedPath.TotalPathLengthXZ:F1}m, Euclidean={euclidean:F1}m ({(delta >= 0 ? "+" : "")}{delta:F1}m)");
 
-            return cachedPath.TotalPathLengthXZ;
+            return cachedPath.TotalPathLength;
         }
 
         // ─── Public API (Visual) ────────────────────────────────
@@ -191,28 +206,36 @@ namespace ProjectGuild.View
             if (path.Waypoints.Length == 0)
                 return null;
 
+            Vector3 result;
+
             if (path.Waypoints.Length == 1)
-                return path.Waypoints[0];
-
-            float targetDist = Mathf.Clamp01(progress) * path.TotalPathLength;
-
-            // Walk the waypoints to find the segment containing targetDist
-            for (int i = 1; i < path.Waypoints.Length; i++)
             {
-                if (targetDist <= path.CumulativeDistances[i])
-                {
-                    float segmentStart = path.CumulativeDistances[i - 1];
-                    float segmentLength = path.CumulativeDistances[i] - segmentStart;
-                    float t = segmentLength > 0.001f
-                        ? (targetDist - segmentStart) / segmentLength
-                        : 0f;
+                result = path.Waypoints[0];
+            }
+            else
+            {
+                float targetDist = Mathf.Clamp01(progress) * path.TotalPathLength;
+                result = path.Waypoints[^1]; // default to last waypoint
 
-                    return Vector3.Lerp(path.Waypoints[i - 1], path.Waypoints[i], t);
+                // Walk the waypoints to find the segment containing targetDist
+                for (int i = 1; i < path.Waypoints.Length; i++)
+                {
+                    if (targetDist <= path.CumulativeDistances[i])
+                    {
+                        float segmentStart = path.CumulativeDistances[i - 1];
+                        float segmentLength = path.CumulativeDistances[i] - segmentStart;
+                        float t = segmentLength > 0.001f
+                            ? (targetDist - segmentStart) / segmentLength
+                            : 0f;
+
+                        result = Vector3.Lerp(path.Waypoints[i - 1], path.Waypoints[i], t);
+                        break;
+                    }
                 }
             }
 
-            // Fallback: return last waypoint
-            return path.Waypoints[^1];
+            _lastPathPositions[runnerId] = result;
+            return result;
         }
 
         // ─── Event Handlers ──────────────────────────────────────
@@ -242,6 +265,7 @@ namespace ProjectGuild.View
         private void OnRunnerArrivedAtNode(RunnerArrivedAtNode evt)
         {
             _cachedPaths.Remove(evt.RunnerId);
+            _lastPathPositions.Remove(evt.RunnerId);
         }
 
         // ─── Departure / Arrival Point Computation ───────────────
