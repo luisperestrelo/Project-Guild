@@ -35,6 +35,12 @@ namespace ProjectGuild.Bridge
         public GameSimulation Simulation { get; private set; }
 
         /// <summary>
+        /// Exposes the WorldMapAsset so the view layer can extract per-node prefab data
+        /// (entrance marker prefabs) without coupling to the data layer's SO structure.
+        /// </summary>
+        public WorldMapAsset WorldMapAsset => _worldMapAsset;
+
+        /// <summary>
         /// Shorthand access to the EventBus for view-layer subscriptions.
         /// </summary>
         public EventBus Events => Simulation?.Events;
@@ -109,5 +115,25 @@ namespace ProjectGuild.Bridge
                 _tickAccumulator = 0f;
             }
         }
+
+#if UNITY_EDITOR
+        private void OnDrawGizmos()
+        {
+            if (_worldMapAsset == null || _worldMapAsset.Nodes == null) return;
+
+            foreach (var node in _worldMapAsset.Nodes)
+            {
+                if (node == null) continue;
+
+                bool isHub = _worldMapAsset.HubNode == node;
+                Gizmos.color = isHub ? Color.yellow : node.NodeColor;
+                var pos = new Vector3(node.WorldX, 0f, node.WorldZ);
+                Gizmos.DrawWireSphere(pos, isHub ? 3f : 2f);
+
+                UnityEditor.Handles.color = Gizmos.color;
+                UnityEditor.Handles.Label(pos + Vector3.up * 3f, node.Name);
+            }
+        }
+#endif
     }
 }

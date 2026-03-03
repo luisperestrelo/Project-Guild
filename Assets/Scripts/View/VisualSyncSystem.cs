@@ -37,6 +37,7 @@ namespace ProjectGuild.View
         private readonly Dictionary<string, RunnerVisual> _runnerVisuals = new();
         private readonly Dictionary<string, GameObject> _nodeMarkers = new();
         private readonly Dictionary<string, RunnerPositionContext> _runnerPositionContexts = new();
+        private Dictionary<string, GameObject> _entranceMarkerPrefabs = new();
         private bool _worldBuilt;
 
         /// <summary>
@@ -78,9 +79,15 @@ namespace ProjectGuild.View
         /// Creates overworld node markers and runner visuals.
         /// Node scene content is loaded on-demand by WorldSceneManager.
         /// </summary>
-        public void BuildWorld()
+        /// <param name="entranceMarkerPrefabs">
+        /// Optional dictionary mapping nodeId → entrance marker prefab.
+        /// Nodes with a prefab get that model; others get a placeholder cylinder.
+        /// </param>
+        public void BuildWorld(Dictionary<string, GameObject> entranceMarkerPrefabs = null)
         {
             ClearWorld();
+
+            _entranceMarkerPrefabs = entranceMarkerPrefabs ?? new Dictionary<string, GameObject>();
 
             if (Sim?.CurrentGameState?.Map == null) return;
 
@@ -89,9 +96,6 @@ namespace ProjectGuild.View
             {
                 CreateNodeMarker(node);
             }
-
-            // Create bank marker near hub
-            CreateBankMarker();
 
             // Create runner visuals
             foreach (var runner in Sim.CurrentGameState.Runners)
@@ -122,10 +126,19 @@ namespace ProjectGuild.View
 
         private void CreateNodeMarker(WorldNode node)
         {
+            // Try entrance marker prefab (per-node), then generic prefab, then placeholder
             GameObject marker;
-            if (_nodeMarkerPrefab != null)
+            bool isPrefab = false;
+
+            if (_entranceMarkerPrefabs.TryGetValue(node.Id, out var entrancePrefab) && entrancePrefab != null)
+            {
+                marker = Instantiate(entrancePrefab);
+                isPrefab = true;
+            }
+            else if (_nodeMarkerPrefab != null)
             {
                 marker = Instantiate(_nodeMarkerPrefab);
+                isPrefab = true;
             }
             else
             {
@@ -146,17 +159,31 @@ namespace ProjectGuild.View
             var nodeMarkerComponent = marker.AddComponent<NodeMarker>();
             nodeMarkerComponent.Initialize(node.Id);
 
+            // Ensure prefab has a collider for raycasting (placeholder cylinder gets one from CreatePrimitive)
+            if (isPrefab && marker.GetComponentInChildren<Collider>() == null)
+                marker.AddComponent<BoxCollider>();
+
             // Put nodes on their own physics layer for selective raycasting
             int nodeLayer = LayerMask.NameToLayer("Nodes");
             if (nodeLayer >= 0)
                 SetLayerRecursive(marker, nodeLayer);
 
-            // Add a floating label — parented for cleanup but using world position
-            // (can't use localPosition because the cylinder's Y scale is 0.1, which squishes children)
+            // Add a floating label above the marker
+            Vector3 markerPos = NodeWorldPosition(node);
+            float labelHeight = isPrefab ? 4f : 2f;
+
             var labelObj = new GameObject("Label");
             labelObj.transform.SetParent(marker.transform, worldPositionStays: true);
-            labelObj.transform.position = NodeWorldPosition(node) + new Vector3(0f, 2f, 0f);
-            labelObj.transform.localScale = new Vector3(1f / 3f, 1f / 0.1f, 1f / 3f); // counteract parent scale
+            labelObj.transform.position = markerPos + new Vector3(0f, labelHeight, 0f);
+
+            // Counteract parent scale so the label renders at world scale.
+            // For placeholder cylinder (3, 0.1, 3) this matters; for prefabs the scale varies.
+            Vector3 parentScale = marker.transform.lossyScale;
+            labelObj.transform.localScale = new Vector3(
+                1f / Mathf.Max(parentScale.x, 0.01f),
+                1f / Mathf.Max(parentScale.y, 0.01f),
+                1f / Mathf.Max(parentScale.z, 0.01f));
+
             var label = labelObj.AddComponent<TextMeshPro>();
             label.text = node.Name;
             label.fontSize = 6f;
@@ -165,41 +192,6 @@ namespace ProjectGuild.View
             label.rectTransform.sizeDelta = new Vector2(8f, 2f);
 
             _nodeMarkers[node.Id] = marker;
-        }
-
-        private void CreateBankMarker()
-        {
-            var hubId = Sim.CurrentGameState.Map?.HubNodeId;
-            if (hubId == null) return;
-            var hub = Sim.CurrentGameState.Map.GetNode(hubId);
-            if (hub == null) return;
-
-            var bankObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            bankObj.name = "BankMarker";
-            bankObj.transform.localScale = new Vector3(2f, 2f, 2f);
-            bankObj.transform.position = new Vector3(hub.WorldX + 4f, 1f, hub.WorldZ);
-
-            var renderer = bankObj.GetComponent<Renderer>();
-            if (renderer != null)
-                renderer.material = CreatePlaceholderMaterial(new Color(0.7f, 0.6f, 0.2f));
-
-            bankObj.AddComponent<BankMarker>();
-
-            int bankLayer = LayerMask.NameToLayer("Bank");
-            if (bankLayer >= 0)
-                SetLayerRecursive(bankObj, bankLayer);
-
-            // Floating label
-            var labelObj = new GameObject("Label");
-            labelObj.transform.SetParent(bankObj.transform, worldPositionStays: true);
-            labelObj.transform.position = bankObj.transform.position + new Vector3(0f, 2f, 0f);
-            labelObj.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
-            var label = labelObj.AddComponent<TextMeshPro>();
-            label.text = "Bank";
-            label.fontSize = 6f;
-            label.alignment = TextAlignmentOptions.Center;
-            label.color = Color.yellow;
-            label.rectTransform.sizeDelta = new Vector2(4f, 2f);
         }
 
         private void CreateRunnerVisual(Runner runner)
@@ -277,10 +269,14 @@ namespace ProjectGuild.View
 
             _runnerPositionContexts.TryGetValue(runner.Id, out var prev);
 
-            // Scene transition (overworld ↔ node scene, or different node): snap
+            // Scene transition (overworld ↔ node scene, or different node):
+            // Snap to spawn point, then next frame walks to actual position (gathering spot, etc.)
             if (inNodeScene != prev.InNodeScene || runner.CurrentNodeId != prev.NodeId)
             {
-                visual.SnapToPosition(worldPos);
+                Vector3 arrivalPos = inNodeScene
+                    ? GetNodeSceneArrivalPosition(runner)
+                    : worldPos;
+                visual.SnapToPosition(arrivalPos);
             }
             // Inside a node scene: always walk (spot changes, state changes, repositioning)
             else if (inNodeScene)
@@ -346,7 +342,11 @@ namespace ProjectGuild.View
                     ? new Vector3(runner.Travel.StartWorldX.Value, 0f, runner.Travel.StartWorldZ.Value)
                     : NodeWorldPosition(fromNode);
                 Vector3 to = NodeWorldPosition(toNode);
-                return Vector3.Lerp(from, to, runner.Travel.Progress) + RunnerYOffset;
+                Vector3 lerpedXZ = Vector3.Lerp(from, to, runner.Travel.Progress);
+
+                // Sample terrain height at interpolated XZ position
+                float terrainY = TerrainHeightSampler.GetHeight(lerpedXZ.x, lerpedXZ.z);
+                return new Vector3(lerpedXZ.x, terrainY, lerpedXZ.z) + RunnerYOffset;
             }
 
             return Vector3.up; // Fallback
@@ -386,6 +386,28 @@ namespace ProjectGuild.View
             // Idle, Depositing, or other states: use a spawn point
             int runnerIndex = GetRunnerIndexAtNode(runner);
             return sceneRoot.GetSpawnPosition(runnerIndex) + RunnerYOffset;
+        }
+
+        /// <summary>
+        /// Get the arrival (spawn) position for a runner entering a node scene.
+        /// Used on scene transitions so runners appear at the entrance and walk
+        /// to their actual position (gathering spot, etc.) on the next frame.
+        /// </summary>
+        private Vector3 GetNodeSceneArrivalPosition(Runner runner)
+        {
+            string nodeId = runner.CurrentNodeId;
+            if (_worldSceneManager != null && _worldSceneManager.IsNodeSceneReady(nodeId))
+            {
+                var sceneRoot = _worldSceneManager.GetNodeSceneRoot(nodeId);
+                if (sceneRoot != null)
+                {
+                    int runnerIndex = GetRunnerIndexAtNode(runner);
+                    return sceneRoot.GetSpawnPosition(runnerIndex) + RunnerYOffset;
+                }
+            }
+
+            // Fallback: use the final position
+            return GetRunnerWorldPosition(runner);
         }
 
         /// <summary>
@@ -445,7 +467,8 @@ namespace ProjectGuild.View
 
         private Vector3 NodeWorldPosition(WorldNode node)
         {
-            return new Vector3(node.WorldX, 0f, node.WorldZ);
+            float terrainY = TerrainHeightSampler.GetHeight(node.WorldX, node.WorldZ);
+            return new Vector3(node.WorldX, terrainY, node.WorldZ);
         }
 
         // ─── Event Handlers ──────────────────────────────────────────

@@ -50,6 +50,10 @@ crashlytics-build.properties
 **/build/
 local.properties
 
+# Third-party asset packs (too large for git, re-import from Asset Store/Synty)
+Assets/Art/Synty/
+Assets/Art/Synty.meta
+
 # Local docs (kept local, not tracked)
 Assets/Scripts/ARCHITECTURE.md
 Assets/Scripts/ARCHITECTURE.md.meta

@@ -93,6 +93,17 @@ namespace ProjectGuild.View.UI
         public SaveManager SaveManager => _gameBootstrapper?.SaveManager;
 
         /// <summary>
+        /// Returns true if a text field currently has keyboard focus.
+        /// Used to suppress hotkeys (like H for Guild Hall) while the player is typing.
+        /// </summary>
+        public bool IsTextFieldFocused()
+        {
+            if (_uiDocument == null) return false;
+            var focused = _uiDocument.rootVisualElement?.focusController?.focusedElement;
+            return focused is TextField;
+        }
+
+        /// <summary>
         /// Returns true if the mouse pointer is over any interactive UI panel.
         /// Used by CameraController to block zoom/orbit when hovering over UI.
         /// </summary>
@@ -230,6 +241,14 @@ namespace ProjectGuild.View.UI
                 root.Add(optionsBtn);
             }
 
+            // Guild Hall button (top-left, next to Options)
+            {
+                var guildHallBtn = new Button(() => JumpToGuildHall());
+                guildHallBtn.text = "Guild Hall";
+                guildHallBtn.AddToClassList("guildhall-toggle-button");
+                root.Add(guildHallBtn);
+            }
+
             // Log panel container (Activity + Decisions tabs, bottom-left)
             var logPanelContainer = root.Q("log-panel-container");
             if (logPanelContainer != null && _logPanelContainerAsset != null)
@@ -363,6 +382,20 @@ namespace ProjectGuild.View.UI
         public void AppendToLogbook(string text)
         {
             _logbookPanelController?.AppendToCurrentPage(text);
+        }
+
+        // ─── Guild Hall (Hub Scene Camera) ─────────────────
+
+        /// <summary>
+        /// Jump the camera to the Guild Hall scene. Called by the Guild Hall button
+        /// and H hotkey. Enters hub-scene camera mode without needing a runner there.
+        /// </summary>
+        public void JumpToGuildHall()
+        {
+            var hubNodeId = Simulation?.CurrentGameState?.Map?.HubNodeId;
+            if (hubNodeId == null || _cameraController == null) return;
+
+            _cameraController.EnterHubSceneMode(hubNodeId);
         }
 
         // ─── Bank Panel ─────────────────────────────────────

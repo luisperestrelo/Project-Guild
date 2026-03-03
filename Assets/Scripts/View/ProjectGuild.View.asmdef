@@ -4,6 +4,7 @@
     "references": [
         "ProjectGuild.Simulation",
         "ProjectGuild.Bridge",
+        "ProjectGuild.Data",
         "Unity.InputSystem",
         "Unity.TextMeshPro"
     ],

@@ -30,6 +30,12 @@ namespace ProjectGuild.View
         [Tooltip("Node ID this scene represents (must match WorldNode.Id, e.g. 'copper_mine').")]
         [SerializeField] private string _nodeId;
 
+        [Header("Scene Overview")]
+        [Tooltip("The central point of interest in this scene. Used as the camera target " +
+            "when viewing this node without following a runner (e.g. Guild Hall button).\n" +
+            "Place near the center of the scene's playable area. Falls back to this transform's position if unset.")]
+        [SerializeField] private Transform _sceneFocalPoint;
+
         [Header("Runner Positioning")]
         [Tooltip("Where runners appear when entering this node. " +
             "Multiple points for multiple runners arriving simultaneously.")]
@@ -43,6 +49,13 @@ namespace ProjectGuild.View
         public string NodeId => _nodeId;
         public Transform[] SpawnPoints => _spawnPoints;
         public GatherableSpotGroup[] GatheringSpotGroups => _gatheringSpotGroups;
+
+        /// <summary>
+        /// The scene's focal point position. Used as the camera target when viewing
+        /// this scene without following a runner. Falls back to this transform's position.
+        /// </summary>
+        public Vector3 SceneFocalPosition =>
+            _sceneFocalPoint != null ? _sceneFocalPoint.position : transform.position;
 
         /// <summary>
         /// Get the world-space position for a runner gathering at the given gatherable index.

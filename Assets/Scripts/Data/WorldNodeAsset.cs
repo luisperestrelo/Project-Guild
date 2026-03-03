@@ -33,7 +33,13 @@ namespace ProjectGuild.Data
         public string SceneName;
 
         [Header("Visuals")]
-        [Tooltip("Color used for the node's visual representation (placeholder — will be replaced by proper art).")]
+        [Tooltip("Prefab to instantiate as this node's entrance marker in the overworld.\n" +
+            "If null, a placeholder cylinder is created instead.\n" +
+            "Assign an Asset Store model (cave entrance, wooden arch, tent, etc.) for each node.")]
+        public GameObject EntranceMarkerPrefab;
+
+        [Tooltip("PLACEHOLDER ONLY: color for the fallback cylinder when no EntranceMarkerPrefab is assigned.\n" +
+            "Ignored entirely when a prefab is set. Has no effect on the final game visuals.")]
         public Color NodeColor = Color.gray;
 
         [Header("Gatherables")]

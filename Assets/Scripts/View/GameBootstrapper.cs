@@ -78,7 +78,7 @@ namespace ProjectGuild.View
             LoadScenesForCurrentRunners();
 
             // Build the visual world (overworld markers + runner visuals)
-            _visualSyncSystem.BuildWorld();
+            _visualSyncSystem.BuildWorld(BuildEntranceMarkerPrefabLookup());
 
             // Point camera at first runner
             SelectRunner(0);
@@ -173,7 +173,7 @@ namespace ProjectGuild.View
             LoadScenesForCurrentRunners();
 
             // Rebuild visual world
-            _visualSyncSystem.BuildWorld();
+            _visualSyncSystem.BuildWorld(BuildEntranceMarkerPrefabLookup());
 
             // Point camera at first runner
             SelectRunner(0);
@@ -202,6 +202,27 @@ namespace ProjectGuild.View
 
             foreach (var nodeId in nodesWithRunners)
                 _worldSceneManager.EnsureNodeSceneLoaded(nodeId);
+        }
+
+        // ─── Prefab Wiring ───────────────────────────────────────────
+
+        /// <summary>
+        /// Builds a nodeId → entrance marker prefab dictionary from the WorldMapAsset.
+        /// Keeps VisualSyncSystem decoupled from the SO data layer.
+        /// </summary>
+        private Dictionary<string, GameObject> BuildEntranceMarkerPrefabLookup()
+        {
+            var lookup = new Dictionary<string, GameObject>();
+            var mapAsset = _simulationRunner?.WorldMapAsset;
+            if (mapAsset?.Nodes == null) return lookup;
+
+            foreach (var nodeAsset in mapAsset.Nodes)
+            {
+                if (nodeAsset != null && nodeAsset.EntranceMarkerPrefab != null)
+                    lookup[nodeAsset.Id] = nodeAsset.EntranceMarkerPrefab;
+            }
+
+            return lookup;
         }
 
         // ─── Input + 3D Picking ─────────────────────────────────────
