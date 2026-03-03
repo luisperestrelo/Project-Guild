@@ -133,6 +133,11 @@ namespace ProjectGuild.View
 
         private void Awake()
         {
+            if (_uiManager == null)
+                _uiManager = FindAnyObjectByType<UIManager>();
+            if (_worldSceneManager == null)
+                _worldSceneManager = FindAnyObjectByType<WorldSceneManager>();
+
             _lookAction = new InputAction("Look", InputActionType.Value,
                 binding: "<Pointer>/delta");
 

@@ -25,12 +25,6 @@ namespace ProjectGuild.Data
             "Add edges to define custom travel distances, or leave empty to use Euclidean for everything.")]
         public WorldEdgeEntry[] Edges = new WorldEdgeEntry[0];
 
-        [Header("Travel")]
-        [Tooltip("Multiplier for Euclidean distances when no edge exists.\n" +
-            "Converts map position units to gameplay travel distance.\n" +
-            "Lower = faster travel. Does NOT affect authored edges.")]
-        [Range(0.1f, 2f)]
-        public float TravelDistanceScale = 0.5f;
 
         /// <summary>
         /// A connection between two nodes with a travel distance.
@@ -108,7 +102,6 @@ namespace ProjectGuild.Data
 
             // Set hub
             map.HubNodeId = HubNode != null ? HubNode.Id : "hub";
-            map.TravelDistanceScale = TravelDistanceScale;
 
             // Convert nodes (validate unique IDs)
             var seenIds = new System.Collections.Generic.HashSet<string>();

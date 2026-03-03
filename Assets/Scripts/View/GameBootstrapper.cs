@@ -18,6 +18,7 @@ namespace ProjectGuild.View
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private VisualSyncSystem _visualSyncSystem;
         [SerializeField] private WorldSceneManager _worldSceneManager;
+        [SerializeField] private NavMeshTravelPathCache _navMeshPathCache;
         [SerializeField] private CameraController _cameraController;
         [SerializeField] private UI.UIManager _uiManager;
 
@@ -64,15 +65,27 @@ namespace ProjectGuild.View
                 _cameraController = FindAnyObjectByType<CameraController>();
             if (_uiManager == null)
                 _uiManager = FindAnyObjectByType<UI.UIManager>();
+            if (_navMeshPathCache == null)
+                _navMeshPathCache = FindAnyObjectByType<NavMeshTravelPathCache>();
 
             _saveManager = new SaveManager();
 
             // Start a new game
             _simulationRunner.StartNewGame();
 
+            // Wire NavMesh path distance provider so sim uses real path lengths
+            if (_navMeshPathCache != null)
+                _simulationRunner.Simulation.PathDistanceProvider = _navMeshPathCache;
+            else
+                Debug.LogWarning("[GameBootstrapper] No NavMeshTravelPathCache found. Travel distances will use Euclidean fallback.");
+
             // Initialize scene manager (subscribes to travel events, builds offset lookup)
             if (_worldSceneManager != null)
                 _worldSceneManager.Initialize();
+
+            // Initialize NavMesh path cache (subscribes to travel events, builds node asset lookup)
+            if (_navMeshPathCache != null)
+                _navMeshPathCache.Initialize();
 
             // Load scenes for nodes where runners already are
             LoadScenesForCurrentRunners();
@@ -162,12 +175,24 @@ namespace ProjectGuild.View
             if (_worldSceneManager != null)
                 _worldSceneManager.ClearAll();
 
+            // Tear down NavMesh path cache
+            if (_navMeshPathCache != null)
+                _navMeshPathCache.ClearAll();
+
             // Load or create new game state
             loadAction();
+
+            // Re-wire NavMesh path distance provider (GameSimulation persists, but be defensive)
+            if (_navMeshPathCache != null)
+                _simulationRunner.Simulation.PathDistanceProvider = _navMeshPathCache;
 
             // Re-initialize scene manager
             if (_worldSceneManager != null)
                 _worldSceneManager.Initialize();
+
+            // Re-initialize NavMesh path cache
+            if (_navMeshPathCache != null)
+                _navMeshPathCache.Initialize();
 
             // Load scenes for nodes where runners are
             LoadScenesForCurrentRunners();

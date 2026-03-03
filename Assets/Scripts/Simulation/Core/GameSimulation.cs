@@ -27,6 +27,14 @@ namespace ProjectGuild.Simulation.Core
         public EventLogService EventLog { get; private set; }
         public ChronicleService Chronicle { get; private set; }
 
+        /// <summary>
+        /// Optional provider for real path distances (e.g. NavMesh-backed).
+        /// When set, travel distance calculations try the provider first and fall
+        /// back to Euclidean/FindPath math when the provider returns null.
+        /// Set by the view layer after construction (not a constructor parameter).
+        /// </summary>
+        public IPathDistanceProvider PathDistanceProvider { get; set; }
+
         private readonly System.Random _random = new();
 
 
@@ -273,9 +281,19 @@ namespace ProjectGuild.Simulation.Core
                 float virtualX = startX + (toNode.WorldX - startX) * progress;
                 float virtualZ = startZ + (toNode.WorldZ - startZ) * progress;
 
-                float dx = newTarget.WorldX - virtualX;
-                float dz = newTarget.WorldZ - virtualZ;
-                float distToNewTarget = (float)Math.Sqrt(dx * dx + dz * dz) * map.TravelDistanceScale;
+                float? redirectDist = PathDistanceProvider?.GetTravelDistance(runnerId, virtualX, virtualZ, targetNodeId);
+                float distToNewTarget;
+                if (redirectDist.HasValue)
+                {
+                    distToNewTarget = redirectDist.Value;
+                }
+                else
+                {
+                    float dx = newTarget.WorldX - virtualX;
+                    float dz = newTarget.WorldZ - virtualZ;
+                    float raw = (float)Math.Sqrt(dx * dx + dz * dz) - newTarget.ApproachRadius;
+                    distToNewTarget = Math.Max(raw, 0.1f);
+                }
 
                 runner.Travel = new TravelState
                 {
@@ -302,7 +320,8 @@ namespace ProjectGuild.Simulation.Core
             // ─── Normal travel ───
             if (runner.CurrentNodeId == targetNodeId) return false;
 
-            float distance = CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out var path);
+            float? providerDist = PathDistanceProvider?.GetTravelDistance(runnerId, runner.CurrentNodeId, targetNodeId);
+            float distance = providerDist ?? CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out _);
             if (distance < 0) return false;
 
             string fromNodeId = runner.CurrentNodeId;
@@ -2484,13 +2503,24 @@ namespace ProjectGuild.Simulation.Core
             {
                 var targetNode = CurrentGameState.Map.GetNode(targetNodeId);
                 if (targetNode == null) return;
-                float dx = targetNode.WorldX - startX.Value;
-                float dz = targetNode.WorldZ - startZ.Value;
-                distance = (float)Math.Sqrt(dx * dx + dz * dz) * CurrentGameState.Map.TravelDistanceScale;
+
+                float? providerDist = PathDistanceProvider?.GetTravelDistance(runner.Id, startX.Value, startZ.Value, targetNodeId);
+                if (providerDist.HasValue)
+                {
+                    distance = providerDist.Value;
+                }
+                else
+                {
+                    float dx = targetNode.WorldX - startX.Value;
+                    float dz = targetNode.WorldZ - startZ.Value;
+                    float raw = (float)Math.Sqrt(dx * dx + dz * dz) - targetNode.ApproachRadius;
+                    distance = Math.Max(raw, 0.1f);
+                }
             }
             else
             {
-                distance = CurrentGameState.Map.FindPath(fromNode, targetNodeId, out _);
+                float? providerDist = PathDistanceProvider?.GetTravelDistance(runner.Id, fromNode, targetNodeId);
+                distance = providerDist ?? CurrentGameState.Map.FindPath(fromNode, targetNodeId, out _);
                 if (distance < 0) return;
             }
 

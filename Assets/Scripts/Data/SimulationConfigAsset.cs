@@ -14,7 +14,7 @@ namespace ProjectGuild.Data
     public class SimulationConfigAsset : ScriptableObject
     {
         [Header("Travel")]
-        [Tooltip("Base travel speed at Athletics level 1 (distance units per second)")]
+        [Tooltip("Base travel speed at Athletics level 1 (meters per second)")]
         public float BaseTravelSpeed = 1.0f;
 
         [Tooltip("Additional travel speed per Athletics level beyond 1")]

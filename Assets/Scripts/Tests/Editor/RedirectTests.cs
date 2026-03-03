@@ -26,7 +26,6 @@ namespace ProjectGuild.Tests
         {
             _map = new WorldMap();
             _map.HubNodeId = "A";
-            _map.TravelDistanceScale = 1f; // 1:1 so distances are predictable
             _map.AddNode("A", "Node A", 0f, 0f);
             _map.AddNode("B", "Node B", 30f, 0f);
             _map.AddNode("C", "Node C", 0f, 40f);

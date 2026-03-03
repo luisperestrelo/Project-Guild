@@ -44,7 +44,7 @@ namespace ProjectGuild.Simulation.Core
         // ─── Travel ──────────────────────────────────────────────────
 
         /// <summary>
-        /// Base travel speed at Athletics level 1 (distance units per second).
+        /// Base travel speed at Athletics level 1 (meters per second).
         /// </summary>
         public float BaseTravelSpeed = 1.0f;
 

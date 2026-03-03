@@ -93,10 +93,10 @@ namespace ProjectGuild.Tests
         {
             float dist = _map.FindPath("hub", "isolated", out var path);
 
-            // No edge path exists, so FindPath falls back to Euclidean distance * TravelDistanceScale.
-            // hub=(0,0) to isolated=(50,50) = sqrt(50^2 + 50^2) ≈ 70.71, scaled by default 0.5 ≈ 35.36
+            // No edge path exists, so FindPath falls back to Euclidean distance.
+            // hub=(0,0) to isolated=(50,50) = sqrt(50^2 + 50^2) ≈ 70.71
             Assert.Greater(dist, 0f);
-            Assert.AreEqual(70.71f * _map.TravelDistanceScale, dist, 0.1f);
+            Assert.AreEqual(70.71f, dist, 0.1f);
             Assert.IsNotNull(path);
             Assert.AreEqual(2, path.Count);
             Assert.AreEqual("hub", path[0]);
@@ -144,6 +144,71 @@ namespace ProjectGuild.Tests
 
             // Pathfinder should pick the direct route
             Assert.AreEqual(directDist, pathDist);
+        }
+
+        // ─── ApproachRadius / Edge-to-Edge Distance Tests ─────────
+
+        [Test]
+        public void GetEuclideanDistance_ZeroRadius_ReturnsCenterToCenter()
+        {
+            // hub=(0,0) to a=(10,0), both default radius 0 → straight distance = 10
+            float dist = _map.GetEuclideanDistance("hub", "a");
+            Assert.AreEqual(10f, dist, 0.01f);
+        }
+
+        [Test]
+        public void GetEuclideanDistance_WithRadius_SubtractsBothRadii()
+        {
+            var map = new WorldMap();
+            map.AddNode("x", "X", 0f, 0f);
+            map.AddNode("y", "Y", 20f, 0f);
+            map.GetNode("x").ApproachRadius = 3f;
+            map.GetNode("y").ApproachRadius = 5f;
+            map.Initialize();
+
+            // Center-to-center = 20, minus 3 + 5 = 12
+            float dist = map.GetEuclideanDistance("x", "y");
+            Assert.AreEqual(12f, dist, 0.01f);
+        }
+
+        [Test]
+        public void GetEuclideanDistance_RadiiExceedDistance_ClampsToMinimum()
+        {
+            var map = new WorldMap();
+            map.AddNode("close_a", "Close A", 0f, 0f);
+            map.AddNode("close_b", "Close B", 5f, 0f);
+            map.GetNode("close_a").ApproachRadius = 4f;
+            map.GetNode("close_b").ApproachRadius = 4f;
+            map.Initialize();
+
+            // Center-to-center = 5, minus 4 + 4 = -3 → clamped to 0.1
+            float dist = map.GetEuclideanDistance("close_a", "close_b");
+            Assert.AreEqual(0.1f, dist, 0.001f);
+        }
+
+        [Test]
+        public void FindPath_EuclideanFallback_SubtractsRadii()
+        {
+            var map = new WorldMap();
+            map.HubNodeId = "origin";
+            map.AddNode("origin", "Origin", 0f, 0f);
+            map.AddNode("far", "Far", 30f, 40f); // distance = 50
+            map.GetNode("origin").ApproachRadius = 5f;
+            map.GetNode("far").ApproachRadius = 10f;
+            // No edges — will fall back to Euclidean
+            map.Initialize();
+
+            float dist = map.FindPath("origin", "far", out _);
+
+            // Euclidean = 50, minus 5 + 10 = 35
+            Assert.AreEqual(35f, dist, 0.01f);
+        }
+
+        [Test]
+        public void ApproachRadius_DefaultsToZero()
+        {
+            var node = _map.GetNode("hub");
+            Assert.AreEqual(0f, node.ApproachRadius);
         }
 
         // ─── SceneName Tests ──────────────────────────────────────

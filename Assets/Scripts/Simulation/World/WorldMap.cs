@@ -39,6 +39,14 @@ namespace ProjectGuild.Simulation.World
         public string SceneName;
 
         /// <summary>
+        /// Radius of the node's overworld area in meters. Travel distance is calculated
+        /// edge-to-edge (subtracting both nodes' radii) so that Progress=1.0 lines up
+        /// with the runner visually arriving at the circumference, not the center.
+        /// 0 = point node (legacy behavior, arrive at center).
+        /// </summary>
+        public float ApproachRadius;
+
+        /// <summary>
         /// Gatherables available at this node. Empty for non-gathering nodes (hub, raids, etc.).
         /// A node can have multiple gatherables with different level requirements —
         /// e.g. a mine with copper (level 1) and iron (level 15).
@@ -79,12 +87,6 @@ namespace ProjectGuild.Simulation.World
         /// </summary>
         public string HubNodeId;
 
-        /// <summary>
-        /// Multiplier applied to Euclidean distances when no edge path exists.
-        /// Converts map-UI position units into gameplay travel distance.
-        /// Authored edges are NOT affected by this — they already have tuned values.
-        /// </summary>
-        public float TravelDistanceScale = 0.5f;
 
         // Runtime lookups (not serialized)
         [NonSerialized] private Dictionary<string, WorldNode> _nodeLookup;
@@ -132,7 +134,9 @@ namespace ProjectGuild.Simulation.World
 
             float dx = to.WorldX - from.WorldX;
             float dz = to.WorldZ - from.WorldZ;
-            return (float)Math.Sqrt(dx * dx + dz * dz);
+            float raw = (float)Math.Sqrt(dx * dx + dz * dz);
+            float adjusted = raw - from.ApproachRadius - to.ApproachRadius;
+            return Math.Max(adjusted, 0.1f);
         }
 
         /// <summary>
@@ -231,7 +235,7 @@ namespace ProjectGuild.Simulation.World
                 if (euclidean > 0)
                 {
                     path = new List<string> { fromNodeId, toNodeId };
-                    return euclidean * TravelDistanceScale;
+                    return euclidean;
                 }
                 return -1f;
             }

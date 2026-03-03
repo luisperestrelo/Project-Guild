@@ -32,6 +32,7 @@ namespace ProjectGuild.View
         [Header("References")]
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private WorldSceneManager _worldSceneManager;
+        [SerializeField] private NavMeshTravelPathCache _navMeshPathCache;
 
         // Runtime tracking
         private readonly Dictionary<string, RunnerVisual> _runnerVisuals = new();
@@ -72,6 +73,8 @@ namespace ProjectGuild.View
                 _simulationRunner = FindAnyObjectByType<SimulationRunner>();
             if (_worldSceneManager == null)
                 _worldSceneManager = FindAnyObjectByType<WorldSceneManager>();
+            if (_navMeshPathCache == null)
+                _navMeshPathCache = FindAnyObjectByType<NavMeshTravelPathCache>();
         }
 
         /// <summary>
@@ -332,19 +335,29 @@ namespace ProjectGuild.View
 
         private Vector3 GetTravelingPosition(Runner runner)
         {
+            // Try NavMesh path first (routes around obstacles, respects area/entrance nodes)
+            if (_navMeshPathCache != null)
+            {
+                var pathPos = _navMeshPathCache.GetPositionAlongPath(runner.Id, runner.Travel.Progress);
+                if (pathPos.HasValue)
+                {
+                    float terrainY = TerrainHeightSampler.GetHeight(pathPos.Value.x, pathPos.Value.z);
+                    return new Vector3(pathPos.Value.x, terrainY, pathPos.Value.z) + RunnerYOffset;
+                }
+            }
+
+            // Fallback: straight-line lerp (no NavMesh baked, or path computation failed)
             var fromNode = Sim.CurrentGameState.Map.GetNode(runner.Travel.FromNodeId);
             var toNode = Sim.CurrentGameState.Map.GetNode(runner.Travel.ToNodeId);
 
             if (fromNode != null && toNode != null)
             {
-                // Use override start position if set (redirect — avoids visual snap)
                 Vector3 from = runner.Travel.StartWorldX.HasValue
                     ? new Vector3(runner.Travel.StartWorldX.Value, 0f, runner.Travel.StartWorldZ.Value)
                     : NodeWorldPosition(fromNode);
                 Vector3 to = NodeWorldPosition(toNode);
                 Vector3 lerpedXZ = Vector3.Lerp(from, to, runner.Travel.Progress);
 
-                // Sample terrain height at interpolated XZ position
                 float terrainY = TerrainHeightSampler.GetHeight(lerpedXZ.x, lerpedXZ.z);
                 return new Vector3(lerpedXZ.x, terrainY, lerpedXZ.z) + RunnerYOffset;
             }

@@ -32,6 +32,23 @@ namespace ProjectGuild.Data
             "Leave empty for nodes without a dedicated scene — they'll use a default placeholder.")]
         public string SceneName;
 
+        [Header("Approach")]
+        [Tooltip("Radius of the node's overworld area (meters). Runners arrive/depart at the circumference.\n" +
+            "Travel distance is edge-to-edge (subtracts both radii). 0 = point node (arrive at center).")]
+        public float ApproachRadius = 5f;
+
+        [Tooltip("If true, this node has a specific entrance point (cave mouth, gate, etc.).\n" +
+            "Runners must approach and depart through the entrance position rather than the nearest circumference edge.")]
+        public bool IsEntranceNode;
+
+        [Tooltip("Local offset from WorldX/WorldZ to the entrance position.\n" +
+            "Only used when IsEntranceNode is true.")]
+        public Vector3 EntranceOffset;
+
+        [Tooltip("Y rotation (degrees) the entrance faces. For future 'last mile' approach curve.\n" +
+            "Only used when IsEntranceNode is true.")]
+        public float EntranceFacingAngle;
+
         [Header("Visuals")]
         [Tooltip("Prefab to instantiate as this node's entrance marker in the overworld.\n" +
             "If null, a placeholder cylinder is created instead.\n" +
@@ -78,6 +95,7 @@ namespace ProjectGuild.Data
                 WorldX = WorldX,
                 WorldZ = WorldZ,
                 SceneName = SceneName,
+                ApproachRadius = ApproachRadius,
                 ColorR = NodeColor.r,
                 ColorG = NodeColor.g,
                 ColorB = NodeColor.b,
