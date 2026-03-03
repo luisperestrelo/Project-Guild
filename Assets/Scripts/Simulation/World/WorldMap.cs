@@ -32,6 +32,13 @@ namespace ProjectGuild.Simulation.World
         public float ColorB = 0.5f;
 
         /// <summary>
+        /// Unity scene name for this node's additive scene (e.g. "Node_CopperMine").
+        /// Null or empty means the node has no dedicated scene — uses a default/placeholder.
+        /// The view layer uses this to load/unload node environments at runtime.
+        /// </summary>
+        public string SceneName;
+
+        /// <summary>
         /// Gatherables available at this node. Empty for non-gathering nodes (hub, raids, etc.).
         /// A node can have multiple gatherables with different level requirements —
         /// e.g. a mine with copper (level 1) and iron (level 15).
@@ -244,7 +251,7 @@ namespace ProjectGuild.Simulation.World
         // ─── Builder helpers for creating maps in code ───────────────
 
         public WorldMap AddNode(string id, string name, float worldX = 0f, float worldZ = 0f,
-            params GatherableConfig[] gatherables)
+            string sceneName = null, params GatherableConfig[] gatherables)
         {
             Nodes.Add(new WorldNode
             {
@@ -252,6 +259,7 @@ namespace ProjectGuild.Simulation.World
                 Name = name,
                 WorldX = worldX,
                 WorldZ = worldZ,
+                SceneName = sceneName,
                 Gatherables = gatherables ?? Array.Empty<GatherableConfig>(),
             });
             // Invalidate lookups so they rebuild on next access
@@ -285,22 +293,22 @@ namespace ProjectGuild.Simulation.World
             map.HubNodeId = "hub";
 
             // Hub at origin (blue)
-            map.AddNode("hub", "Guild Hall", 0f, 0f);
+            map.AddNode("hub", "Guild Hall", 0f, 0f, "Node_GuildHall");
             map.GetNode("hub").ColorR = 0.2f; map.GetNode("hub").ColorG = 0.6f; map.GetNode("hub").ColorB = 1f;
 
             // ─── Single-gatherable nodes (tutorial-distance) ────────
-            map.AddNode("copper_mine", "Copper Mine", -15f, 10f);
-            map.AddNode("pine_forest", "Pine Forest", 10f, 15f);
+            map.AddNode("copper_mine", "Copper Mine", -15f, 10f, "Node_CopperMine");
+            map.AddNode("pine_forest", "Pine Forest", 10f, 15f, "Node_PineForest");
             map.AddNode("sunlit_pond", "Sunlit Pond", 15f, -5f);
             map.AddNode("herb_garden", "Herb Garden", -10f, -12f);
 
             // ─── Mixed-gatherable test nodes ────────────────────────
             map.AddNode("overgrown_mine", "Overgrown Mine (Trees first, Ore second)", -20f, -5f);
             map.AddNode("deep_mine", "Deep Mine (Copper + Iron Lv15)", -30f, 15f);
-            map.AddNode("lakeside_grove", "Lakeside Grove (Logs, Fish, Herbs)", 20f, 25f);
+            map.AddNode("lakeside_grove", "Lakeside Grove (Logs, Fish, Herbs)", 20f, 25f, "Node_LakesideGrove");
 
             // ─── Combat zones ───────────────────────────────────────
-            map.AddNode("goblin_camp", "Goblin Camp", -25f, 30f);
+            map.AddNode("goblin_camp", "Goblin Camp", -25f, 30f, "Node_GoblinCamp");
             map.AddNode("dark_cavern", "Dark Cavern", 0f, 50f);
 
             // ─── Edges ──────────────────────────────────────────────

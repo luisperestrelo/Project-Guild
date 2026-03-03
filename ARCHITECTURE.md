@@ -121,6 +121,8 @@ Back to Tick() (continues processing)
 | `GameBootstrapper.cs` | View | The director. Wires everything up, 3D picking, save/load |
 | `DevConsole.cs` | View | Dev-only console (tilde to open). Spawn runners, event log, tick/time |
 | `VisualSyncSystem.cs` | View | The cameraman. Keeps 3D visuals in sync with sim |
+| `WorldSceneManager.cs` | View | Scene lifecycle manager. Loads/unloads additive node scenes on demand |
+| `NodeSceneRoot.cs` | View | Root component in each node scene. Holds spawn points and gathering spots |
 | `NodeMarker.cs` | View | Tags node GameObjects for click-to-select raycasting |
 | `BankMarker.cs` | View | Tags the bank GameObject for click-to-open raycasting |
 | `UIManager.cs` | View | Top-level UI coordinator. Owns UIDocument, manages all controllers, tick refresh, selection state |
@@ -194,7 +196,7 @@ One skill on one runner. Holds level, accumulated XP, and whether the runner has
 All methods take a `SimulationConfig` parameter so tuning values are never hardcoded.
 
 ### `Simulation/Core/Runner.cs`
-The core data class for a runner. Identity (ID, name), current state (Idle/Traveling/Gathering/Depositing), location (which world node), 15 skills, an `Inventory` (28-slot OSRS-style), a `TravelState` for when they're moving, a `GatheringState` for when they're gathering, a `DepositingState` for when depositing. Automation state uses **string ID references** into global libraries on GameState: `TaskSequenceId` (current step sequence), `PendingTaskSequenceId` (deferred macro rule result), `MacroRulesetId` (macro rules). `TaskSequenceCurrentStepIndex` tracks per-runner progress through the shared task sequence template. Micro rulesets are **per-Work-step** (on `TaskStep.MicroRulesetId`), not per-runner. The constructor initializes all skills to level 1 — actual values come from RunnerFactory. Legacy direct-object fields (`TaskSequence`, `MacroRuleset`, `MicroRuleset`) exist for save migration.
+The core data class for a runner. Identity (ID, name), current state (Idle/Traveling/Gathering/Depositing), location (which world node), 15 skills, an `Inventory` (28-slot OSRS-style), a `TravelState` for when they're moving, a `GatheringState` for when they're gathering, a `DepositingState` for when depositing. Automation state uses **string ID references** into global libraries on GameState: `TaskSequenceId` (current step sequence), `PendingTaskSequenceId` (deferred macro rule result), `MacroRulesetId` (macro rules). `TaskSequenceCurrentStepIndex` tracks per-runner progress through the shared task sequence template. Micro rulesets are **per-Work-step** (on `TaskStep.MicroRulesetId`), not per-runner. `MicroRulesetOverrides` (`Dictionary<int, string>`) allows per-runner overrides of specific Work step micro rulesets without cloning the shared sequence — keyed by step index, persists across loops, cleared on sequence re-assignment. The constructor initializes all skills to level 1 — actual values come from RunnerFactory.
 
 **`TravelState`** — tracks from/to nodes, total distance, distance covered, and a `Progress` property (0.0-1.0). Also has optional `StartWorldX`/`StartWorldZ` float fields — when set, the view layer uses these as the travel start position instead of the FromNode's position. Used by the redirect system to prevent visual snapping when a runner changes destination mid-travel. Null means "use the FromNode position as usual."
 
@@ -304,7 +306,7 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 
 **`ActionType.cs`** — Enum of action types. Split into macro and micro:
 - **Macro actions:** WorkAt (create work loop at node), ReturnToHub (1-step non-looping), Idle (clear task sequence)
-- **Micro actions:** GatherHere (gather resource at index), FinishTask (signal macro to advance past Work step)
+- **Micro actions:** GatherHere (gather resource at index), GatherBestAvailable (auto-gather highest-tier resource the runner qualifies for), FinishTask (signal macro to advance past Work step)
 
 **`ComparisonOperator.cs`** — Enum: GreaterThan, GreaterOrEqual, LessThan, LessOrEqual, Equal, NotEqual.
 
@@ -371,6 +373,12 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 - `CommandRenameTemplate(id, newName, kind)` / `CommandReorderTemplate(id, newIndex, kind)` — manage templates by `TemplateKind`.
 - `CommandToggleTemplateFavorite(id, kind)` — toggle `IsFavorite` flag. Enforces `MaxTemplateFavorites` (20) per library. Favorited templates appear as quick-access buttons in the template row.
 
+**Micro override (hot-wiring) commands:**
+- `CommandOverrideMicro(runnerId, stepIndex, microRulesetId)` — set a per-runner micro override for a specific Work step index.
+- `CommandClearMicroOverride(runnerId, stepIndex)` / `CommandClearAllMicroOverrides(runnerId)` — remove overrides.
+- `CommandForkSequenceFromOverrides(runnerId, newName)` — bake the runner's overrides into a new task sequence in the library, assign it to the runner, and clear overrides. The "make it official" action.
+- `GetEffectiveMicroRulesetId(runner, stepIndex)` — returns the override micro ID if one exists for that step, otherwise the step's own `MicroRulesetId`.
+
 **Query helpers:** `CountRunnersUsing*`, `GetRunnerNamesUsing*`, `CountSequencesUsingMicroRuleset`
 
 ### Items — `Simulation/Items/`
@@ -393,7 +401,7 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 
 **`WorldMap.cs`** — The world map: a graph of `WorldNode`s connected by `WorldEdge`s.
 
-**`WorldNode`** — A location in the world. Has an Id, Name, world-space position (WorldX, WorldZ), color (ColorR/G/B floats — stored as floats to avoid UnityEngine dependency), and a `GatherableConfig[]` array. The gatherables array is what makes a node a gathering node — empty for hubs, mob zones, etc. A node can have multiple gatherables with different skills and level requirements. The order of the array determines the gatherable index (index 0 = default). What you can do at a node is determined by its data, not any label — there is no NodeType enum.
+**`WorldNode`** — A location in the world. Has an Id, Name, world-space position (WorldX, WorldZ), color (ColorR/G/B floats — stored as floats to avoid UnityEngine dependency), `SceneName` (Unity scene name for this node's additive scene, nullable), and a `GatherableConfig[]` array. The gatherables array is what makes a node a gathering node — empty for hubs, mob zones, etc. A node can have multiple gatherables with different skills and level requirements. The order of the array determines the gatherable index (index 0 = default). What you can do at a node is determined by its data, not any label — there is no NodeType enum.
 
 **`WorldEdge`** — Bidirectional connection between two nodes with a travel distance.
 
@@ -403,7 +411,7 @@ The rule engine uses a **data-driven, first-match-wins priority rule** design. N
 
 Key methods:
 - `Initialize()` — builds runtime lookup dictionaries. Must be called before querying.
-- `AddNode` / `AddEdge` — builder helpers for constructing maps in code. `AddNode` accepts `params GatherableConfig[]` for directly attaching gatherables (used by tests).
+- `AddNode` / `AddEdge` — builder helpers for constructing maps in code. `AddNode` accepts optional `sceneName` and `params GatherableConfig[]` for directly attaching gatherables (used by tests and `CreateStarterMap`).
 - `GetNode(id)` — node lookup by ID.
 - `GetEuclideanDistance(from, to)` — straight-line distance between two nodes.
 - `GetDirectDistance(from, to)` — distance between directly connected nodes (-1 if no edge).
@@ -441,7 +449,7 @@ A single GatherableConfigAsset can be reused across multiple nodes (e.g. "Copper
 ### `Data/WorldNodeAsset.cs`
 `[CreateAssetMenu: Project Guild/World Node]`
 
-ScriptableObject for authoring a world node. Fields: Id, Name, WorldX, WorldZ, NodeColor (Unity Color), Gatherables (array of `GatherableConfigAsset` references). `ToWorldNode()` converts to a plain C# `WorldNode`, including converting each GatherableConfigAsset to a `GatherableConfig` inline. `OnValidate()` warns for empty Id/Name.
+ScriptableObject for authoring a world node. Fields: Id, Name, WorldX, WorldZ, SceneName (Unity scene name for the node's additive scene), NodeColor (Unity Color), Gatherables (array of `GatherableConfigAsset` references). `ToWorldNode()` converts to a plain C# `WorldNode`, including converting each GatherableConfigAsset to a `GatherableConfig` inline and wiring SceneName. `OnValidate()` warns for empty Id/Name.
 
 Each node in the game world gets its own WorldNodeAsset file. Gatherables are authored directly on the node — drag GatherableConfigAsset references into the node's array. This is how nodes become gathering nodes.
 
@@ -521,8 +529,14 @@ Simple MonoBehaviour storing a `NodeId` string. Attached by `VisualSyncSystem.Cr
 ### `View/BankMarker.cs`
 Simple MonoBehaviour (no fields) attached to the bank cube by `VisualSyncSystem.CreateBankMarker()`. Used by `GameBootstrapper.TryPickBank()` to detect bank clicks via the "Bank" physics layer.
 
+### `View/WorldSceneManager.cs`
+Manages the lifecycle of additive node scenes. Each world node can have a dedicated Unity scene (specified by `WorldNode.SceneName`) loaded at a unique world-space offset (nodeIndex * 2000 on Z). Subscribes to `RunnerStartedTravel` (pre-load destination) and `RunnerArrivedAtNode` (ensure loaded). Scenes unload after a grace period when empty and the camera is elsewhere. The hub scene is exempt from auto-unload. Provides `EnsureNodeSceneLoaded()`, `GetNodeSceneRoot()`, `GetNodeSceneOffset()` for other systems.
+
+### `View/NodeSceneRoot.cs`
+MonoBehaviour attached to the root GameObject in each additive node scene. Stores the node ID, spawn point transforms, and gathering spot groups. Each `GatherableSpotGroup` holds multiple physical positions for one gatherable type (e.g. 4 ore veins for gatherable index 0). `GetGatheringPosition(gatherableIndex, runnerIndexInGroup)` picks a spot within the group so multiple runners gathering the same resource spread across different positions. `GetSpawnPosition(arrivalIndex)` returns a position for entering runners. Falls back gracefully when fewer spots exist than needed.
+
 ### `View/VisualSyncSystem.cs`
-Bridges sim state to 3D world. Builds visual representations of world nodes (colored cylinders with floating labels) and runners (capsule primitives), updates runner positions each `LateUpdate()`. Attaches `NodeMarker` components to node GameObjects during creation for click-to-select. Creates a bank cube near the hub with `BankMarker` component and floating "Bank" label on the "Bank" physics layer.
+Bridges sim state to 3D world. Builds overworld node markers (colored cylinders with floating labels) and runner visuals (capsule primitives), updates runner positions each `LateUpdate()`. When a runner is at a node with a loaded scene (via `WorldSceneManager`), positions the runner at the scene's gathering spots or spawn points. Traveling runners interpolate in overworld space. Attaches `NodeMarker` components to node GameObjects during creation for click-to-select. Creates a bank cube near the hub with `BankMarker` component and floating "Bank" label on the "Bank" physics layer.
 
 Runner position calculation (`GetRunnerWorldPosition`):
 - **Traveling:** Lerps between start and destination using `Travel.Progress`. If `StartWorldX`/`StartWorldZ` is set (redirect), uses those as the start position instead of the FromNode's position — this prevents visual snapping when a runner changes direction mid-travel.
@@ -668,7 +682,7 @@ Deposit, DepositAll from inventory, Withdraw into inventory, CountItem, infinite
 Gathering validation (must be at node with gatherables), item production rate (ticks match config), XP-per-tick awards, level-up event + speed recalculation, higher skill = faster gathering, passion speed boost, inventory-full triggers deposit step, full gather-deposit loop via assignments, multiple loop accumulation in bank, GatheringStarted fires on resume.
 
 ### `Tests/Editor/WorldMapTests.cs`
-Node lookup, direct distance, multi-hop pathfinding (Dijkstra), same-node path, Euclidean fallback with TravelDistanceScale. Starter map tests: hub and nodes exist, pathfinding works, shortest route selection.
+Node lookup, direct distance, multi-hop pathfinding (Dijkstra), same-node path, Euclidean fallback with TravelDistanceScale. Starter map tests: hub and nodes exist, pathfinding works, shortest route selection. SceneName tests: AddNode with/without scene name, starter map scene name assignments (hub, copper mine, nodes without scenes).
 
 ### `Tests/Editor/AutomationConditionTests.cs`
 Tests the automation engine in isolation (no GameSimulation). All 9 condition types evaluated against hand-built `EvaluationContext`s. Verifies Compare helper, all 6 operators, InventoryFull, InventorySlots, InventoryContains, BankContains, SkillLevel, RunnerStateIs, AtNode, Always, SelfHP (always false until Phase 5 combat).

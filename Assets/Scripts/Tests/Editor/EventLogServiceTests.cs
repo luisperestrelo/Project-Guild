@@ -214,7 +214,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mine", "Mine", 0f, 0f,
+            map.AddNode("mine", "Mine", 0f, 0f, null,
                 new Simulation.Gathering.GatherableConfig("copper_ore", SkillType.Mining, 40f, 0.5f));
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
@@ -264,7 +264,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mine", "Mine", 0f, 0f,
+            map.AddNode("mine", "Mine", 0f, 0f, null,
                 new Simulation.Gathering.GatherableConfig("copper_ore", SkillType.Mining, 40f, 0.5f));
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();

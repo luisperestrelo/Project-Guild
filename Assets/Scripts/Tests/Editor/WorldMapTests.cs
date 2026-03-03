@@ -145,5 +145,54 @@ namespace ProjectGuild.Tests
             // Pathfinder should pick the direct route
             Assert.AreEqual(directDist, pathDist);
         }
+
+        // ─── SceneName Tests ──────────────────────────────────────
+
+        [Test]
+        public void AddNode_WithSceneName_StoresSceneName()
+        {
+            var map = new WorldMap();
+            map.AddNode("mine", "Mine", 10f, 20f, "Node_Mine");
+            map.Initialize();
+
+            var node = map.GetNode("mine");
+            Assert.AreEqual("Node_Mine", node.SceneName);
+        }
+
+        [Test]
+        public void AddNode_WithoutSceneName_SceneNameIsNull()
+        {
+            var map = new WorldMap();
+            map.AddNode("basic", "Basic Node", 0f, 0f);
+            map.Initialize();
+
+            var node = map.GetNode("basic");
+            Assert.IsNull(node.SceneName);
+        }
+
+        [Test]
+        public void StarterMap_HubHasSceneName()
+        {
+            var starterMap = WorldMap.CreateStarterMap();
+            var hub = starterMap.GetNode("hub");
+            Assert.AreEqual("Node_GuildHall", hub.SceneName);
+        }
+
+        [Test]
+        public void StarterMap_CopperMineHasSceneName()
+        {
+            var starterMap = WorldMap.CreateStarterMap();
+            var mine = starterMap.GetNode("copper_mine");
+            Assert.AreEqual("Node_CopperMine", mine.SceneName);
+        }
+
+        [Test]
+        public void StarterMap_NodesWithoutScenesHaveNullSceneName()
+        {
+            var starterMap = WorldMap.CreateStarterMap();
+            // Sunlit Pond has no scene assigned in the starter map
+            var pond = starterMap.GetNode("sunlit_pond");
+            Assert.IsNull(pond.SceneName);
+        }
     }
 }

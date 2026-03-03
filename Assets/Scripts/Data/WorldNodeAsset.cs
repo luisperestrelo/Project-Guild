@@ -27,6 +27,11 @@ namespace ProjectGuild.Data
         [Tooltip("World-space Z position for visual placement on the map.")]
         public float WorldZ;
 
+        [Header("Scene")]
+        [Tooltip("Unity scene name for this node's additive scene (e.g. 'Node_CopperMine'). " +
+            "Leave empty for nodes without a dedicated scene — they'll use a default placeholder.")]
+        public string SceneName;
+
         [Header("Visuals")]
         [Tooltip("Color used for the node's visual representation (placeholder — will be replaced by proper art).")]
         public Color NodeColor = Color.gray;
@@ -66,6 +71,7 @@ namespace ProjectGuild.Data
                 Name = Name,
                 WorldX = WorldX,
                 WorldZ = WorldZ,
+                SceneName = SceneName,
                 ColorR = NodeColor.r,
                 ColorG = NodeColor.g,
                 ColorB = NodeColor.b,

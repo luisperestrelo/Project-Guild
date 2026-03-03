@@ -45,8 +45,8 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Guild Hall");
-            map.AddNode("mine", "Copper Mine", 10f, 0f, CopperGatherable);
-            map.AddNode("hard-mine", "Mithril Mine", 0f, 10f, HighLevelGatherable);
+            map.AddNode("mine", "Copper Mine", 10f, 0f, null, CopperGatherable);
+            map.AddNode("hard-mine", "Mithril Mine", 0f, 10f, null, HighLevelGatherable);
             map.AddNode("empty", "Empty Field", 20f, 0f);
             map.AddEdge("hub", "mine", 10f);
             map.AddEdge("hub", "hard-mine", 10f);

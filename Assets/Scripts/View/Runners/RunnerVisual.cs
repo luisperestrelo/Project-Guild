@@ -8,6 +8,11 @@ namespace ProjectGuild.View.Runners
     /// don't create these manually. The sync system spawns one per runner and updates
     /// its position each frame by interpolating between the simulation's tick positions.
     ///
+    /// Three movement modes (caller decides which to use):
+    /// - SetTargetPosition: tick interpolation (0.1s) for sim-driven travel
+    /// - WalkToPosition: visible walk at WalkSpeed for in-node movement (spot changes, repositioning)
+    /// - SnapToPosition: instant teleport for scene transitions and initial placement
+    ///
     /// For now this is a placeholder capsule. Will be replaced with actual character
     /// models and animations later.
     /// </summary>
@@ -19,10 +24,14 @@ namespace ProjectGuild.View.Runners
         public string RunnerId { get; private set; }
         public string RunnerName { get; private set; }
 
-        // Interpolation targets — set by VisualSyncSystem each tick
+        // Interpolation state
         private Vector3 _previousPosition;
         private Vector3 _targetPosition;
         private float _interpolationT;
+        private float _interpolationSpeed = 10f; // 1/duration — default completes in 0.1s (one tick)
+
+        // Walk speed for within-node movement (gathering spot changes, repositioning, etc.)
+        private const float WalkSpeed = 8f; // meters per second
 
         // Name label
         private TextMeshPro _nameLabel;
@@ -50,25 +59,40 @@ namespace ProjectGuild.View.Runners
         }
 
         /// <summary>
-        /// Called by VisualSyncSystem when the simulation ticks and the runner's
-        /// position has changed. We store the current position as "previous" and
-        /// set the new target, then interpolate between them during Update().
-        /// This gives smooth movement even though the simulation ticks at 10/sec.
+        /// Tick interpolation for sim-driven travel. Completes in one tick interval (0.1s).
+        /// Called every frame by VisualSyncSystem — only resets when target actually changes.
         /// </summary>
         public void SetTargetPosition(Vector3 newTarget)
         {
-            // Only reset interpolation when the target actually changes (new sim tick).
-            // This gets called every frame from LateUpdate, but the sim only ticks at 10/sec.
             if ((_targetPosition - newTarget).sqrMagnitude < 0.0001f) return;
 
             _previousPosition = transform.position;
             _targetPosition = newTarget;
             _interpolationT = 0f;
+            _interpolationSpeed = 10f; // 0.1s = one tick interval
         }
 
         /// <summary>
-        /// Snap immediately to a position (no interpolation). Used for teleports,
-        /// initial placement, and when a runner arrives at a node.
+        /// Visible walk to a position at WalkSpeed. Used for in-node movement:
+        /// gathering spot changes, moving to crafting stations, combat repositioning, etc.
+        /// Purely visual — the sim doesn't wait for this to complete.
+        /// </summary>
+        public void WalkToPosition(Vector3 target)
+        {
+            if ((target - _targetPosition).sqrMagnitude < 0.0001f) return;
+
+            _previousPosition = transform.position;
+            _targetPosition = target;
+            _interpolationT = 0f;
+
+            float distance = (_targetPosition - _previousPosition).magnitude;
+            float walkDuration = distance > 0.01f ? distance / WalkSpeed : 0.1f;
+            _interpolationSpeed = 1f / walkDuration;
+        }
+
+        /// <summary>
+        /// Snap immediately to a position (no interpolation). Used for scene transitions,
+        /// initial placement, and cross-scene jumps.
         /// </summary>
         public void SnapToPosition(Vector3 position)
         {
@@ -82,8 +106,7 @@ namespace ProjectGuild.View.Runners
         {
             if (_interpolationT < 1f)
             {
-                // Interpolation speed: complete in one tick interval (0.1 sec at 10 ticks/sec)
-                _interpolationT += Time.deltaTime * 10f;
+                _interpolationT += Time.deltaTime * _interpolationSpeed;
                 if (_interpolationT > 1f) _interpolationT = 1f;
 
                 transform.position = Vector3.Lerp(_previousPosition, _targetPosition, _interpolationT);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using ProjectGuild.Bridge;
@@ -16,6 +17,7 @@ namespace ProjectGuild.View
     {
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private VisualSyncSystem _visualSyncSystem;
+        [SerializeField] private WorldSceneManager _worldSceneManager;
         [SerializeField] private CameraController _cameraController;
         [SerializeField] private UI.UIManager _uiManager;
 
@@ -56,6 +58,8 @@ namespace ProjectGuild.View
                 _simulationRunner = GetComponent<SimulationRunner>();
             if (_visualSyncSystem == null)
                 _visualSyncSystem = GetComponent<VisualSyncSystem>();
+            if (_worldSceneManager == null)
+                _worldSceneManager = FindAnyObjectByType<WorldSceneManager>();
             if (_cameraController == null)
                 _cameraController = FindAnyObjectByType<CameraController>();
             if (_uiManager == null)
@@ -66,7 +70,14 @@ namespace ProjectGuild.View
             // Start a new game
             _simulationRunner.StartNewGame();
 
-            // Build the visual world
+            // Initialize scene manager (subscribes to travel events, builds offset lookup)
+            if (_worldSceneManager != null)
+                _worldSceneManager.Initialize();
+
+            // Load scenes for nodes where runners already are
+            LoadScenesForCurrentRunners();
+
+            // Build the visual world (overworld markers + runner visuals)
             _visualSyncSystem.BuildWorld();
 
             // Point camera at first runner
@@ -147,8 +158,19 @@ namespace ProjectGuild.View
             if (_uiManager != null)
                 _uiManager.Teardown();
 
+            // Tear down scene manager (unloads additive scenes)
+            if (_worldSceneManager != null)
+                _worldSceneManager.ClearAll();
+
             // Load or create new game state
             loadAction();
+
+            // Re-initialize scene manager
+            if (_worldSceneManager != null)
+                _worldSceneManager.Initialize();
+
+            // Load scenes for nodes where runners are
+            LoadScenesForCurrentRunners();
 
             // Rebuild visual world
             _visualSyncSystem.BuildWorld();
@@ -159,6 +181,27 @@ namespace ProjectGuild.View
             // Re-initialize UI
             if (_uiManager != null)
                 _uiManager.Initialize();
+        }
+
+        /// <summary>
+        /// Load additive scenes for all nodes where runners are currently located.
+        /// Called on startup and after reload so runner visuals can use scene positions.
+        /// </summary>
+        private void LoadScenesForCurrentRunners()
+        {
+            if (_worldSceneManager == null) return;
+            var sim = _simulationRunner.Simulation;
+            if (sim?.CurrentGameState?.Runners == null) return;
+
+            var nodesWithRunners = new HashSet<string>();
+            foreach (var runner in sim.CurrentGameState.Runners)
+            {
+                if (runner.State != RunnerState.Traveling && !string.IsNullOrEmpty(runner.CurrentNodeId))
+                    nodesWithRunners.Add(runner.CurrentNodeId);
+            }
+
+            foreach (var nodeId in nodesWithRunners)
+                _worldSceneManager.EnsureNodeSceneLoaded(nodeId);
         }
 
         // ─── Input + 3D Picking ─────────────────────────────────────

@@ -41,7 +41,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mine", "Mine", 0f, 0f, CopperGatherable, TinGatherable);
+            map.AddNode("mine", "Mine", 0f, 0f, null, CopperGatherable, TinGatherable);
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
 
@@ -523,7 +523,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub"); // No gatherables!
-            map.AddNode("mine", "Mine", 0f, 0f, CopperGatherable);
+            map.AddNode("mine", "Mine", 0f, 0f, null, CopperGatherable);
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
 
@@ -567,7 +567,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mine", "Mine", 0f, 0f, hardGatherable);
+            map.AddNode("mine", "Mine", 0f, 0f, null, hardGatherable);
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
 
@@ -760,7 +760,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mixed", "Mixed Mine", 0f, 0f, CopperGatherable, hardGatherable);
+            map.AddNode("mixed", "Mixed Mine", 0f, 0f, null, CopperGatherable, hardGatherable);
             map.AddEdge("hub", "mixed", 8f);
             map.Initialize();
 
@@ -810,7 +810,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("hard", "Hard Mine", 0f, 0f, hardGatherable);
+            map.AddNode("hard", "Hard Mine", 0f, 0f, null, hardGatherable);
             map.AddEdge("hub", "hard", 8f);
             map.Initialize();
 
@@ -856,7 +856,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mixed", "Mixed Mine", 0f, 0f, CopperGatherable, hardGatherable);
+            map.AddNode("mixed", "Mixed Mine", 0f, 0f, null, CopperGatherable, hardGatherable);
             map.AddEdge("hub", "mixed", 8f);
             map.Initialize();
 
@@ -946,7 +946,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mine", "Multi Mine", 0f, 0f, CopperGatherable, IronGatherable, MithrilGatherable);
+            map.AddNode("mine", "Multi Mine", 0f, 0f, null, CopperGatherable, IronGatherable, MithrilGatherable);
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
 
@@ -1098,7 +1098,7 @@ namespace ProjectGuild.Tests
             var map = new WorldMap();
             map.HubNodeId = "hub";
             map.AddNode("hub", "Hub");
-            map.AddNode("mine", "Tied Mine", 0f, 0f, copperA, copperB);
+            map.AddNode("mine", "Tied Mine", 0f, 0f, null, copperA, copperB);
             map.AddEdge("hub", "mine", 8f);
             map.Initialize();
 
