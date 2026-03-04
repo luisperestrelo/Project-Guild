@@ -10,6 +10,9 @@ namespace ProjectGuild.View
     /// Also supports a "hub scene mode" where the camera targets a fixed position
     /// inside the Guild Hall scene (activated by the Guild Hall button or H hotkey).
     ///
+    /// Scene transitions (camera jumping 500+ meters between scene zones) trigger a
+    /// fade-to-black via SceneTransitionOverlay. Same-zone target changes snap directly.
+    ///
     /// Controls:
     /// - Right mouse drag: orbit around target
     /// - Scroll wheel: zoom in/out
@@ -40,6 +43,14 @@ namespace ProjectGuild.View
         [Header("Hub Scene")]
         [SerializeField] private WorldSceneManager _worldSceneManager;
 
+        [Header("Scene Transitions")]
+        [Tooltip("Fade overlay for scene transitions. If null, camera snaps without fade.")]
+        [SerializeField] private SceneTransitionOverlay _sceneTransitionOverlay;
+
+        [Tooltip("World-space distance threshold for triggering a fade transition. " +
+            "Below 2000m scene spacing, well above any same-zone movement.")]
+        [SerializeField] private float _fadeDistanceThreshold = 500f;
+
         private Transform _target;
         private float _currentYaw;
         private float _currentPitch = 35f;
@@ -54,6 +65,12 @@ namespace ProjectGuild.View
         /// </summary>
         public bool IsInHubSceneMode => _hubSceneMode;
 
+        /// <summary>
+        /// The current follow target transform (null when in hub scene mode or no target set).
+        /// Used by VisualSyncSystem to determine if a departing/arriving runner is being watched.
+        /// </summary>
+        public Transform CurrentTarget => _target;
+
         // Input actions
         private InputAction _lookAction;
         private InputAction _orbitButtonAction;
@@ -62,16 +79,18 @@ namespace ProjectGuild.View
 
         public void SetTarget(Transform target)
         {
+            var oldTarget = _target;
             _target = target;
             ExitHubSceneMode();
-            SnapToTarget();
+            ExecuteTargetSnap(oldTarget);
         }
 
         public void SetTarget(RunnerVisual runner)
         {
+            var oldTarget = _target;
             _target = runner?.transform;
             ExitHubSceneMode();
-            SnapToTarget();
+            ExecuteTargetSnap(oldTarget);
         }
 
         /// <summary>
@@ -85,6 +104,9 @@ namespace ProjectGuild.View
 
             // Ensure the hub scene is loaded (it should be — hub is exempt from auto-unload)
             _worldSceneManager.EnsureNodeSceneLoaded(hubNodeId);
+
+            // Remember where camera was before switching
+            Vector3 previousCameraPos = transform.position;
 
             // Target the scene's focal point (center of interest)
             var sceneRoot = _worldSceneManager.GetNodeSceneRoot(hubNodeId);
@@ -100,12 +122,66 @@ namespace ProjectGuild.View
 
             _hubSceneMode = true;
             _target = null;
-            SnapToHubTarget();
+
+            // Fade if jumping a large distance (different scene zone)
+            if (ShouldFade(previousCameraPos, _hubSceneTarget))
+            {
+                PlayFade(SnapToHubTarget);
+            }
+            else
+            {
+                SnapToHubTarget();
+            }
         }
 
         private void ExitHubSceneMode()
         {
             _hubSceneMode = false;
+        }
+
+        /// <summary>
+        /// Snap or fade to the new target, depending on distance from old target.
+        /// </summary>
+        private void ExecuteTargetSnap(Transform oldTarget)
+        {
+            if (_target == null) return;
+
+            Vector3 oldPos = oldTarget != null ? oldTarget.position : transform.position;
+            Vector3 newPos = _target.position;
+
+            if (ShouldFade(oldPos, newPos))
+            {
+                PlayFade(SnapToTarget);
+            }
+            else
+            {
+                SnapToTarget();
+            }
+        }
+
+        /// <summary>
+        /// Returns true if the camera should fade between two world positions.
+        /// Triggers when distance exceeds threshold (different scene zones are 2000+ m apart).
+        /// </summary>
+        private bool ShouldFade(Vector3 from, Vector3 to)
+        {
+            if (_sceneTransitionOverlay == null) return false;
+            return Vector3.Distance(from, to) > _fadeDistanceThreshold;
+        }
+
+        /// <summary>
+        /// Wrap a camera snap action in a fade-to-black transition.
+        /// </summary>
+        private void PlayFade(System.Action snapAction)
+        {
+            if (_sceneTransitionOverlay != null)
+            {
+                _sceneTransitionOverlay.PlayFadeTransition(snapAction);
+            }
+            else
+            {
+                snapAction();
+            }
         }
 
         /// <summary>
@@ -137,6 +213,8 @@ namespace ProjectGuild.View
                 _uiManager = FindAnyObjectByType<UIManager>();
             if (_worldSceneManager == null)
                 _worldSceneManager = FindAnyObjectByType<WorldSceneManager>();
+            if (_sceneTransitionOverlay == null)
+                _sceneTransitionOverlay = FindAnyObjectByType<SceneTransitionOverlay>();
 
             _lookAction = new InputAction("Look", InputActionType.Value,
                 binding: "<Pointer>/delta");
@@ -219,8 +297,12 @@ namespace ProjectGuild.View
             Vector3 offset = rotation * new Vector3(0f, 0f, -_currentDistance);
             Vector3 desiredPosition = targetPos + offset;
 
-            // Smooth position follow, instant rotation (feels crisp)
-            transform.position = Vector3.Lerp(transform.position, desiredPosition, Time.deltaTime * _followSpeed);
+            // Snap when target has teleported (scene transition), smooth follow otherwise
+            if (Vector3.Distance(transform.position, desiredPosition) > _fadeDistanceThreshold)
+                transform.position = desiredPosition;
+            else
+                transform.position = Vector3.Lerp(transform.position, desiredPosition, Time.deltaTime * _followSpeed);
+
             transform.LookAt(targetPos);
         }
     }

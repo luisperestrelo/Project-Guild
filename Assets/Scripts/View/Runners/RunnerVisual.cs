@@ -8,9 +8,10 @@ namespace ProjectGuild.View.Runners
     /// don't create these manually. The sync system spawns one per runner and updates
     /// its position each frame by interpolating between the simulation's tick positions.
     ///
-    /// Three movement modes (caller decides which to use):
+    /// Four movement modes (caller decides which to use):
     /// - SetTargetPosition: tick interpolation (0.1s) for sim-driven travel
-    /// - WalkToPosition: visible walk at WalkSpeed for in-node movement (spot changes, repositioning)
+    /// - WalkToPosition: visible walk at WalkSpeed for in-node movement (straight line)
+    /// - WalkAlongPath: visible walk through NavMesh waypoints (avoids obstacles)
     /// - SnapToPosition: instant teleport for scene transitions and initial placement
     ///
     /// For now this is a placeholder capsule. Will be replaced with actual character
@@ -24,11 +25,15 @@ namespace ProjectGuild.View.Runners
         public string RunnerId { get; private set; }
         public string RunnerName { get; private set; }
 
-        // Interpolation state
+        // Interpolation state (current segment)
         private Vector3 _previousPosition;
         private Vector3 _targetPosition;
         private float _interpolationT;
         private float _interpolationSpeed = 10f; // 1/duration — default completes in 0.1s (one tick)
+
+        // Multi-waypoint path (NavMesh walks)
+        private Vector3[] _pathWaypoints;
+        private int _pathIndex; // index of waypoint we're currently walking TOWARD
 
         // Walk speed for within-node movement (gathering spot changes, repositioning, etc.)
         private const float WalkSpeed = 8f; // meters per second
@@ -44,6 +49,7 @@ namespace ProjectGuild.View.Runners
             _previousPosition = startPosition;
             _targetPosition = startPosition;
             _interpolationT = 1f;
+            _pathWaypoints = null;
             gameObject.name = $"Runner_{runnerName}";
 
             // Create a floating name label above the capsule
@@ -66,6 +72,7 @@ namespace ProjectGuild.View.Runners
         {
             if ((_targetPosition - newTarget).sqrMagnitude < 0.0001f) return;
 
+            _pathWaypoints = null;
             _previousPosition = transform.position;
             _targetPosition = newTarget;
             _interpolationT = 0f;
@@ -73,21 +80,41 @@ namespace ProjectGuild.View.Runners
         }
 
         /// <summary>
-        /// Visible walk to a position at WalkSpeed. Used for in-node movement:
-        /// gathering spot changes, moving to crafting stations, combat repositioning, etc.
-        /// Purely visual — the sim doesn't wait for this to complete.
+        /// Visible walk to a position at WalkSpeed (straight line).
+        /// Used when no NavMesh path is available.
         /// </summary>
         public void WalkToPosition(Vector3 target)
         {
-            if ((target - _targetPosition).sqrMagnitude < 0.0001f) return;
+            if ((target - FinalDestination).sqrMagnitude < 0.0001f) return;
 
+            _pathWaypoints = null;
             _previousPosition = transform.position;
             _targetPosition = target;
             _interpolationT = 0f;
 
             float distance = (_targetPosition - _previousPosition).magnitude;
-            float walkDuration = distance > 0.01f ? distance / WalkSpeed : 0.1f;
-            _interpolationSpeed = 1f / walkDuration;
+            _interpolationSpeed = distance > 0.01f ? WalkSpeed / distance : 10f;
+        }
+
+        /// <summary>
+        /// Walk along a multi-waypoint path at WalkSpeed (NavMesh-computed).
+        /// Walks through each waypoint in sequence, avoiding obstacles.
+        /// </summary>
+        public void WalkAlongPath(Vector3[] waypoints)
+        {
+            if (waypoints == null || waypoints.Length == 0) return;
+
+            // Skip if already walking to the same final destination
+            if ((waypoints[^1] - FinalDestination).sqrMagnitude < 0.0001f) return;
+
+            _pathWaypoints = waypoints;
+            _pathIndex = 0;
+            _previousPosition = transform.position;
+            _targetPosition = waypoints[0];
+            _interpolationT = 0f;
+
+            float distance = (_targetPosition - _previousPosition).magnitude;
+            _interpolationSpeed = distance > 0.01f ? WalkSpeed / distance : 10f;
         }
 
         /// <summary>
@@ -96,11 +123,21 @@ namespace ProjectGuild.View.Runners
         /// </summary>
         public void SnapToPosition(Vector3 position)
         {
+            _pathWaypoints = null;
             transform.position = position;
             _previousPosition = position;
             _targetPosition = position;
             _interpolationT = 1f;
         }
+
+        /// <summary>
+        /// The final destination of the current movement (last waypoint if on a path,
+        /// or the single target position).
+        /// </summary>
+        private Vector3 FinalDestination =>
+            _pathWaypoints != null && _pathWaypoints.Length > 0
+                ? _pathWaypoints[^1]
+                : _targetPosition;
 
         private void Update()
         {
@@ -117,6 +154,26 @@ namespace ProjectGuild.View.Runners
                 if (direction.sqrMagnitude > 0.001f)
                 {
                     transform.rotation = Quaternion.LookRotation(direction);
+                }
+            }
+
+            // Advance to next waypoint when current segment is complete
+            if (_interpolationT >= 1f && _pathWaypoints != null)
+            {
+                _pathIndex++;
+                if (_pathIndex < _pathWaypoints.Length)
+                {
+                    _previousPosition = _targetPosition;
+                    _targetPosition = _pathWaypoints[_pathIndex];
+                    _interpolationT = 0f;
+
+                    float distance = (_targetPosition - _previousPosition).magnitude;
+                    _interpolationSpeed = distance > 0.01f ? WalkSpeed / distance : 10f;
+                }
+                else
+                {
+                    // Path complete
+                    _pathWaypoints = null;
                 }
             }
 

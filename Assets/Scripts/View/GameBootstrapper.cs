@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -15,11 +16,19 @@ namespace ProjectGuild.View
     /// </summary>
     public class GameBootstrapper : MonoBehaviour
     {
+        /// <summary>
+        /// Fired at the end of Start() after the simulation, visuals, and UI are fully initialized.
+        /// The LoadingSceneController listens for this to know when to fade out and unload.
+        /// When playing directly from SampleScene (no LoadingScene), this fires with no listeners.
+        /// </summary>
+        public static event Action OnWorldReady;
+
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private VisualSyncSystem _visualSyncSystem;
         [SerializeField] private WorldSceneManager _worldSceneManager;
         [SerializeField] private NavMeshTravelPathCache _navMeshPathCache;
         [SerializeField] private CameraController _cameraController;
+        [SerializeField] private SceneTransitionOverlay _sceneTransitionOverlay;
         [SerializeField] private UI.UIManager _uiManager;
 
         private InputAction _clickAction;
@@ -28,6 +37,7 @@ namespace ProjectGuild.View
         private int _bankLayerMask;
 
         private SaveManager _saveManager;
+        private Coroutine _activeWorldBuild;
 
         public SaveManager SaveManager => _saveManager;
 
@@ -62,38 +72,18 @@ namespace ProjectGuild.View
                 _uiManager = FindAnyObjectByType<UI.UIManager>();
             if (_navMeshPathCache == null)
                 _navMeshPathCache = FindAnyObjectByType<NavMeshTravelPathCache>();
+            if (_sceneTransitionOverlay == null)
+                _sceneTransitionOverlay = FindAnyObjectByType<SceneTransitionOverlay>();
+
+            // Ensure SampleScene is the active scene so any instantiated objects
+            // (runner visuals, etc.) end up here — not in LoadingScene.
+            UnityEngine.SceneManagement.SceneManager.SetActiveScene(gameObject.scene);
 
             _saveManager = new SaveManager();
 
-            // Start a new game
-            _simulationRunner.StartNewGame();
-
-            // Wire NavMesh path distance provider so sim uses real path lengths
-            if (_navMeshPathCache != null)
-                _simulationRunner.Simulation.PathDistanceProvider = _navMeshPathCache;
-            else
-                Debug.LogWarning("[GameBootstrapper] No NavMeshTravelPathCache found. Travel distances will use Euclidean fallback.");
-
-            // Initialize scene manager (subscribes to travel events, builds offset lookup)
-            if (_worldSceneManager != null)
-                _worldSceneManager.Initialize();
-
-            // Initialize NavMesh path cache (subscribes to travel events, builds node asset lookup)
-            if (_navMeshPathCache != null)
-                _navMeshPathCache.Initialize();
-
-            // Load scenes for nodes where runners already are
-            LoadScenesForCurrentRunners();
-
-            // Build the visual world (runner visuals)
-            _visualSyncSystem.BuildWorld();
-
-            // Point camera at first runner
-            SelectRunner(0);
-
-            // Initialize real UI (after sim + visuals are ready)
-            if (_uiManager != null)
-                _uiManager.Initialize();
+            _activeWorldBuild = StartCoroutine(BuildAndRevealWorld(
+                () => _simulationRunner.StartNewGame(),
+                () => OnWorldReady?.Invoke()));
         }
 
         // ─── Runner Selection + Camera ───────────────────────────────
@@ -157,61 +147,72 @@ namespace ProjectGuild.View
         }
 
         /// <summary>
-        /// Tears down UI and visuals, runs the provided game-state action
-        /// (LoadGame or StartNewGame), then rebuilds visuals and re-initializes UI.
+        /// Tears down UI and visuals, then kicks off async rebuild.
+        /// Screen stays black (via SceneTransitionOverlay) until scenes are loaded
+        /// and visuals are positioned correctly.
         /// </summary>
         private void ReloadWorld(Action loadAction)
         {
-            // Tear down UI first (unsubscribes from sim events)
+            if (_sceneTransitionOverlay != null)
+                _sceneTransitionOverlay.Show();
+
             if (_uiManager != null)
                 _uiManager.Teardown();
-
-            // Tear down scene manager (unloads additive scenes)
             if (_worldSceneManager != null)
                 _worldSceneManager.ClearAll();
-
-            // Tear down NavMesh path cache
             if (_navMeshPathCache != null)
                 _navMeshPathCache.ClearAll();
 
-            // Load or create new game state
-            loadAction();
+            if (_activeWorldBuild != null)
+                StopCoroutine(_activeWorldBuild);
 
-            // Re-wire NavMesh path distance provider (GameSimulation persists, but be defensive)
-            if (_navMeshPathCache != null)
-                _simulationRunner.Simulation.PathDistanceProvider = _navMeshPathCache;
-
-            // Re-initialize scene manager
-            if (_worldSceneManager != null)
-                _worldSceneManager.Initialize();
-
-            // Re-initialize NavMesh path cache
-            if (_navMeshPathCache != null)
-                _navMeshPathCache.Initialize();
-
-            // Load scenes for nodes where runners are
-            LoadScenesForCurrentRunners();
-
-            // Rebuild visual world
-            _visualSyncSystem.BuildWorld();
-
-            // Point camera at first runner
-            SelectRunner(0);
-
-            // Re-initialize UI
-            if (_uiManager != null)
-                _uiManager.Initialize();
+            _activeWorldBuild = StartCoroutine(BuildAndRevealWorld(
+                loadAction,
+                () => _sceneTransitionOverlay?.FadeIn()));
         }
 
         /// <summary>
-        /// Load additive scenes for all nodes where runners are currently located.
-        /// Called on startup and after reload so runner visuals can use scene positions.
+        /// Shared initialization sequence for both first boot and mid-game reload.
+        /// Sets up the simulation, waits for all node scenes to finish loading (async),
+        /// then builds visuals at correct positions and calls onReady to reveal the world.
         /// </summary>
-        private void LoadScenesForCurrentRunners()
+        private IEnumerator BuildAndRevealWorld(Action gameStateAction, Action onReady)
         {
-            if (_worldSceneManager == null) return;
+            gameStateAction();
+
+            if (_navMeshPathCache != null)
+                _simulationRunner.Simulation.PathDistanceProvider = _navMeshPathCache;
+            else
+                Debug.LogWarning("[GameBootstrapper] No NavMeshTravelPathCache found. Travel distances will use Euclidean fallback.");
+
+            if (_worldSceneManager != null)
+                _worldSceneManager.Initialize();
+            if (_navMeshPathCache != null)
+                _navMeshPathCache.Initialize();
+
+            // Wait for node scenes to finish loading so runners are placed at
+            // correct in-scene positions from the very first rendered frame.
+            yield return WaitForNodeScenesToLoad();
+
+            _visualSyncSystem.BuildWorld();
+            SelectRunner(0);
+
+            if (_uiManager != null)
+                _uiManager.Initialize();
+
+            _activeWorldBuild = null;
+            onReady?.Invoke();
+        }
+
+        /// <summary>
+        /// Kicks off async loading for all node scenes where runners are located,
+        /// then yields until every scene has finished loading.
+        /// </summary>
+        private IEnumerator WaitForNodeScenesToLoad()
+        {
+            if (_worldSceneManager == null) yield break;
             var sim = _simulationRunner.Simulation;
-            if (sim?.CurrentGameState?.Runners == null) return;
+            if (sim?.CurrentGameState?.Runners == null) yield break;
 
             var nodesWithRunners = new HashSet<string>();
             foreach (var runner in sim.CurrentGameState.Runners)
@@ -220,8 +221,14 @@ namespace ProjectGuild.View
                     nodesWithRunners.Add(runner.CurrentNodeId);
             }
 
+            if (nodesWithRunners.Count == 0) yield break;
+
+            int pendingScenes = nodesWithRunners.Count;
             foreach (var nodeId in nodesWithRunners)
-                _worldSceneManager.EnsureNodeSceneLoaded(nodeId);
+                _worldSceneManager.EnsureNodeSceneLoaded(nodeId, () => pendingScenes--);
+
+            while (pendingScenes > 0)
+                yield return null;
         }
 
         // ─── Input + 3D Picking ─────────────────────────────────────

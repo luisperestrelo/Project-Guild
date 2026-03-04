@@ -137,11 +137,6 @@ namespace ProjectGuild.View
 
             _cachedPaths[runnerId] = cachedPath;
 
-            // TODO: Remove after verifying NavMesh distances
-            float euclidean = map.FindPath(fromNodeId, toNodeId, out _);
-            float delta = cachedPath.TotalPathLength - euclidean;
-            Debug.Log($"[PathDistance] {fromNodeId} -> {toNodeId}: NavMesh3D={cachedPath.TotalPathLength:F1}m, NavMeshXZ={cachedPath.TotalPathLengthXZ:F1}m, Euclidean={euclidean:F1}m ({(delta >= 0 ? "+" : "")}{delta:F1}m)");
-
             return cachedPath.TotalPathLength;
         }
 
@@ -180,13 +175,6 @@ namespace ProjectGuild.View
             }
 
             _cachedPaths[runnerId] = cachedPath;
-
-            // TODO: Remove after verifying NavMesh distances
-            float dx = toNode.WorldX - departX;
-            float dz = toNode.WorldZ - departZ;
-            float euclidean = Mathf.Sqrt(dx * dx + dz * dz);
-            float delta = cachedPath.TotalPathLength - euclidean;
-            Debug.Log($"[PathDistance] Redirect ({departX:F0},{departZ:F0}) -> {toNodeId}: NavMesh3D={cachedPath.TotalPathLength:F1}m, NavMeshXZ={cachedPath.TotalPathLengthXZ:F1}m, Euclidean={euclidean:F1}m ({(delta >= 0 ? "+" : "")}{delta:F1}m)");
 
             return cachedPath.TotalPathLength;
         }

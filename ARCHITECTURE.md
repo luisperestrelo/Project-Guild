@@ -122,7 +122,10 @@ Back to Tick() (continues processing)
 | `DevConsole.cs` | View | Dev-only console (tilde to open). Spawn runners, event log, tick/time |
 | `VisualSyncSystem.cs` | View | The cameraman. Keeps 3D visuals in sync with sim |
 | `WorldSceneManager.cs` | View | Scene lifecycle manager. Loads/unloads additive node scenes on demand |
-| `NodeSceneRoot.cs` | View | Root component in each node scene. Holds spawn points and gathering spots |
+| `NodeSceneRoot.cs` | View | Root component in each node scene. Holds spawn points, directional spawns, and gathering spots |
+| `GuildHallSceneRoot.cs` | View | Specialized NodeSceneRoot for the hub. Adds deposit point and future hub-specific features |
+| `SceneTransitionOverlay.cs` | View | Fade-to-black overlay for scene transitions and reload cover. Dedicated UIDocument, coroutine-driven |
+| `LoadingSceneController.cs` | View | Boot scene controller. Black screen on frame 1, loads SampleScene, fades out on OnWorldReady |
 | `BankMarker.cs` | View | Tags the bank GameObject for click-to-open raycasting |
 | `UIManager.cs` | View | Top-level UI coordinator. Owns UIDocument, manages all controllers, tick refresh, selection state |
 | `RunnerWarnings.cs` | Simulation | Centralized warning message strings and factory methods |
@@ -488,7 +491,7 @@ Concrete implementation of `ISaveSystem`. Uses `JsonUtility.ToJson/FromJson` and
 The view layer includes MonoBehaviours (`View/`) and plain C# UI controllers (`View/UI/`). The UI controllers are NOT MonoBehaviours — they are plain C# classes instantiated and coordinated by `UIManager`. This keeps UI logic testable and avoids unnecessary GameObject overhead.
 
 ### `View/GameBootstrapper.cs`
-Entry point that wires up the simulation, visuals, and 3D picking. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner. Owns a `SaveManager` instance. Provides `SaveGame()`, `LoadSavedGame()`, and `StartNewGameFromOptions()` for the Options panel. Load/New Game use `ReloadWorld()` which tears down UI (`UIManager.Teardown()`), runs the load/create action, rebuilds visuals (`VisualSyncSystem.BuildWorld()`), and re-initializes UI (`UIManager.Initialize()`).
+Entry point that wires up the simulation, visuals, and 3D picking. Starts a new game on `Start()`, builds the visual world, points the camera at the first runner, then fires `static event OnWorldReady` (listened to by `LoadingSceneController`). Owns a `SaveManager` instance. Provides `SaveGame()`, `LoadSavedGame()`, and `StartNewGameFromOptions()` for the Options panel. Load/New Game use `ReloadWorld()` which shows `SceneTransitionOverlay` black, tears down UI (`UIManager.Teardown()`), runs the load/create action, rebuilds visuals (`VisualSyncSystem.BuildWorld()`), re-initializes UI (`UIManager.Initialize()`), and fades back in via `SceneTransitionOverlay.FadeIn()`.
 
 **Click handling (LateUpdate):** On left-click, checks (1) not over UI, (2) `TryPickRunner()` raycasts for RunnerVisual on the "Runners" layer — if found, selects that runner and returns. (3) `TryPickBank()` raycasts the "Bank" layer — if found, toggles the bank panel and returns. Runner > Bank priority. Requires two physics layers: "Runners", "Bank" — logs `Debug.LogError` if either is missing. Node interaction will move to the Strategic Map UI.
 
@@ -529,23 +532,39 @@ Simple MonoBehaviour (no fields) placed on the bank object inside the Node_Guild
 Manages the lifecycle of additive node scenes. Each world node can have a dedicated Unity scene (specified by `WorldNode.SceneName`) loaded at a unique world-space offset (nodeIndex * 2000 on Z). Subscribes to `RunnerStartedTravel` (pre-load destination) and `RunnerArrivedAtNode` (ensure loaded). Scenes unload after a grace period when empty and the camera is elsewhere. The hub scene is exempt from auto-unload. Provides `EnsureNodeSceneLoaded()`, `GetNodeSceneRoot()`, `GetNodeSceneOffset()` for other systems.
 
 ### `View/NodeSceneRoot.cs`
-MonoBehaviour attached to the root GameObject in each additive node scene. Stores the node ID, spawn point transforms, and gathering spot groups. Each `GatherableSpotGroup` holds multiple physical positions for one gatherable type (e.g. 4 ore veins for gatherable index 0). `GetGatheringPosition(gatherableIndex, runnerIndexInGroup)` picks a spot within the group so multiple runners gathering the same resource spread across different positions. `GetSpawnPosition(arrivalIndex)` returns a position for entering runners. Falls back gracefully when fewer spots exist than needed.
+MonoBehaviour attached to the root GameObject in each additive node scene. Stores the node ID, spawn point transforms, directional spawn points, and gathering spot groups. Each `GatherableSpotGroup` holds multiple physical positions for one gatherable type (e.g. 4 ore veins for gatherable index 0). `GetGatheringPosition(gatherableIndex, runnerIndexInGroup)` picks a spot within the group so multiple runners gathering the same resource spread across different positions. `GetSpawnPosition(arrivalIndex)` returns a position for entering runners. `GetDirectionalSpawnPosition(approachDirectionXZ, fallbackIndex)` selects the directional spawn point best aligned with the approach direction (dot product). `HasDirectionalSpawns` indicates whether directional selection is available (circumference/area nodes). Virtual `DepositPointPosition` returns null — overridden by `GuildHallSceneRoot`. Falls back gracefully when fewer spots exist than needed.
+
+### `View/GuildHallSceneRoot.cs`
+Subclass of `NodeSceneRoot` for the Guild Hall (hub) scene. Adds `_depositPoint` field and overrides `DepositPointPosition` to return the bank/warehouse position. Future hub-specific features (crafting stations, NPC positions, etc.) belong here rather than polluting the base class. In the Unity scene, the Guild Hall root object uses this component instead of `NodeSceneRoot`.
 
 ### `View/TerrainHeightSampler.cs`
 Static helper for sampling terrain height at any world XZ position. `GetHeight(worldX, worldZ)` returns terrain surface Y (or 0 if no active terrain). `GetPositionOnTerrain(worldX, worldZ, yOffset)` returns a full Vector3 on the terrain surface. Used by VisualSyncSystem to place runners and markers on terrain.
 
+### `View/SceneTransitionOverlay.cs`
+Fade-to-black overlay for scene transitions and mid-game reloads. MonoBehaviour with its own `UIDocument` (sort order 100) that covers the entire viewport. Three public APIs: `PlayFadeTransition(Action onMidFade)` for quick blinks (0.08s out + 0.02s hold + 0.10s in = 0.20s), `Show()` for immediate full-black (used by `ReloadWorld()`), and `FadeIn()` to fade from black back to transparent (used after reload completes). All three interrupt any active fade. `IsTransitioning` property. Uses `Time.unscaledDeltaTime` so fades work regardless of time scale. `picking-mode: Ignore` so it never blocks interaction. Starts transparent.
+
+### `View/LoadingSceneController.cs`
+Controller for the dedicated LoadingScene (scene index 0 in Build Profiles). Contains a full-screen black UIDocument overlay (sort order 200) that covers the very first rendered frame — solving the UI Toolkit layout-pass flash that an in-scene overlay cannot prevent. On `Start()`, subscribes to `GameBootstrapper.OnWorldReady` and loads SampleScene additively. When the world is ready, sets SampleScene as the active scene, fades the overlay from black to transparent (0.5s), and unloads the loading scene. When playing directly from SampleScene in the Editor (no LoadingScene), `OnWorldReady` fires with no listeners — the world appears immediately. Mid-game reloads use `SceneTransitionOverlay` instead (UI Toolkit is already composited, no flash issue).
+
 ### `View/VisualSyncSystem.cs`
-Bridges sim state to 3D world. Builds runner visuals and updates runner positions each `LateUpdate()`. When a runner is at a node with a loaded scene (via `WorldSceneManager`), positions the runner at the scene's gathering spots or spawn points. Traveling runners interpolate in overworld space with terrain-aware Y sampling. Node visuals are hand-placed in the overworld scene (Synty props) — no runtime marker spawning.
+Bridges sim state to 3D world. Builds runner visuals and updates runner positions each `LateUpdate()`. When a runner is at a node with a loaded scene (via `WorldSceneManager`), positions the runner at the scene's gathering spots, deposit point, or spawn points. Traveling runners interpolate in overworld space with terrain-aware Y sampling. Node visuals are hand-placed in the overworld scene (Synty props) — no runtime marker spawning.
 
 Runner position calculation (`GetRunnerWorldPosition`):
 - **Traveling:** Lerps between start and destination using `Travel.Progress`, sampling terrain height at each interpolated XZ. If `StartWorldX`/`StartWorldZ` is set (redirect), uses those as the start position — prevents visual snapping on direction change.
+- **Depositing:** Walks to the deposit point (Guild Hall bank) if configured on the `NodeSceneRoot`.
 - **Idle at a node:** Places runners at the node position (terrain-aware Y) with circular spread.
 - **Node world positions** use `TerrainHeightSampler.GetHeight()` for Y instead of flat Y=0.
 
-Subscribes to `RunnerCreated` events to spawn visuals for runners added at runtime (e.g. pawn generation buttons).
+**Directional spawning:** Caches from/to node IDs when `RunnerStartedTravel` fires. On arrival at a circumference node with directional spawn points, selects the spawn point closest to the overworld approach direction. Entrance nodes use round-robin `_spawnPoints[]` as before.
+
+**Departure walk:** When a runner starts traveling from a node scene, they walk toward the nearest scene edge (circumference nodes) or entrance (entrance nodes) before transitioning to overworld. Walk is purely visual — sim travel progresses underneath. Duration: `Min(1.5s, estimatedTripTime * 0.3)`. Skipped for very short trips (< 3s). On completion, triggers a fade-to-black if camera is following the departing runner.
+
+**Arrival fade:** When a runner arrives at a node scene and camera is following them, the snap to the scene spawn point is wrapped in a fade-to-black transition.
+
+Subscribes to `RunnerCreated`, `RunnerStartedTravel`, and `RunnerArrivedAtNode` events.
 
 ### `View/CameraController.cs`
-Orbit camera with zoom. Uses Unity's New Input System (inline action definitions). Right mouse drag to orbit, scroll wheel to zoom. Snaps instantly when switching runner targets via `SetTarget()`. Supports **hub scene mode** (`EnterHubSceneMode(hubNodeId)`) where the camera orbits a fixed position inside the Guild Hall scene instead of following a runner. Activated by the Guild Hall button or H hotkey (via `UIManager.JumpToGuildHall()`). Exits automatically when `SetTarget()` is called (runner selection).
+Orbit camera with zoom. Uses Unity's New Input System (inline action definitions). Right mouse drag to orbit, scroll wheel to zoom. Supports **hub scene mode** (`EnterHubSceneMode(hubNodeId)`) where the camera orbits a fixed position inside the Guild Hall scene instead of following a runner. Activated by the Guild Hall button or H hotkey (via `UIManager.JumpToGuildHall()`). Exits automatically when `SetTarget()` is called (runner selection). **Scene transition fades:** `SetTarget()` and `EnterHubSceneMode()` detect when camera would jump > 500m (between scene zones 2000m apart) and wrap the snap in a `SceneTransitionOverlay.PlayFadeTransition()`. Same-zone target changes snap directly without fade. `CurrentTarget` property exposes the follow target for `VisualSyncSystem` to detect if a departing/arriving runner is being watched.
 
 ### `View/Runners/RunnerVisual.cs`
 MonoBehaviour attached to each runner's 3D representation. Handles interpolated movement between positions set by VisualSyncSystem — the simulation ticks at 10/sec but the view renders at 60fps, so RunnerVisual smoothly interpolates between tick positions over one tick interval. Also creates and manages a floating name label (TextMeshPro) that billboards toward the camera.

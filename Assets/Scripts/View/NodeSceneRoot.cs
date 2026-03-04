@@ -37,10 +37,18 @@ namespace ProjectGuild.View
         [SerializeField] private Transform _sceneFocalPoint;
 
         [Header("Runner Positioning")]
-        [Tooltip("Where runners appear when entering this node. " +
+        [Tooltip("Where runners appear when entering this node (round-robin for entrance nodes, " +
+            "fallback for circumference nodes when no directional points are set). " +
             "Multiple points for multiple runners arriving simultaneously.")]
         [SerializeField] private Transform[] _spawnPoints = new Transform[0];
 
+        [Tooltip("Directional spawn points around the node perimeter (circumference/area nodes only). " +
+            "Runners enter from the point closest to their overworld approach direction. " +
+            "Leave empty for entrance nodes (caves, dungeons) — they use _spawnPoints round-robin.\n\n" +
+            "Auto-generate these with the editor button, then nudge to sensible positions.")]
+        [SerializeField] private Transform[] _directionalSpawnPoints = new Transform[0];
+
+        [Header("Gathering")]
         [Tooltip("Gathering positions grouped by gatherable index. " +
             "Element 0 = spots for gatherable 0 (e.g. ore veins), element 1 = spots for gatherable 1, etc. " +
             "Each group can have multiple spots so runners don't stack on each other.")]
@@ -48,7 +56,20 @@ namespace ProjectGuild.View
 
         public string NodeId => _nodeId;
         public Transform[] SpawnPoints => _spawnPoints;
+        public Transform[] DirectionalSpawnPoints => _directionalSpawnPoints;
         public GatherableSpotGroup[] GatheringSpotGroups => _gatheringSpotGroups;
+
+        /// <summary>
+        /// True if this node has directional spawn points configured (circumference/area node).
+        /// Entrance nodes leave this empty and use SpawnPoints round-robin instead.
+        /// </summary>
+        public bool HasDirectionalSpawns => _directionalSpawnPoints != null && _directionalSpawnPoints.Length > 0;
+
+        /// <summary>
+        /// Position where runners walk during Deposit step.
+        /// Base returns null — overridden by GuildHallSceneRoot.
+        /// </summary>
+        public virtual Vector3? DepositPointPosition => null;
 
         /// <summary>
         /// The scene's focal point position. Used as the camera target when viewing
@@ -85,6 +106,50 @@ namespace ProjectGuild.View
             }
 
             return transform.position;
+        }
+
+        /// <summary>
+        /// Get the best directional spawn position for a runner approaching from the given
+        /// world-space direction. Selects the point whose direction from the scene focal center
+        /// is most aligned with the approach direction (highest dot product).
+        ///
+        /// Falls back to round-robin GetSpawnPosition if no directional points are configured.
+        /// </summary>
+        /// <param name="approachDirectionXZ">Flattened XZ direction from destination toward source
+        /// (the direction the runner is approaching FROM).</param>
+        /// <param name="fallbackArrivalIndex">Round-robin index for fallback spawn.</param>
+        public Vector3 GetDirectionalSpawnPosition(Vector3 approachDirectionXZ, int fallbackArrivalIndex)
+        {
+            if (_directionalSpawnPoints == null || _directionalSpawnPoints.Length == 0)
+                return GetSpawnPosition(fallbackArrivalIndex);
+
+            Vector3 focalCenter = SceneFocalPosition;
+            float bestDot = float.MinValue;
+            Vector3 bestPosition = focalCenter;
+
+            Vector3 approachFlat = new Vector3(approachDirectionXZ.x, 0f, approachDirectionXZ.z);
+            if (approachFlat.sqrMagnitude < 0.001f)
+                return GetSpawnPosition(fallbackArrivalIndex);
+            approachFlat.Normalize();
+
+            for (int i = 0; i < _directionalSpawnPoints.Length; i++)
+            {
+                if (_directionalSpawnPoints[i] == null) continue;
+
+                Vector3 pointDir = _directionalSpawnPoints[i].position - focalCenter;
+                pointDir.y = 0f;
+                if (pointDir.sqrMagnitude < 0.001f) continue;
+                pointDir.Normalize();
+
+                float dot = Vector3.Dot(approachFlat, pointDir);
+                if (dot > bestDot)
+                {
+                    bestDot = dot;
+                    bestPosition = _directionalSpawnPoints[i].position;
+                }
+            }
+
+            return bestPosition;
         }
 
         /// <summary>
