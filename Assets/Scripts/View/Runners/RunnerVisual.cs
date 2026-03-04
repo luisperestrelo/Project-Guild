@@ -36,7 +36,7 @@ namespace ProjectGuild.View.Runners
         private int _pathIndex; // index of waypoint we're currently walking TOWARD
 
         // Walk speed for within-node movement (gathering spot changes, repositioning, etc.)
-        private const float WalkSpeed = 8f; // meters per second
+        private const float WalkSpeed = 12f; // meters per second
 
         // Name label
         private TextMeshPro _nameLabel;

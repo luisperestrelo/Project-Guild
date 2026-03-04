@@ -586,7 +586,7 @@ namespace ProjectGuild.View
         /// <summary>
         /// Walk speed for departure animation (matches RunnerVisual.WalkSpeed).
         /// </summary>
-        private const float DepartureWalkSpeed = 8f;
+        private const float DepartureWalkSpeed = 12f;
 
         private void TryStartDepartureWalk(RunnerStartedTravel evt)
         {
