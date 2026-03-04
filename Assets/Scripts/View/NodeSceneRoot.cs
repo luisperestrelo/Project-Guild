@@ -168,6 +168,19 @@ namespace ProjectGuild.View
             return transform.position;
         }
 
+        /// <summary>
+        /// Get the exit position for a runner departing this node toward a destination.
+        /// Circumference nodes: directional spawn closest to the departure direction.
+        /// Entrance nodes: first spawn point (the entrance/cave mouth).
+        /// Used by NodeGeometryProvider for exit distance calculation and by arrival direction logic.
+        /// </summary>
+        public Vector3 GetExitPosition(Vector3 departureDirectionXZ)
+        {
+            if (HasDirectionalSpawns && departureDirectionXZ.sqrMagnitude > 0.001f)
+                return GetDirectionalSpawnPosition(departureDirectionXZ, 0);
+            return GetSpawnPosition(0);
+        }
+
         private void OnValidate()
         {
             if (string.IsNullOrWhiteSpace(_nodeId))

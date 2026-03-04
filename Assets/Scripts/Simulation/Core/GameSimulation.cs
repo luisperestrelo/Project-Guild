@@ -35,6 +35,14 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public IPathDistanceProvider PathDistanceProvider { get; set; }
 
+        /// <summary>
+        /// Optional provider for node interior geometry. When set, travel gets an
+        /// "exiting node" phase where the runner walks to the node edge before
+        /// overworld travel begins. Returns null when scene not loaded → instant exit.
+        /// Set by the view layer after construction (same pattern as PathDistanceProvider).
+        /// </summary>
+        public INodeGeometryProvider NodeGeometryProvider { get; set; }
+
         private readonly System.Random _random = new();
 
 
@@ -210,11 +218,16 @@ namespace ProjectGuild.Simulation.Core
             return Config.BaseTravelSpeed + (athleticsLevel - 1) * Config.AthleticsSpeedPerLevel;
         }
 
+        private float GetInNodeTravelSpeed(Runner runner)
+        {
+            return GetTravelSpeed(runner) * Config.InNodeSpeedMultiplier;
+        }
+
         private void TickTravel(Runner runner)
         {
             if (runner.Travel == null) return;
 
-            // Award athletics XP every tick while traveling
+            // Award athletics XP every tick while traveling (both exit and overworld phases)
             var athletics = runner.GetSkill(SkillType.Athletics);
             bool leveledUp = athletics.AddXp(Config.AthleticsXpPerTick, Config);
 
@@ -228,6 +241,18 @@ namespace ProjectGuild.Simulation.Core
                 });
             }
 
+            // ─── Exit phase: walk to node edge at in-node speed ───
+            if (runner.Travel.IsExitingNode)
+            {
+                float inNodeSpeed = GetInNodeTravelSpeed(runner);
+                runner.Travel.ExitDistanceCovered += inNodeSpeed * TickDeltaTime;
+
+                if (runner.Travel.IsExitingNode)
+                    return; // Still exiting — don't tick overworld yet
+                // else: exit just completed, fall through to first overworld tick
+            }
+
+            // ─── Overworld phase: travel between nodes ───
             float speed = GetTravelSpeed(runner);
             runner.Travel.DistanceCovered += speed * TickDeltaTime;
 
@@ -268,6 +293,15 @@ namespace ProjectGuild.Simulation.Core
             if (runner.State == RunnerState.Traveling && runner.Travel != null)
             {
                 if (targetNodeId == runner.Travel.ToNodeId) return false;
+
+                // Redirect during exit phase: runner hasn't left the node yet.
+                // Cancel exit and start fresh travel from the current node.
+                if (runner.Travel.IsExitingNode)
+                {
+                    runner.State = RunnerState.Idle;
+                    runner.Travel = null;
+                    return CommandTravel(runnerId, targetNodeId);
+                }
 
                 var map = CurrentGameState.Map;
                 var fromNode = map.GetNode(runner.Travel.FromNodeId);
@@ -324,6 +358,8 @@ namespace ProjectGuild.Simulation.Core
             float distance = providerDist ?? CurrentGameState.Map.FindPath(runner.CurrentNodeId, targetNodeId, out _);
             if (distance < 0) return false;
 
+            float exitDist = NodeGeometryProvider?.GetExitDistance(runnerId, runner.CurrentNodeId, targetNodeId) ?? 0f;
+
             string fromNodeId = runner.CurrentNodeId;
             runner.ActiveWarning = null;
             runner.State = RunnerState.Traveling;
@@ -333,17 +369,21 @@ namespace ProjectGuild.Simulation.Core
                 ToNodeId = targetNodeId,
                 TotalDistance = distance,
                 DistanceCovered = 0f,
+                ExitDistance = exitDist,
+                ExitDistanceCovered = 0f,
             };
 
             float travelSpeed = GetTravelSpeed(runner);
-            float estimatedDuration = distance / travelSpeed;
+            float inNodeSpeed = GetInNodeTravelSpeed(runner);
+            float exitDuration = exitDist > 0f ? exitDist / inNodeSpeed : 0f;
+            float overworldDuration = distance / travelSpeed;
 
             Events.Publish(new RunnerStartedTravel
             {
                 RunnerId = runner.Id,
                 FromNodeId = fromNodeId,
                 ToNodeId = targetNodeId,
-                EstimatedDurationSeconds = estimatedDuration,
+                EstimatedDurationSeconds = exitDuration + overworldDuration,
             });
 
             return true;
@@ -351,8 +391,9 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Command a runner to travel with an explicit distance (for testing).
+        /// Optionally specify exit distance to test the exit phase.
         /// </summary>
-        public void CommandTravel(string runnerId, string targetNodeId, float distance)
+        public void CommandTravel(string runnerId, string targetNodeId, float distance, float exitDistance = 0f)
         {
             var runner = FindRunner(runnerId);
             if (runner == null || runner.State == RunnerState.Dead) return;
@@ -366,15 +407,19 @@ namespace ProjectGuild.Simulation.Core
                 ToNodeId = targetNodeId,
                 TotalDistance = distance,
                 DistanceCovered = 0f,
+                ExitDistance = exitDistance,
+                ExitDistanceCovered = 0f,
             };
 
             float speed = GetTravelSpeed(runner);
+            float inNodeSpeed = GetInNodeTravelSpeed(runner);
+            float exitDuration = exitDistance > 0f ? exitDistance / inNodeSpeed : 0f;
             Events.Publish(new RunnerStartedTravel
             {
                 RunnerId = runner.Id,
                 FromNodeId = fromNode,
                 ToNodeId = targetNodeId,
-                EstimatedDurationSeconds = distance / speed,
+                EstimatedDurationSeconds = exitDuration + distance / speed,
             });
         }
 
@@ -384,6 +429,9 @@ namespace ProjectGuild.Simulation.Core
         {
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
 
+            float transitDist = NodeGeometryProvider?.GetGatheringSpotDistance(
+                runner.Id, runner.CurrentNodeId, gatherableIndex) ?? 0f;
+
             runner.ActiveWarning = null;
             runner.State = RunnerState.Gathering;
             runner.Gathering = new GatheringState
@@ -392,6 +440,8 @@ namespace ProjectGuild.Simulation.Core
                 GatherableIndex = gatherableIndex,
                 TickAccumulator = 0f,
                 TicksRequired = ticksRequired,
+                TransitDistance = transitDist,
+                TransitDistanceCovered = 0f,
             };
 
             Events.Publish(new GatheringStarted
@@ -425,6 +475,15 @@ namespace ProjectGuild.Simulation.Core
         private void TickGathering(Runner runner)
         {
             if (runner.Gathering == null) return;
+
+            // Transit gate: runner walks to gathering spot before any production/XP
+            if (runner.Gathering.IsInTransit)
+            {
+                float inNodeSpeed = GetInNodeTravelSpeed(runner);
+                runner.Gathering.TransitDistanceCovered += inNodeSpeed * TickDeltaTime;
+                if (runner.Gathering.IsInTransit) return; // still walking
+                // Fall through to first gathering tick
+            }
 
             var node = CurrentGameState.Map.GetNode(runner.Gathering.NodeId);
             if (node == null || runner.Gathering.GatherableIndex >= node.Gatherables.Length) return;
@@ -844,12 +903,17 @@ namespace ProjectGuild.Simulation.Core
 
         private void ExecuteDepositStep(Runner runner, TaskSequence seq)
         {
+            float transitDist = NodeGeometryProvider?.GetDepositPointDistance(
+                runner.Id, runner.CurrentNodeId) ?? 0f;
+
             // Start the deposit timer — actual deposit happens when it completes
             runner.ActiveWarning = null;
             runner.State = RunnerState.Depositing;
             runner.Depositing = new DepositingState
             {
                 TicksRemaining = Config.DepositDurationTicks,
+                TransitDistance = transitDist,
+                TransitDistanceCovered = 0f,
             };
         }
 
@@ -1148,6 +1212,12 @@ namespace ProjectGuild.Simulation.Core
                 runner.Gathering.GatherableIndex = newIndex;
                 runner.Gathering.TickAccumulator = 0f;
                 runner.Gathering.TicksRequired = CalculateTicksRequired(runner, gatherableConfig);
+
+                // Transit to new gathering spot
+                float transitDist = NodeGeometryProvider?.GetGatheringSpotDistance(
+                    runner.Id, runner.CurrentNodeId, newIndex) ?? 0f;
+                runner.Gathering.TransitDistance = transitDist;
+                runner.Gathering.TransitDistanceCovered = 0f;
             }
             // Same resource — keep going, accumulator rolls over naturally
         }
@@ -1155,6 +1225,15 @@ namespace ProjectGuild.Simulation.Core
         private void TickDepositing(Runner runner)
         {
             if (runner.Depositing == null) return;
+
+            // Transit gate: runner walks to deposit point before countdown starts
+            if (runner.Depositing.IsInTransit)
+            {
+                float inNodeSpeed = GetInNodeTravelSpeed(runner);
+                runner.Depositing.TransitDistanceCovered += inNodeSpeed * TickDeltaTime;
+                if (runner.Depositing.IsInTransit) return; // still walking
+                // Fall through to first deposit tick
+            }
 
             runner.Depositing.TicksRemaining--;
             if (runner.Depositing.TicksRemaining > 0) return;
@@ -2497,9 +2576,11 @@ namespace ProjectGuild.Simulation.Core
             runner.RedirectWorldX = null;
             runner.RedirectWorldZ = null;
 
+            bool isRedirectFromOverworld = startX.HasValue && startZ.HasValue;
+
             // If redirecting mid-travel, calculate distance from virtual position
             float distance;
-            if (startX.HasValue && startZ.HasValue)
+            if (isRedirectFromOverworld)
             {
                 var targetNode = CurrentGameState.Map.GetNode(targetNodeId);
                 if (targetNode == null) return;
@@ -2524,6 +2605,11 @@ namespace ProjectGuild.Simulation.Core
                 if (distance < 0) return;
             }
 
+            // Exit phase: only for normal travel from a node (not mid-overworld redirect)
+            float exitDist = 0f;
+            if (!isRedirectFromOverworld)
+                exitDist = NodeGeometryProvider?.GetExitDistance(runner.Id, fromNode, targetNodeId) ?? 0f;
+
             runner.ActiveWarning = null;
             runner.State = RunnerState.Traveling;
             runner.Travel = new TravelState
@@ -2532,17 +2618,21 @@ namespace ProjectGuild.Simulation.Core
                 ToNodeId = targetNodeId,
                 TotalDistance = distance,
                 DistanceCovered = 0f,
+                ExitDistance = exitDist,
+                ExitDistanceCovered = 0f,
                 StartWorldX = startX,
                 StartWorldZ = startZ,
             };
 
             float speed = GetTravelSpeed(runner);
+            float inNodeSpeed = GetInNodeTravelSpeed(runner);
+            float exitDuration = exitDist > 0f ? exitDist / inNodeSpeed : 0f;
             Events.Publish(new RunnerStartedTravel
             {
                 RunnerId = runner.Id,
                 FromNodeId = fromNode,
                 ToNodeId = targetNodeId,
-                EstimatedDurationSeconds = distance / speed,
+                EstimatedDurationSeconds = exitDuration + distance / speed,
             });
         }
 

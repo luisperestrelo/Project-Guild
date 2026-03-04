@@ -61,6 +61,13 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float AthleticsXpPerTick = 1.0f;
 
+        /// <summary>
+        /// Multiplier applied to overworld travel speed for in-node movement.
+        /// In-node speed = GetTravelSpeed(runner) * InNodeSpeedMultiplier.
+        /// Used during the "exiting node" phase of travel and for all in-node movement visuals.
+        /// </summary>
+        public float InNodeSpeedMultiplier = 4.0f;
+
         // ─── Skills / XP ────────────────────────────────────────────
 
         /// <summary>

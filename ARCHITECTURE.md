@@ -108,6 +108,8 @@ Back to Tick() (continues processing)
 | `SimulationEvents.cs` | Simulation | The vocabulary. Defines what events exist |
 | `EventLogService.cs` | Simulation | The recorder. Subscribes to all events, ring buffer, collapsing, queries |
 | `WorldMap.cs` | Simulation | The terrain. Nodes, edges, pathfinding |
+| `IPathDistanceProvider.cs` | Simulation | Interface for NavMesh-backed travel distances |
+| `INodeGeometryProvider.cs` | Simulation | Interface for node interior geometry (exit distances) |
 | `Runner.cs` | Simulation | The adventurer. State, skills, inventory, ID refs into automation libraries |
 | `GatherableConfig.cs` | Simulation | The resource. What a gatherable produces and costs |
 | `RuleEvaluator.cs` | Simulation | The referee. Evaluates automation rules against context |
@@ -126,6 +128,7 @@ Back to Tick() (continues processing)
 | `GuildHallSceneRoot.cs` | View | Specialized NodeSceneRoot for the hub. Adds deposit point and future hub-specific features |
 | `SceneTransitionOverlay.cs` | View | Fade-to-black overlay for scene transitions and reload cover. Dedicated UIDocument, coroutine-driven |
 | `LoadingSceneController.cs` | View | Boot scene controller. Black screen on frame 1, loads SampleScene, fades out on OnWorldReady |
+| `NodeGeometryProvider.cs` | View | Implements INodeGeometryProvider using scene data and runner visuals |
 | `BankMarker.cs` | View | Tags the bank GameObject for click-to-open raycasting |
 | `UIManager.cs` | View | Top-level UI coordinator. Owns UIDocument, manages all controllers, tick refresh, selection state |
 | `RunnerWarnings.cs` | Simulation | Centralized warning message strings and factory methods |
@@ -169,7 +172,7 @@ Also contains:
 - `GatheringSpeedFormula` enum — `PowerCurve` or `Hyperbolic`, selectable via config.
 
 Key field groups:
-- **Travel**: `BaseTravelSpeed`, `AthleticsSpeedPerLevel`, `AthleticsXpPerTick`
+- **Travel**: `BaseTravelSpeed`, `AthleticsSpeedPerLevel`, `AthleticsXpPerTick`, `InNodeSpeedMultiplier` (in-node speed = overworld speed * multiplier)
 - **Skills/XP**: `PassionEffectivenessMultiplier`, `PassionXpMultiplier`, `XpCurveBase`, `XpCurveGrowth`
 - **Runner Generation**: `MinStartingLevel`, `MaxStartingLevel`, `PassionChance`, `EasterEggNameChance`
 - **Gathering**: `GlobalGatheringSpeedMultiplier`, `GatheringFormula`, `GatheringSpeedExponent`, `HyperbolicSpeedPerLevel`
@@ -200,9 +203,11 @@ All methods take a `SimulationConfig` parameter so tuning values are never hardc
 ### `Simulation/Core/Runner.cs`
 The core data class for a runner. Identity (ID, name), current state (Idle/Traveling/Gathering/Depositing), location (which world node), 15 skills, an `Inventory` (28-slot OSRS-style), a `TravelState` for when they're moving, a `GatheringState` for when they're gathering, a `DepositingState` for when depositing. Automation state uses **string ID references** into global libraries on GameState: `TaskSequenceId` (current step sequence), `PendingTaskSequenceId` (deferred macro rule result), `MacroRulesetId` (macro rules). `TaskSequenceCurrentStepIndex` tracks per-runner progress through the shared task sequence template. Micro rulesets are **per-Work-step** (on `TaskStep.MicroRulesetId`), not per-runner. `MicroRulesetOverrides` (`Dictionary<int, string>`) allows per-runner overrides of specific Work step micro rulesets without cloning the shared sequence — keyed by step index, persists across loops, cleared on sequence re-assignment. The constructor initializes all skills to level 1 — actual values come from RunnerFactory.
 
-**`TravelState`** — tracks from/to nodes, total distance, distance covered, and a `Progress` property (0.0-1.0). Also has optional `StartWorldX`/`StartWorldZ` float fields — when set, the view layer uses these as the travel start position instead of the FromNode's position. Used by the redirect system to prevent visual snapping when a runner changes destination mid-travel. Null means "use the FromNode position as usual."
+**`TravelState`** — tracks from/to nodes, total distance, distance covered, and a `Progress` property (0.0-1.0). Travel has two phases: an optional **exit phase** (runner walks to node edge at in-node speed, tracked by `ExitDistance`/`ExitDistanceCovered`) and the **overworld phase** (tracked by `TotalDistance`/`DistanceCovered`). Properties: `IsExitingNode` (still walking to edge), `ExitProgress` (0-1 exit phase), `Progress` (0-1 overworld phase), `OverallProgress` (0-1 combined). Also has optional `StartWorldX`/`StartWorldZ` float fields — when set, the view layer uses these as the travel start position instead of the FromNode's position. Used by the redirect system to prevent visual snapping when a runner changes destination mid-travel. Null means "use the FromNode position as usual."
 
-**`GatheringState`** — tracks the node being gathered, a `GatherableIndex` (which gatherable in the node's array), a tick accumulator, the pre-calculated ticks required per item, and a `GatheringSubState` enum (`Gathering`, `TravelingToBank`, `TravelingToNode`). The sub-state and gatherable index persist across the auto-return deposit loop so the runner knows what it was doing and which resource it was working on.
+**`GatheringState`** — tracks the node being gathered, a `GatherableIndex` (which gatherable in the node's array), a tick accumulator, and the pre-calculated ticks required per item. Has an optional **transit phase** (runner walks to gathering spot at in-node speed before production begins, tracked by `TransitDistance`/`TransitDistanceCovered`). Properties: `IsInTransit` (still walking to spot), `TransitProgress` (0-1). During transit, no XP is awarded and no items are produced. On gatherable switch (micro re-eval), transit distance is re-queried from `INodeGeometryProvider` for the new spot.
+
+**`DepositingState`** — simple countdown via `TicksRemaining`. Has an optional **transit phase** (runner walks to deposit point at in-node speed before countdown begins, tracked by `TransitDistance`/`TransitDistanceCovered`). Properties: `IsInTransit`, `TransitProgress`. Same pattern as GatheringState transit — countdown doesn't tick during transit.
 
 **`ActiveWarning`** — human-readable string, null when runner is operating normally. Set when the runner gets stuck: `GatheringFailed` (NoGatherablesAtNode, NotEnoughSkill) or `NoMicroRuleMatched` (empty ruleset, no rule matched). Cleared at every productive state transition: `AssignRunner`, `StartGathering`, `StartTravel` (all 3 sites), `ExecuteDepositStep`. The portrait warning badge reads this field — red dot visible when non-null, tooltip shows the message.
 
@@ -255,7 +260,9 @@ The orchestrator. Owns `GameState`, `EventBus`, `SimulationConfig`, `ItemRegistr
 
 2. **Redirect (runner is already Traveling):** Calculates the runner's current virtual position by lerping between the start and destination using travel progress. Computes the Euclidean distance from that virtual position to the new target. Creates a new `TravelState` with `StartWorldX`/`StartWorldZ` set to the virtual position, so the view can lerp smoothly from the runner's actual position to the new destination without snapping. Chained redirects work correctly because each redirect reads the previous `StartWorldX`/`StartWorldZ` override when computing the virtual position.
 
-`GetTravelSpeed()` calculates Athletics-based movement speed from config values. `TickTravel()` advances runners along their path each tick and awards Athletics XP every tick (same decoupling as gathering: speed = getting there faster, XP = progression).
+`GetTravelSpeed()` calculates Athletics-based overworld movement speed from config values. `GetInNodeTravelSpeed()` returns `GetTravelSpeed(runner) * Config.InNodeSpeedMultiplier` — one formula, same Athletics scaling. `TickTravel()` first ticks the exit phase (if `IsExitingNode`) at in-node speed, then ticks overworld travel at overworld speed. Athletics XP accrues during both phases. Redirect during exit phase cancels the exit and starts fresh travel from the current node (runner hasn't left yet).
+
+**`INodeGeometryProvider`** — pure C# interface (same pattern as `IPathDistanceProvider`). Three methods: `GetExitDistance` (travel exit), `GetGatheringSpotDistance` (gathering transit), `GetDepositPointDistance` (deposit transit). Returns null when unavailable (scene not loaded) → sim uses 0 (instant). View-layer `NodeGeometryProvider` MonoBehaviour implements all three using `NodeSceneRoot` geometry and runner visual positions. Wired in `GameBootstrapper.BuildAndRevealWorld()`.
 
 **Gathering:** `StartGathering(runner, gatherableIndex, gatherableConfig)` validates skill level (publishes `GatheringFailed` if not met), calculates ticks required from the skill speed formula, and puts the runner into the `Gathering` state. Which resource to gather is determined by micro rules, not by a command parameter. `TickGathering()` awards XP every tick (decoupled from item production), accumulates ticks, produces an item when the threshold is reached, and recalculates speed on level-up.
 
@@ -422,6 +429,10 @@ Key methods:
 
 **Starter map nodes:** Guild Hall (hub), Copper Mine, Pine Forest, Sunlit Pond, Herb Garden, Overgrown Mine (multi-gatherable: trees + ore), Deep Mine (multi-gatherable: copper + iron Lv15), Lakeside Grove (multi-gatherable: logs + fish + herbs), Goblin Camp, Dark Cavern.
 
+**`IPathDistanceProvider.cs`** — pure C# interface for real NavMesh-backed travel distances. `GetTravelDistance(runnerId, fromNodeId, toNodeId)` for normal travel, `GetTravelDistance(runnerId, fromX, fromZ, toNodeId)` for mid-travel redirect. Returns null → caller falls back to Euclidean/FindPath. Implemented by `NavMeshTravelPathCache` in the view layer.
+
+**`INodeGeometryProvider.cs`** — pure C# interface for node interior geometry. Three methods: `GetExitDistance(runnerId, nodeId, destinationNodeId)` for travel exit phase, `GetGatheringSpotDistance(runnerId, nodeId, gatherableIndex)` for gathering transit, `GetDepositPointDistance(runnerId, nodeId)` for deposit transit. All return null → caller uses 0 (instant, correct when scene not loaded). Implemented by `NodeGeometryProvider` in the view layer. Used by `GameSimulation` to add sim-driven transit phases to travel, gathering, and depositing.
+
 ### `Simulation/Core/SaveSystem.cs`
 Defines what save/load looks like without implementing it. The simulation layer says "I need someone who can save/load a GameState" but doesn't know how. This boundary exists because the simulation assembly can't reference Unity's JsonUtility.
 
@@ -532,10 +543,13 @@ Simple MonoBehaviour (no fields) placed on the bank object inside the Node_Guild
 Manages the lifecycle of additive node scenes. Each world node can have a dedicated Unity scene (specified by `WorldNode.SceneName`) loaded at a unique world-space offset (nodeIndex * 2000 on Z). Subscribes to `RunnerStartedTravel` (pre-load destination) and `RunnerArrivedAtNode` (ensure loaded). Scenes unload after a grace period when empty and the camera is elsewhere. The hub scene is exempt from auto-unload. Provides `EnsureNodeSceneLoaded()`, `GetNodeSceneRoot()`, `GetNodeSceneOffset()` for other systems.
 
 ### `View/NodeSceneRoot.cs`
-MonoBehaviour attached to the root GameObject in each additive node scene. Stores the node ID, spawn point transforms, directional spawn points, and gathering spot groups. Each `GatherableSpotGroup` holds multiple physical positions for one gatherable type (e.g. 4 ore veins for gatherable index 0). `GetGatheringPosition(gatherableIndex, runnerIndexInGroup)` picks a spot within the group so multiple runners gathering the same resource spread across different positions. `GetSpawnPosition(arrivalIndex)` returns a position for entering runners. `GetDirectionalSpawnPosition(approachDirectionXZ, fallbackIndex)` selects the directional spawn point best aligned with the approach direction (dot product). `HasDirectionalSpawns` indicates whether directional selection is available (circumference/area nodes). Virtual `DepositPointPosition` returns null — overridden by `GuildHallSceneRoot`. Falls back gracefully when fewer spots exist than needed.
+MonoBehaviour attached to the root GameObject in each additive node scene. Stores the node ID, spawn point transforms, directional spawn points, and gathering spot groups. Each `GatherableSpotGroup` holds multiple physical positions for one gatherable type (e.g. 4 ore veins for gatherable index 0). `GetGatheringPosition(gatherableIndex, runnerIndexInGroup)` picks a spot within the group so multiple runners gathering the same resource spread across different positions. `GetSpawnPosition(arrivalIndex)` returns a position for entering runners. `GetDirectionalSpawnPosition(approachDirectionXZ, fallbackIndex)` selects the directional spawn point best aligned with the approach direction (dot product). `HasDirectionalSpawns` indicates whether directional selection is available (circumference/area nodes). `GetExitPosition(departureDirectionXZ)` returns the exit point for a departing runner — uses directional spawns or falls back to first spawn point. Used by `NodeGeometryProvider` and `VisualSyncSystem`. Virtual `DepositPointPosition` returns null — overridden by `GuildHallSceneRoot`. Falls back gracefully when fewer spots exist than needed.
 
 ### `View/GuildHallSceneRoot.cs`
 Subclass of `NodeSceneRoot` for the Guild Hall (hub) scene. Adds `_depositPoint` field and overrides `DepositPointPosition` to return the bank/warehouse position. Future hub-specific features (crafting stations, NPC positions, etc.) belong here rather than polluting the base class. In the Unity scene, the Guild Hall root object uses this component instead of `NodeSceneRoot`.
+
+### `View/NodeGeometryProvider.cs`
+View-layer implementation of `INodeGeometryProvider`. Uses loaded node scenes (`WorldSceneManager.GetNodeSceneRoot()`) and runner visual positions (`VisualSyncSystem.GetRunnerVisual()`) to compute exit distances. `GetExitDistance()` calculates `Vector3.Distance(runnerVisual.position, sceneRoot.GetExitPosition(departureDir))`. Returns null when scene not loaded or visual unavailable → sim uses 0 (instant exit, correct since there's nothing to animate). Wired by `GameBootstrapper` into `GameSimulation.NodeGeometryProvider`.
 
 ### `View/TerrainHeightSampler.cs`
 Static helper for sampling terrain height at any world XZ position. `GetHeight(worldX, worldZ)` returns terrain surface Y (or 0 if no active terrain). `GetPositionOnTerrain(worldX, worldZ, yOffset)` returns a full Vector3 on the terrain surface. Used by VisualSyncSystem to place runners and markers on terrain.
@@ -557,7 +571,9 @@ Runner position calculation (`GetRunnerWorldPosition`):
 
 **Directional spawning:** Caches from/to node IDs when `RunnerStartedTravel` fires. On arrival at a circumference node with directional spawn points, selects the spawn point closest to the overworld approach direction. Entrance nodes use round-robin `_spawnPoints[]` as before.
 
-**Departure walk:** When a runner starts traveling from a node scene, they walk toward the nearest scene edge (circumference nodes) or entrance (entrance nodes) before transitioning to overworld. Walk is purely visual — sim travel progresses underneath. Duration: `Min(1.5s, estimatedTripTime * 0.3)`. Skipped for very short trips (< 3s). On completion, triggers a fade-to-black if camera is following the departing runner.
+**Exit phase positioning:** When a runner's `Travel.IsExitingNode` is true, VisualSyncSystem positions the runner inside the departure node scene, walking to the exit point at athletics-based in-node speed (via `NodeSceneRoot.GetExitPosition()`). When the exit phase completes (`WasExitingNode` transitions to false), a fade-to-black fires if camera is following, then the visual snaps to the overworld position. This replaced the old "departure walk" system — the exit walk is now sim-driven (no desync).
+
+**In-node walk speed:** All in-node movement (gathering spot changes, deposit walks, exit phase) uses `overworldSpeed * InNodeSpeedMultiplier`. The `RunnerVisual.WalkSpeed` property is set by VisualSyncSystem before each NavMesh walk. The sim gates gathering production/XP and deposit countdown behind transit phases using the same speed formula, so the sim and view stay in sync naturally.
 
 **Arrival fade:** When a runner arrives at a node scene and camera is following them, the snap to the scene spawn point is wrapped in a fade-to-black transition.
 
@@ -732,6 +748,12 @@ Ruleset mutation commands (add/remove/reorder/toggle/update/reset/rename rules),
 
 ### `Tests/Editor/RedirectTests.cs`
 Uses a simple 3-node right triangle map (A, B, C) with constant speed for predictable math. Tests: basic redirect (changes destination, sets StartWorld override, virtual position correct, Euclidean TotalDistance, resets DistanceCovered, preserves FromNodeId, arrives at new destination), redirect to current destination is no-op, redirect back to origin (works, arrives, correct virtual pos and distance), chained redirects (virtual position correct, arrives at final destination, back-and-forth stress test), normal travel has no StartWorld override, redirect publishes RunnerStartedTravel event, edge cases (idle runner starts normal travel, redirect at progress zero).
+
+### `Tests/Editor/ExitPhaseTests.cs`
+Exit phase travel tests. Uses a 3-node map with constant speeds for predictable math. Tests: exit phase basics (fields set, ticks at in-node speed, doesn't tick overworld, transitions to overworld, arrives at destination), progress properties (ExitProgress, OverallProgress, OverallProgress equals Progress without exit), Athletics XP during exit phase, redirect during exit (cancels exit and starts fresh, stays at current node, arrives at new destination), redirect during overworld with exit phase (no regression), in-node speed scaling (level 1/50/99, clamp below 1), save/load compatibility (default 0 fields), NodeGeometryProvider integration (queries exit distance, null returns no exit phase), EstimatedDuration includes exit time.
+
+### `Tests/Editor/InNodeTransitTests.cs`
+In-node transit phase tests for gathering and depositing. Uses a mock `INodeGeometryProvider` with configurable distances. Tests: gathering transit basics (fields set, ticks at in-node speed, no XP during transit, no items during transit, completes and gathering starts, progress tracking), gatherable switch transit (micro re-eval sets new transit distance), deposit transit basics (fields set, ticks at in-node speed, countdown doesn't tick during transit, completes and countdown starts, progress tracking), no transit when provider null or distance trivial, save/load compatibility (default 0 fields), macro interrupt during transit clears state, provider returns null (no transit).
 
 ### `Tests/Editor/WarningBadgeTests.cs`
 `Runner.ActiveWarning` lifecycle tests. Null by default. Set on: `GatheringFailed` (NoGatherablesAtNode, NotEnoughSkill), `NoMicroRuleMatched` (empty ruleset). Cleared on: `AssignRunner`, `CommandTravel`, `StartGathering`. Uses nodes with no gatherables, high MinLevel gatherables, and empty micro rulesets to trigger warnings.

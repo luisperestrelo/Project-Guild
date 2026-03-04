@@ -185,6 +185,10 @@ namespace ProjectGuild.View
             else
                 Debug.LogWarning("[GameBootstrapper] No NavMeshTravelPathCache found. Travel distances will use Euclidean fallback.");
 
+            var nodeGeoProvider = FindAnyObjectByType<NodeGeometryProvider>();
+            if (nodeGeoProvider != null)
+                _simulationRunner.Simulation.NodeGeometryProvider = nodeGeoProvider;
+
             if (_worldSceneManager != null)
                 _worldSceneManager.Initialize();
             if (_navMeshPathCache != null)

@@ -24,7 +24,6 @@ namespace ProjectGuild.View
     public class CameraController : MonoBehaviour
     {
         [Header("Follow Settings")]
-        [SerializeField] private float _followSpeed = 8f;
         [SerializeField] private Vector3 _defaultOffset = new(0f, 12f, -10f);
 
         [Header("Orbit")]
@@ -297,11 +296,7 @@ namespace ProjectGuild.View
             Vector3 offset = rotation * new Vector3(0f, 0f, -_currentDistance);
             Vector3 desiredPosition = targetPos + offset;
 
-            // Snap when target has teleported (scene transition), smooth follow otherwise
-            if (Vector3.Distance(transform.position, desiredPosition) > _fadeDistanceThreshold)
-                transform.position = desiredPosition;
-            else
-                transform.position = Vector3.Lerp(transform.position, desiredPosition, Time.deltaTime * _followSpeed);
+            transform.position = desiredPosition;
 
             transform.LookAt(targetPos);
         }

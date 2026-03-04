@@ -36,7 +36,9 @@ namespace ProjectGuild.View.Runners
         private int _pathIndex; // index of waypoint we're currently walking TOWARD
 
         // Walk speed for within-node movement (gathering spot changes, repositioning, etc.)
-        private const float WalkSpeed = 12f; // meters per second
+        // Settable so VisualSyncSystem can apply athletics-based in-node speed per runner.
+        private float _walkSpeed = 8f;
+        public float WalkSpeed { get => _walkSpeed; set => _walkSpeed = value; }
 
         // Name label
         private TextMeshPro _nameLabel;

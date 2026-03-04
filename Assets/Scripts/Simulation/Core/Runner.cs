@@ -193,6 +193,24 @@ namespace ProjectGuild.Simulation.Core
         public int GatherableIndex;
         public float TickAccumulator;
         public float TicksRequired;
+
+        // ─── Transit Phase ──────────────────────────────────────
+        // Distance from runner's position to the gathering spot.
+        // 0 = no transit (scene not loaded, already at spot, or old save).
+
+        public float TransitDistance;
+        public float TransitDistanceCovered;
+
+        /// <summary>
+        /// True while the runner is still walking to the gathering spot.
+        /// </summary>
+        public bool IsInTransit => TransitDistance > 0f && TransitDistanceCovered < TransitDistance;
+
+        /// <summary>
+        /// 0.0 to 1.0 progress through the transit phase. 1.0 when no transit or complete.
+        /// </summary>
+        public float TransitProgress => TransitDistance > 0f
+            ? Math.Min(TransitDistanceCovered / TransitDistance, 1f) : 1f;
     }
 
     /// <summary>
@@ -203,10 +221,33 @@ namespace ProjectGuild.Simulation.Core
     public class DepositingState
     {
         public int TicksRemaining;
+
+        // ─── Transit Phase ──────────────────────────────────────
+        // Distance from runner's position to the deposit point.
+        // 0 = no transit (scene not loaded, no deposit point, or old save).
+
+        public float TransitDistance;
+        public float TransitDistanceCovered;
+
+        /// <summary>
+        /// True while the runner is still walking to the deposit point.
+        /// </summary>
+        public bool IsInTransit => TransitDistance > 0f && TransitDistanceCovered < TransitDistance;
+
+        /// <summary>
+        /// 0.0 to 1.0 progress through the transit phase. 1.0 when no transit or complete.
+        /// </summary>
+        public float TransitProgress => TransitDistance > 0f
+            ? Math.Min(TransitDistanceCovered / TransitDistance, 1f) : 1f;
     }
 
     /// <summary>
     /// State tracked while a runner is traveling between world nodes.
+    /// Travel has two phases:
+    /// 1. Exit phase (optional): runner walks from current position to node edge.
+    ///    Burns ExitDistance at in-node speed. Sim-driven so the view stays in sync.
+    /// 2. Overworld phase: runner travels between nodes at athletics-based travel speed.
+    ///    Burns TotalDistance at overworld speed.
     /// </summary>
     [Serializable]
     public class TravelState
@@ -216,10 +257,43 @@ namespace ProjectGuild.Simulation.Core
         public float TotalDistance;
         public float DistanceCovered;
 
+        // ─── Exit Phase ──────────────────────────────────────────
+        // Distance from runner's position to the node exit point.
+        // 0 = no exit phase (scene not loaded, instant exit, or redirect from overworld).
+
+        public float ExitDistance;
+        public float ExitDistanceCovered;
+
         /// <summary>
-        /// 0.0 to 1.0 progress along the travel path.
+        /// True while the runner is still walking to the node exit point.
+        /// </summary>
+        public bool IsExitingNode => ExitDistance > 0f && ExitDistanceCovered < ExitDistance;
+
+        /// <summary>
+        /// 0.0 to 1.0 progress through the exit phase. 1.0 when no exit phase or complete.
+        /// </summary>
+        public float ExitProgress => ExitDistance > 0f ? ExitDistanceCovered / ExitDistance : 1f;
+
+        /// <summary>
+        /// 0.0 to 1.0 progress along the overworld travel path (excludes exit phase).
+        /// Used for path interpolation in the view layer.
         /// </summary>
         public float Progress => TotalDistance > 0 ? DistanceCovered / TotalDistance : 1f;
+
+        /// <summary>
+        /// 0.0 to 1.0 combined progress across both exit + overworld phases.
+        /// Used for UI display (progress bar, ETA).
+        /// </summary>
+        public float OverallProgress
+        {
+            get
+            {
+                float totalCombined = ExitDistance + TotalDistance;
+                return totalCombined > 0f
+                    ? (ExitDistanceCovered + DistanceCovered) / totalCombined
+                    : 1f;
+            }
+        }
 
         /// <summary>
         /// When set, the view layer uses these coordinates as the travel start point

@@ -24,6 +24,11 @@ namespace ProjectGuild.Data
             "speed is about getting there faster, XP is about progression.")]
         public float AthleticsXpPerTick = 1.0f;
 
+        [Tooltip("Multiplier on overworld travel speed for in-node movement. " +
+            "In-node speed = travel speed * this value. Used during the 'exiting node' phase " +
+            "of travel and for all in-node movement visuals (gathering spot walks, deposit walks).")]
+        public float InNodeSpeedMultiplier = 4.0f;
+
         [Header("Skills / XP")]
         [Tooltip("Multiplier on effective level when runner has passion (e.g. 1.05 = +5%)")]
         public float PassionEffectivenessMultiplier = 1.05f;
@@ -134,6 +139,7 @@ namespace ProjectGuild.Data
                 BaseTravelSpeed = BaseTravelSpeed,
                 AthleticsSpeedPerLevel = AthleticsSpeedPerLevel,
                 AthleticsXpPerTick = AthleticsXpPerTick,
+                InNodeSpeedMultiplier = InNodeSpeedMultiplier,
                 PassionEffectivenessMultiplier = PassionEffectivenessMultiplier,
                 PassionXpMultiplier = PassionXpMultiplier,
                 XpCurveBase = XpCurveBase,

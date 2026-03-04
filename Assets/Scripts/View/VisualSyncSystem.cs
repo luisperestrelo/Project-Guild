@@ -41,9 +41,6 @@ namespace ProjectGuild.View
         // Travel direction cache: remembers where each runner came from for directional spawning
         private readonly Dictionary<string, TravelDirectionEntry> _travelDirectionCache = new();
 
-        // Departure walk state: runners walking toward edge/entrance before scene transition
-        private readonly Dictionary<string, DepartureWalkState> _departureWalks = new();
-
         // Runners with a pending arrival fade — suppresses normal position updates
         // until the fade callback snaps the visual to the correct position.
         private readonly HashSet<string> _pendingArrivalFades = new();
@@ -58,6 +55,7 @@ namespace ProjectGuild.View
         {
             public bool InNodeScene;       // Was positioned inside a loaded node scene?
             public string NodeId;          // Which node?
+            public bool WasExitingNode;    // Was in exit phase of travel last frame?
         }
 
         /// <summary>
@@ -68,20 +66,6 @@ namespace ProjectGuild.View
         {
             public string FromNodeId;
             public string ToNodeId;
-        }
-
-        /// <summary>
-        /// Active departure walk: runner walks toward scene edge/entrance before
-        /// transitioning to overworld. Purely visual — sim travel progresses underneath.
-        /// </summary>
-        private struct DepartureWalkState
-        {
-            public string FromNodeId;
-            public string ToNodeId;
-            public Vector3 DepartureTarget;
-            public float MaxDurationSeconds;
-            public float ElapsedSeconds;
-            public bool ReachedTarget;
         }
 
         private GameSimulation Sim => _simulationRunner?.Simulation;
@@ -146,7 +130,6 @@ namespace ProjectGuild.View
 
             _runnerPositionContexts.Clear();
             _travelDirectionCache.Clear();
-            _departureWalks.Clear();
             _pendingArrivalFades.Clear();
 
             _worldBuilt = false;
@@ -206,21 +189,65 @@ namespace ProjectGuild.View
         /// </summary>
         private void UpdateRunnerVisualPosition(Runner runner, RunnerVisual visual)
         {
-            // Active departure walk: runner is walking toward scene edge before overworld transition.
-            // Suppresses all normal position logic — the departure handler manages the snap.
-            if (UpdateDepartureWalk(runner.Id, visual))
-                return;
-
             // Pending arrival fade: visual is being faded in to a node scene.
             // Don't touch position until the fade callback snaps the visual.
             if (_pendingArrivalFades.Contains(runner.Id))
                 return;
 
+            _runnerPositionContexts.TryGetValue(runner.Id, out var prev);
+
+            // ─── Exit phase: runner is exiting a node (sim-driven) ───
+            bool isExiting = runner.State == RunnerState.Traveling
+                && runner.Travel != null
+                && runner.Travel.IsExitingNode;
+
+            if (isExiting)
+            {
+                UpdateExitPhasePosition(runner, visual);
+                _runnerPositionContexts[runner.Id] = new RunnerPositionContext
+                {
+                    InNodeScene = true,
+                    NodeId = runner.Travel.FromNodeId,
+                    WasExitingNode = true,
+                };
+                return;
+            }
+
+            // ─── Exit→overworld transition: exit just completed this frame ───
+            if (prev.WasExitingNode && runner.State == RunnerState.Traveling && runner.Travel != null)
+            {
+                Vector3 overworldPos = GetTravelingPosition(runner);
+                bool cameraFollowing = _cameraController != null
+                    && _cameraController.CurrentTarget == visual.transform;
+
+                if (cameraFollowing && _sceneTransitionOverlay != null)
+                {
+                    string capturedId = runner.Id;
+                    _sceneTransitionOverlay.PlayFadeTransition(() =>
+                    {
+                        var r = Sim.FindRunner(capturedId);
+                        if (r != null)
+                            visual.SnapToPosition(GetTravelingPosition(r));
+                    });
+                }
+                else
+                {
+                    visual.SnapToPosition(overworldPos);
+                }
+
+                _runnerPositionContexts[runner.Id] = new RunnerPositionContext
+                {
+                    InNodeScene = false,
+                    NodeId = runner.CurrentNodeId,
+                    WasExitingNode = false,
+                };
+                return;
+            }
+
+            // ─── Normal positioning (unchanged logic) ───
             Vector3 worldPos = GetRunnerWorldPosition(runner);
 
             bool inNodeScene = !IsRunnerInOverworld(runner);
-
-            _runnerPositionContexts.TryGetValue(runner.Id, out var prev);
 
             // Scene transition (overworld ↔ node scene, or different node):
             // Snap to spawn point, then next frame walks to actual position (gathering spot, etc.)
@@ -265,6 +292,9 @@ namespace ProjectGuild.View
             // Inside a node scene: NavMesh walk (avoids obstacles) or straight-line fallback
             else if (inNodeScene)
             {
+                // Set athletics-based in-node speed for all in-node movement
+                visual.WalkSpeed = GetVisualInNodeSpeed(runner);
+
                 NavMeshWalkTo(visual, worldPos);
             }
             // Overworld (traveling): tick interpolation
@@ -278,16 +308,49 @@ namespace ProjectGuild.View
             {
                 InNodeScene = inNodeScene,
                 NodeId = runner.CurrentNodeId,
+                WasExitingNode = false,
             };
         }
 
         /// <summary>
+        /// Position a runner during the sim-driven exit phase. The runner walks from
+        /// their current position to the node exit point at athletics-based in-node speed.
+        /// </summary>
+        private void UpdateExitPhasePosition(Runner runner, RunnerVisual visual)
+        {
+            string nodeId = runner.Travel.FromNodeId;
+            if (_worldSceneManager == null || !_worldSceneManager.IsNodeSceneReady(nodeId))
+                return;
+
+            var sceneRoot = _worldSceneManager.GetNodeSceneRoot(nodeId);
+            if (sceneRoot == null) return;
+
+            // Set walk speed to athletics-based in-node speed
+            visual.WalkSpeed = GetVisualInNodeSpeed(runner);
+
+            // Compute departure direction and exit point
+            string toNodeId = runner.Travel.ToNodeId;
+            Vector3 departureDir = ComputeDepartureDirection(nodeId, toNodeId);
+            Vector3 exitPoint = sceneRoot.GetExitPosition(departureDir) + RunnerYOffset;
+
+            NavMeshWalkTo(visual, exitPoint);
+        }
+
+        /// <summary>
         /// Returns true if a runner should be positioned in the overworld
-        /// (traveling, or at a node without a loaded scene).
+        /// (traveling in overworld phase, or at a node without a loaded scene).
+        /// During exit phase, runner is still visually in the node scene → returns false
+        /// (exit phase is handled separately in UpdateRunnerVisualPosition).
         /// </summary>
         private bool IsRunnerInOverworld(Runner runner)
         {
-            if (runner.State == RunnerState.Traveling) return true;
+            if (runner.State == RunnerState.Traveling)
+            {
+                // Exit phase: runner is still visually in the departure node scene
+                if (runner.Travel != null && runner.Travel.IsExitingNode)
+                    return false;
+                return true;
+            }
             if (_worldSceneManager == null) return true;
             return !_worldSceneManager.IsNodeSceneReady(runner.CurrentNodeId);
         }
@@ -393,8 +456,10 @@ namespace ProjectGuild.View
         /// Get the arrival (spawn) position for a runner entering a node scene.
         /// For circumference nodes with directional spawns, picks the point closest
         /// to the runner's overworld approach direction. Entrance nodes use round-robin.
+        /// Public so NodeGeometryProvider can use it as a fallback when the runner visual
+        /// hasn't been moved into the scene yet (same-tick arrival).
         /// </summary>
-        private Vector3 GetNodeSceneArrivalPosition(Runner runner)
+        public Vector3 GetNodeSceneArrivalPosition(Runner runner)
         {
             string nodeId = runner.CurrentNodeId;
             if (_worldSceneManager != null && _worldSceneManager.IsNodeSceneReady(nodeId))
@@ -498,6 +563,19 @@ namespace ProjectGuild.View
             return index;
         }
 
+        /// <summary>
+        /// Calculate in-node walk speed for a runner's visual.
+        /// Same formula as the sim: overworld travel speed * InNodeSpeedMultiplier.
+        /// </summary>
+        private float GetVisualInNodeSpeed(Runner runner)
+        {
+            float athleticsLevel = runner.GetEffectiveLevel(
+                Simulation.Core.SkillType.Athletics, Sim.Config);
+            float overworldSpeed = Sim.Config.BaseTravelSpeed
+                + (athleticsLevel - 1f) * Sim.Config.AthleticsSpeedPerLevel;
+            return overworldSpeed * Sim.Config.InNodeSpeedMultiplier;
+        }
+
         private Vector3 NodeWorldPosition(WorldNode node)
         {
             float terrainY = TerrainHeightSampler.GetHeight(node.WorldX, node.WorldZ);
@@ -559,9 +637,6 @@ namespace ProjectGuild.View
                 FromNodeId = evt.FromNodeId,
                 ToNodeId = evt.ToNodeId,
             };
-
-            // Start departure walk if runner was visually in a node scene
-            TryStartDepartureWalk(evt);
         }
 
         private void OnRunnerArrivedAtNode(RunnerArrivedAtNode evt)
@@ -570,79 +645,8 @@ namespace ProjectGuild.View
             // spawn selection this frame. The cache is bounded (one entry per runner) and
             // overwritten on each new RunnerStartedTravel, so no cleanup needed.
 
-            // Safety nets: clean up any stale state
-            _departureWalks.Remove(evt.RunnerId);
+            // Safety net: clean up any stale state
             _pendingArrivalFades.Remove(evt.RunnerId);
-        }
-
-        // ─── Departure Walk ─────────────────────────────────────────
-
-        /// <summary>
-        /// Minimum estimated travel duration to trigger a departure walk.
-        /// Very short trips skip the walk-out animation entirely.
-        /// </summary>
-        private const float DepartureWalkMinTripSeconds = 3f;
-
-        /// <summary>
-        /// Walk speed for departure animation (matches RunnerVisual.WalkSpeed).
-        /// </summary>
-        private const float DepartureWalkSpeed = 12f;
-
-        private void TryStartDepartureWalk(RunnerStartedTravel evt)
-        {
-            // Only if runner was visually in a node scene
-            if (!_runnerPositionContexts.TryGetValue(evt.RunnerId, out var prevCtx)) return;
-            if (!prevCtx.InNodeScene) return;
-
-            // Skip for very short trips
-            if (evt.EstimatedDurationSeconds < DepartureWalkMinTripSeconds) return;
-
-            // Need the scene root to compute departure target
-            if (_worldSceneManager == null || !_worldSceneManager.IsNodeSceneReady(evt.FromNodeId)) return;
-            var sceneRoot = _worldSceneManager.GetNodeSceneRoot(evt.FromNodeId);
-            if (sceneRoot == null) return;
-
-            Vector3 departureTarget = ComputeDepartureTarget(sceneRoot, evt.FromNodeId, evt.ToNodeId);
-
-            // Compute duration from actual walk distance (not trip duration)
-            if (!_runnerVisuals.TryGetValue(evt.RunnerId, out var visual)) return;
-
-            float walkDistance = Vector3.Distance(visual.transform.position, departureTarget);
-            if (walkDistance < 0.5f) return; // Already at the edge, skip
-
-            float duration = walkDistance / DepartureWalkSpeed;
-
-            _departureWalks[evt.RunnerId] = new DepartureWalkState
-            {
-                FromNodeId = evt.FromNodeId,
-                ToNodeId = evt.ToNodeId,
-                DepartureTarget = departureTarget,
-                MaxDurationSeconds = duration,
-                ElapsedSeconds = 0f,
-                ReachedTarget = false,
-            };
-
-            // Start the walk animation immediately (NavMesh to avoid obstacles)
-            NavMeshWalkTo(visual, departureTarget);
-        }
-
-        /// <summary>
-        /// Compute where a departing runner should walk to.
-        /// Circumference nodes: directional spawn closest to destination direction.
-        /// Entrance nodes: first spawn point (the entrance/cave mouth).
-        /// </summary>
-        private Vector3 ComputeDepartureTarget(NodeSceneRoot sceneRoot, string fromNodeId, string toNodeId)
-        {
-            if (sceneRoot.HasDirectionalSpawns)
-            {
-                // Walk toward the edge closest to the destination
-                Vector3 departDir = ComputeDepartureDirection(fromNodeId, toNodeId);
-                if (departDir.sqrMagnitude > 0.001f)
-                    return sceneRoot.GetDirectionalSpawnPosition(departDir, 0) + RunnerYOffset;
-            }
-
-            // Entrance nodes: walk to the entrance (first spawn point)
-            return sceneRoot.GetSpawnPosition(0) + RunnerYOffset;
         }
 
         /// <summary>
@@ -664,69 +668,6 @@ namespace ProjectGuild.View
             if (dist < 0.001f) return Vector3.zero;
 
             return new Vector3(dx / dist, 0f, dz / dist);
-        }
-
-        /// <summary>
-        /// Update an active departure walk. Returns true if the walk is still active
-        /// (suppresses normal position update), false if complete.
-        /// </summary>
-        private bool UpdateDepartureWalk(string runnerId, RunnerVisual visual)
-        {
-            if (!_departureWalks.TryGetValue(runnerId, out var walk)) return false;
-
-            walk.ElapsedSeconds += Time.deltaTime;
-
-            // Check if reached target position
-            float distToTarget = Vector3.Distance(visual.transform.position, walk.DepartureTarget);
-            if (distToTarget < 0.3f)
-                walk.ReachedTarget = true;
-
-            // Walk complete: reached target or timed out
-            if (walk.ReachedTarget || walk.ElapsedSeconds >= walk.MaxDurationSeconds)
-            {
-                CompleteDepartureWalk(runnerId, visual);
-                return false; // Walk done, let normal update run
-            }
-
-            // Still walking — update state back to dictionary
-            _departureWalks[runnerId] = walk;
-            return true;
-        }
-
-        private void CompleteDepartureWalk(string runnerId, RunnerVisual visual)
-        {
-            _departureWalks.Remove(runnerId);
-
-            var runner = Sim.FindRunner(runnerId);
-            if (runner == null) return;
-
-            // If camera is following this runner, fade before snapping.
-            // Position is computed in the callback so it reflects where the runner
-            // actually is at mid-fade time (not when the fade started).
-            bool cameraFollowing = _cameraController != null
-                && _cameraController.CurrentTarget == visual.transform;
-
-            if (cameraFollowing && _sceneTransitionOverlay != null)
-            {
-                string capturedId = runnerId;
-                _sceneTransitionOverlay.PlayFadeTransition(() =>
-                {
-                    var r = Sim.FindRunner(capturedId);
-                    if (r != null)
-                        visual.SnapToPosition(GetRunnerWorldPosition(r));
-                });
-            }
-            else
-            {
-                visual.SnapToPosition(GetRunnerWorldPosition(runner));
-            }
-
-            // Update position context to overworld
-            _runnerPositionContexts[runnerId] = new RunnerPositionContext
-            {
-                InNodeScene = false,
-                NodeId = runner.CurrentNodeId,
-            };
         }
 
         private static void SetLayerRecursive(GameObject obj, int layer)

@@ -341,15 +341,40 @@ namespace ProjectGuild.View.UI
                 _taskInfoLabel.text = "No active task";
             }
 
-            // Travel / Deposit progress (mutually exclusive states, shared bar)
+            // Progress bar — shared across travel, gathering transit, and deposit states
             bool isTraveling = runner.State == RunnerState.Traveling && runner.Travel != null;
+            bool isGathering = runner.State == RunnerState.Gathering && runner.Gathering != null;
+            bool isGatheringTransit = isGathering && runner.Gathering.IsInTransit;
             bool isDepositing = runner.State == RunnerState.Depositing && runner.Depositing != null;
-            _travelProgressContainer.style.display = (isTraveling || isDepositing) ? DisplayStyle.Flex : DisplayStyle.None;
-            if (isTraveling)
+            bool isDepositTransit = isDepositing && runner.Depositing.IsInTransit;
+            bool showBar = isTraveling || isGatheringTransit || isDepositing;
+            _travelProgressContainer.style.display = showBar ? DisplayStyle.Flex : DisplayStyle.None;
+            if (isGatheringTransit)
+            {
+                _progressLabel.text = "Walking...";
+                _travelProgressBar.value = runner.Gathering.TransitProgress * 100f;
+                _travelProgressBar.title = $"{runner.Gathering.TransitProgress:P0}";
+                _travelProgressBar.RemoveFromClassList("depositing");
+            }
+            else if (isTraveling && runner.Travel.IsExitingNode)
+            {
+                _progressLabel.text = "Leaving...";
+                _travelProgressBar.value = runner.Travel.ExitProgress * 100f;
+                _travelProgressBar.title = $"{runner.Travel.ExitProgress:P0}";
+                _travelProgressBar.RemoveFromClassList("depositing");
+            }
+            else if (isTraveling)
             {
                 _progressLabel.text = "Travel:";
                 _travelProgressBar.value = runner.Travel.Progress * 100f;
                 _travelProgressBar.title = $"{runner.Travel.Progress:P0}";
+                _travelProgressBar.RemoveFromClassList("depositing");
+            }
+            else if (isDepositTransit)
+            {
+                _progressLabel.text = "Walking...";
+                _travelProgressBar.value = runner.Depositing.TransitProgress * 100f;
+                _travelProgressBar.title = $"{runner.Depositing.TransitProgress:P0}";
                 _travelProgressBar.RemoveFromClassList("depositing");
             }
             else if (isDepositing)
@@ -435,9 +460,15 @@ namespace ProjectGuild.View.UI
 
             if (isTraveling)
             {
-                float remaining = runner.Travel.TotalDistance - runner.Travel.DistanceCovered;
-                float eta = travelSpeed > 0 ? remaining / travelSpeed : 0f;
+                // ETA: account for both exit and overworld phases
+                float inNodeSpeed = travelSpeed * config.InNodeSpeedMultiplier;
+                float exitRemaining = System.Math.Max(0f, runner.Travel.ExitDistance - runner.Travel.ExitDistanceCovered);
+                float overworldRemaining = System.Math.Max(0f, runner.Travel.TotalDistance - runner.Travel.DistanceCovered);
+                float exitEta = inNodeSpeed > 0f ? exitRemaining / inNodeSpeed : 0f;
+                float overworldEta = travelSpeed > 0f ? overworldRemaining / travelSpeed : 0f;
+                float eta = exitEta + overworldEta;
                 _statValueEta.text = $"{eta:F1}s";
+
                 _tooltipEta = $"{runner.Travel.DistanceCovered:F0}m / {runner.Travel.TotalDistance:F0}m";
 
                 float athXpPerTick = athSkill.HasPassion
