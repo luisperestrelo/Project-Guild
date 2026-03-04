@@ -32,28 +32,19 @@ namespace ProjectGuild.Data
             "Leave empty for nodes without a dedicated scene — they'll use a default placeholder.")]
         public string SceneName;
 
-        [Header("Approach")]
-        [Tooltip("Radius of the node's overworld area (meters). Runners arrive/depart at the circumference.\n" +
-            "Travel distance is edge-to-edge (subtracts both radii). 0 = point node (arrive at center).")]
-        public float ApproachRadius = 5f;
-
-        [Tooltip("If true, this node has a specific entrance point (cave mouth, gate, etc.).\n" +
-            "Runners must approach and depart through the entrance position rather than the nearest circumference edge.")]
+        [Header("Approach Mode (choose ONE)")]
+        [Tooltip("If true, runners approach via EntranceOffset instead of the nearest circumference edge.\n" +
+            "ApproachRadius is ignored for NavMesh pathing but kept as Euclidean fallback.")]
         public bool IsEntranceNode;
 
-        [Tooltip("Local offset from WorldX/WorldZ to the entrance position.\n" +
-            "Only used when IsEntranceNode is true.")]
+        [Tooltip("Local offset from (WorldX, 0, WorldZ) to the entrance position.\n" +
+            "Only used when IsEntranceNode is true. Edit visually via the Scene View handle.")]
         public Vector3 EntranceOffset;
 
-        [Header("Visuals")]
-        [Tooltip("Prefab to instantiate as this node's entrance marker in the overworld.\n" +
-            "If null, a placeholder cylinder is created instead.\n" +
-            "Assign an Asset Store model (cave entrance, wooden arch, tent, etc.) for each node.")]
-        public GameObject EntranceMarkerPrefab;
-
-        [Tooltip("PLACEHOLDER ONLY: color for the fallback cylinder when no EntranceMarkerPrefab is assigned.\n" +
-            "Ignored entirely when a prefab is set. Has no effect on the final game visuals.")]
-        public Color NodeColor = Color.gray;
+        [Tooltip("Radius of the node's overworld area (meters). Runners arrive/depart at the circumference.\n" +
+            "Travel distance is edge-to-edge (subtracts both radii). 0 = point node (arrive at center).\n" +
+            "Ignored for NavMesh pathing when IsEntranceNode is true.")]
+        public float ApproachRadius = 5f;
 
         [Header("Gatherables")]
         [Tooltip("Gatherables available at this node, in order. Index 0 is the default auto-gather target.\n" +
@@ -92,9 +83,6 @@ namespace ProjectGuild.Data
                 WorldZ = WorldZ,
                 SceneName = SceneName,
                 ApproachRadius = ApproachRadius,
-                ColorR = NodeColor.r,
-                ColorG = NodeColor.g,
-                ColorB = NodeColor.b,
                 Gatherables = gatherables,
             };
         }

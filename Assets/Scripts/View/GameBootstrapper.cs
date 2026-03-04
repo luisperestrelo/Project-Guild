@@ -25,7 +25,6 @@ namespace ProjectGuild.View
         private InputAction _clickAction;
         private bool _clickedThisFrame;
         private int _runnerLayerMask;
-        private int _nodeLayerMask;
         private int _bankLayerMask;
 
         private SaveManager _saveManager;
@@ -40,10 +39,6 @@ namespace ProjectGuild.View
             int runnerLayer = LayerMask.NameToLayer("Runners");
             if (runnerLayer < 0) Debug.LogError("[GameBootstrapper] 'Runners' layer not found. Add it in Project Settings > Tags and Layers.");
             _runnerLayerMask = 1 << runnerLayer;
-
-            int nodeLayer = LayerMask.NameToLayer("Nodes");
-            if (nodeLayer < 0) Debug.LogError("[GameBootstrapper] 'Nodes' layer not found. Add it in Project Settings > Tags and Layers.");
-            _nodeLayerMask = 1 << nodeLayer;
 
             int bankLayer = LayerMask.NameToLayer("Bank");
             if (bankLayer < 0) Debug.LogError("[GameBootstrapper] 'Bank' layer not found. Add it in Project Settings > Tags and Layers.");
@@ -90,8 +85,8 @@ namespace ProjectGuild.View
             // Load scenes for nodes where runners already are
             LoadScenesForCurrentRunners();
 
-            // Build the visual world (overworld markers + runner visuals)
-            _visualSyncSystem.BuildWorld(BuildEntranceMarkerPrefabLookup());
+            // Build the visual world (runner visuals)
+            _visualSyncSystem.BuildWorld();
 
             // Point camera at first runner
             SelectRunner(0);
@@ -198,7 +193,7 @@ namespace ProjectGuild.View
             LoadScenesForCurrentRunners();
 
             // Rebuild visual world
-            _visualSyncSystem.BuildWorld(BuildEntranceMarkerPrefabLookup());
+            _visualSyncSystem.BuildWorld();
 
             // Point camera at first runner
             SelectRunner(0);
@@ -229,27 +224,6 @@ namespace ProjectGuild.View
                 _worldSceneManager.EnsureNodeSceneLoaded(nodeId);
         }
 
-        // ─── Prefab Wiring ───────────────────────────────────────────
-
-        /// <summary>
-        /// Builds a nodeId → entrance marker prefab dictionary from the WorldMapAsset.
-        /// Keeps VisualSyncSystem decoupled from the SO data layer.
-        /// </summary>
-        private Dictionary<string, GameObject> BuildEntranceMarkerPrefabLookup()
-        {
-            var lookup = new Dictionary<string, GameObject>();
-            var mapAsset = _simulationRunner?.WorldMapAsset;
-            if (mapAsset?.Nodes == null) return lookup;
-
-            foreach (var nodeAsset in mapAsset.Nodes)
-            {
-                if (nodeAsset != null && nodeAsset.EntranceMarkerPrefab != null)
-                    lookup[nodeAsset.Id] = nodeAsset.EntranceMarkerPrefab;
-            }
-
-            return lookup;
-        }
-
         // ─── Input + 3D Picking ─────────────────────────────────────
 
         private void Update()
@@ -267,8 +241,7 @@ namespace ProjectGuild.View
                 if (_uiManager != null && _uiManager.IsPointerOverUI()) return;
 
                 if (!TryPickRunner())
-                    if (!TryPickBank())
-                        TryPickNode();
+                    TryPickBank();
             }
         }
 
@@ -308,29 +281,6 @@ namespace ProjectGuild.View
 
             _uiManager.ToggleBankPanel();
             return true;
-        }
-
-        private void TryPickNode()
-        {
-            var sim = _simulationRunner.Simulation;
-            if (sim == null || Camera.main == null) return;
-            if (_uiManager == null || _uiManager.SelectedRunnerId == null) return;
-
-            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
-            if (!Physics.Raycast(ray, out RaycastHit hit, 200f, _nodeLayerMask))
-                return;
-
-            var nodeMarker = hit.collider.GetComponentInParent<NodeMarker>();
-            if (nodeMarker == null) return;
-
-            string nodeId = nodeMarker.NodeId;
-            string hubId = sim.CurrentGameState.Map.HubNodeId;
-
-            // Skip hub node (no Work At on hub)
-            if (nodeId == hubId) return;
-
-            _uiManager.ShowNodeClickConfirmation(
-                _uiManager.SelectedRunnerId, nodeId);
         }
     }
 }

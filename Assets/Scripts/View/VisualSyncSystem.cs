@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
@@ -11,8 +10,7 @@ namespace ProjectGuild.View
     /// <summary>
     /// Synchronizes the simulation state with the Unity visual scene.
     /// Each simulation tick, this system updates runner visual positions based
-    /// on their travel state, spawns visuals for new runners, and handles
-    /// world node visual markers.
+    /// on their travel state and spawns visuals for new runners.
     ///
     /// Runners at nodes with loaded additive scenes are positioned using the
     /// scene's GatheringSpots/SpawnPoints. Runners at nodes without scenes
@@ -26,9 +24,6 @@ namespace ProjectGuild.View
         [Tooltip("Prefab for runner visual. If null, creates a placeholder capsule.")]
         [SerializeField] private GameObject _runnerPrefab;
 
-        [Tooltip("Prefab for world node marker. If null, creates a placeholder sphere.")]
-        [SerializeField] private GameObject _nodeMarkerPrefab;
-
         [Header("References")]
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private WorldSceneManager _worldSceneManager;
@@ -36,9 +31,7 @@ namespace ProjectGuild.View
 
         // Runtime tracking
         private readonly Dictionary<string, RunnerVisual> _runnerVisuals = new();
-        private readonly Dictionary<string, GameObject> _nodeMarkers = new();
         private readonly Dictionary<string, RunnerPositionContext> _runnerPositionContexts = new();
-        private Dictionary<string, GameObject> _entranceMarkerPrefabs = new();
         private bool _worldBuilt;
 
         /// <summary>
@@ -79,26 +72,13 @@ namespace ProjectGuild.View
 
         /// <summary>
         /// Call after StartNewGame or LoadGame to spawn the visual world.
-        /// Creates overworld node markers and runner visuals.
-        /// Node scene content is loaded on-demand by WorldSceneManager.
+        /// Creates runner visuals. Node scene content is loaded on-demand by WorldSceneManager.
         /// </summary>
-        /// <param name="entranceMarkerPrefabs">
-        /// Optional dictionary mapping nodeId → entrance marker prefab.
-        /// Nodes with a prefab get that model; others get a placeholder cylinder.
-        /// </param>
-        public void BuildWorld(Dictionary<string, GameObject> entranceMarkerPrefabs = null)
+        public void BuildWorld()
         {
             ClearWorld();
 
-            _entranceMarkerPrefabs = entranceMarkerPrefabs ?? new Dictionary<string, GameObject>();
-
             if (Sim?.CurrentGameState?.Map == null) return;
-
-            // Create overworld node markers (entrance markers for each node)
-            foreach (var node in Sim.CurrentGameState.Map.Nodes)
-            {
-                CreateNodeMarker(node);
-            }
 
             // Create runner visuals
             foreach (var runner in Sim.CurrentGameState.Runners)
@@ -118,83 +98,9 @@ namespace ProjectGuild.View
                 if (kvp.Value != null) Destroy(kvp.Value.gameObject);
             _runnerVisuals.Clear();
 
-            foreach (var kvp in _nodeMarkers)
-                if (kvp.Value != null) Destroy(kvp.Value);
-            _nodeMarkers.Clear();
-
             _runnerPositionContexts.Clear();
 
             _worldBuilt = false;
-        }
-
-        private void CreateNodeMarker(WorldNode node)
-        {
-            // Try entrance marker prefab (per-node), then generic prefab, then placeholder
-            GameObject marker;
-            bool isPrefab = false;
-
-            if (_entranceMarkerPrefabs.TryGetValue(node.Id, out var entrancePrefab) && entrancePrefab != null)
-            {
-                marker = Instantiate(entrancePrefab);
-                isPrefab = true;
-            }
-            else if (_nodeMarkerPrefab != null)
-            {
-                marker = Instantiate(_nodeMarkerPrefab);
-                isPrefab = true;
-            }
-            else
-            {
-                // Placeholder: a flat cylinder as a "landing pad" for the node
-                marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                marker.transform.localScale = new Vector3(3f, 0.1f, 3f);
-
-                // Color from node data
-                var renderer = marker.GetComponent<Renderer>();
-                if (renderer != null)
-                    renderer.material = CreatePlaceholderMaterial(new Color(node.ColorR, node.ColorG, node.ColorB));
-            }
-
-            marker.name = $"Node_{node.Id}";
-            marker.transform.position = NodeWorldPosition(node);
-
-            // Attach NodeMarker component for click-to-select
-            var nodeMarkerComponent = marker.AddComponent<NodeMarker>();
-            nodeMarkerComponent.Initialize(node.Id);
-
-            // Ensure prefab has a collider for raycasting (placeholder cylinder gets one from CreatePrimitive)
-            if (isPrefab && marker.GetComponentInChildren<Collider>() == null)
-                marker.AddComponent<BoxCollider>();
-
-            // Put nodes on their own physics layer for selective raycasting
-            int nodeLayer = LayerMask.NameToLayer("Nodes");
-            if (nodeLayer >= 0)
-                SetLayerRecursive(marker, nodeLayer);
-
-            // Add a floating label above the marker
-            Vector3 markerPos = NodeWorldPosition(node);
-            float labelHeight = isPrefab ? 4f : 2f;
-
-            var labelObj = new GameObject("Label");
-            labelObj.transform.SetParent(marker.transform, worldPositionStays: true);
-            labelObj.transform.position = markerPos + new Vector3(0f, labelHeight, 0f);
-
-            // Counteract parent scale so the label renders at world scale.
-            // For placeholder cylinder (3, 0.1, 3) this matters; for prefabs the scale varies.
-            Vector3 parentScale = marker.transform.lossyScale;
-            labelObj.transform.localScale = new Vector3(
-                1f / Mathf.Max(parentScale.x, 0.01f),
-                1f / Mathf.Max(parentScale.y, 0.01f),
-                1f / Mathf.Max(parentScale.z, 0.01f));
-
-            var label = labelObj.AddComponent<TextMeshPro>();
-            label.text = node.Name;
-            label.fontSize = 6f;
-            label.alignment = TextAlignmentOptions.Center;
-            label.color = Color.yellow;
-            label.rectTransform.sizeDelta = new Vector2(8f, 2f);
-
-            _nodeMarkers[node.Id] = marker;
         }
 
         private void CreateRunnerVisual(Runner runner)
@@ -240,22 +146,6 @@ namespace ProjectGuild.View
                 UpdateRunnerVisualPosition(runner, visual);
             }
 
-            // Billboard node labels — rotate only on Y axis so they stay upright
-            if (Camera.main != null)
-            {
-                var camForward = Camera.main.transform.forward;
-                camForward.y = 0f;
-                if (camForward.sqrMagnitude > 0.001f)
-                {
-                    var billboardRot = Quaternion.LookRotation(camForward);
-                    foreach (var kvp in _nodeMarkers)
-                    {
-                        var label = kvp.Value.GetComponentInChildren<TextMeshPro>();
-                        if (label != null)
-                            label.transform.rotation = billboardRot;
-                    }
-                }
-            }
         }
 
         // ─── Runner Visual Updates ────────────────────────────────

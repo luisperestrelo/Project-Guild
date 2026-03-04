@@ -35,8 +35,8 @@ namespace ProjectGuild.Bridge
         public GameSimulation Simulation { get; private set; }
 
         /// <summary>
-        /// Exposes the WorldMapAsset so the view layer can extract per-node prefab data
-        /// (entrance marker prefabs) without coupling to the data layer's SO structure.
+        /// Exposes the WorldMapAsset so view-layer systems (NavMeshTravelPathCache, etc.)
+        /// can access per-node SO data without coupling to the data layer's SO structure.
         /// </summary>
         public WorldMapAsset WorldMapAsset => _worldMapAsset;
 
@@ -126,9 +126,22 @@ namespace ProjectGuild.Bridge
                 if (node == null) continue;
 
                 bool isHub = _worldMapAsset.HubNode == node;
-                Gizmos.color = isHub ? Color.yellow : node.NodeColor;
+                Gizmos.color = isHub ? Color.yellow : Color.gray;
                 var pos = new Vector3(node.WorldX, 0f, node.WorldZ);
-                Gizmos.DrawWireSphere(pos, isHub ? 3f : 2f);
+
+                if (node.IsEntranceNode)
+                {
+                    // Entrance node: small sphere at center + line to entrance
+                    Gizmos.DrawWireSphere(pos, 1f);
+                    var entrancePos = pos + node.EntranceOffset;
+                    Gizmos.DrawLine(pos, entrancePos);
+                    Gizmos.DrawWireSphere(entrancePos, 0.6f);
+                }
+                else
+                {
+                    // Area node: wire sphere at actual approach radius
+                    Gizmos.DrawWireSphere(pos, Mathf.Max(node.ApproachRadius, 0.5f));
+                }
 
                 UnityEditor.Handles.color = Gizmos.color;
                 UnityEditor.Handles.Label(pos + Vector3.up * 3f, node.Name);

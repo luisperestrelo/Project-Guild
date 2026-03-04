@@ -123,7 +123,6 @@ Back to Tick() (continues processing)
 | `VisualSyncSystem.cs` | View | The cameraman. Keeps 3D visuals in sync with sim |
 | `WorldSceneManager.cs` | View | Scene lifecycle manager. Loads/unloads additive node scenes on demand |
 | `NodeSceneRoot.cs` | View | Root component in each node scene. Holds spawn points and gathering spots |
-| `NodeMarker.cs` | View | Tags node GameObjects for click-to-select raycasting |
 | `BankMarker.cs` | View | Tags the bank GameObject for click-to-open raycasting |
 | `UIManager.cs` | View | Top-level UI coordinator. Owns UIDocument, manages all controllers, tick refresh, selection state |
 | `RunnerWarnings.cs` | Simulation | Centralized warning message strings and factory methods |
@@ -449,7 +448,7 @@ A single GatherableConfigAsset can be reused across multiple nodes (e.g. "Copper
 ### `Data/WorldNodeAsset.cs`
 `[CreateAssetMenu: Project Guild/World Node]`
 
-ScriptableObject for authoring a world node. Fields: Id, Name, WorldX, WorldZ, SceneName (Unity scene name for the node's additive scene), EntranceMarkerPrefab (optional GameObject for the node's overworld entrance marker), NodeColor (Unity Color), Gatherables (array of `GatherableConfigAsset` references). `ToWorldNode()` converts to a plain C# `WorldNode`, including converting each GatherableConfigAsset to a `GatherableConfig` inline and wiring SceneName. EntranceMarkerPrefab is view-layer only and not passed to the simulation. `OnValidate()` warns for empty Id/Name.
+ScriptableObject for authoring a world node. Fields: Id, Name, WorldX, WorldZ, SceneName (Unity scene name for the node's additive scene), IsEntranceNode, EntranceOffset, ApproachRadius, Gatherables (array of `GatherableConfigAsset` references). `ToWorldNode()` converts to a plain C# `WorldNode`, including converting each GatherableConfigAsset to a `GatherableConfig` inline and wiring SceneName. `OnValidate()` warns for empty Id/Name.
 
 Each node in the game world gets its own WorldNodeAsset file. Gatherables are authored directly on the node — drag GatherableConfigAsset references into the node's array. This is how nodes become gathering nodes.
 
@@ -489,9 +488,9 @@ Concrete implementation of `ISaveSystem`. Uses `JsonUtility.ToJson/FromJson` and
 The view layer includes MonoBehaviours (`View/`) and plain C# UI controllers (`View/UI/`). The UI controllers are NOT MonoBehaviours — they are plain C# classes instantiated and coordinated by `UIManager`. This keeps UI logic testable and avoids unnecessary GameObject overhead.
 
 ### `View/GameBootstrapper.cs`
-Entry point that wires up the simulation, visuals, and 3D picking. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner. Owns a `SaveManager` instance. Provides `SaveGame()`, `LoadSavedGame()`, and `StartNewGameFromOptions()` for the Options panel. Load/New Game use `ReloadWorld()` which tears down UI (`UIManager.Teardown()`), runs the load/create action, rebuilds visuals (`VisualSyncSystem.BuildWorld(prefabLookup)`), and re-initializes UI (`UIManager.Initialize()`). `BuildEntranceMarkerPrefabLookup()` extracts nodeId → prefab from `SimulationRunner.WorldMapAsset` and passes it to `BuildWorld()` to keep VisualSyncSystem decoupled from the SO data layer.
+Entry point that wires up the simulation, visuals, and 3D picking. Starts a new game on `Start()`, builds the visual world, and points the camera at the first runner. Owns a `SaveManager` instance. Provides `SaveGame()`, `LoadSavedGame()`, and `StartNewGameFromOptions()` for the Options panel. Load/New Game use `ReloadWorld()` which tears down UI (`UIManager.Teardown()`), runs the load/create action, rebuilds visuals (`VisualSyncSystem.BuildWorld()`), and re-initializes UI (`UIManager.Initialize()`).
 
-**Click handling (LateUpdate):** On left-click, checks (1) not over UI, (2) `TryPickRunner()` raycasts for RunnerVisual on the "Runners" layer — if found, selects that runner and returns. (3) `TryPickBank()` raycasts the "Bank" layer — if found, toggles the bank panel and returns. (4) `TryPickNode()` raycasts the "Nodes" layer for `NodeMarker` — if found and not the hub node, shows a confirmation popup ("Send [Runner] to work at [Node]?") via `UIManager.ShowNodeClickConfirmation()`. Runner > Bank > Node priority. Requires three physics layers: "Runners", "Nodes", "Bank" — logs `Debug.LogError` if any is missing.
+**Click handling (LateUpdate):** On left-click, checks (1) not over UI, (2) `TryPickRunner()` raycasts for RunnerVisual on the "Runners" layer — if found, selects that runner and returns. (3) `TryPickBank()` raycasts the "Bank" layer — if found, toggles the bank panel and returns. Runner > Bank priority. Requires two physics layers: "Runners", "Bank" — logs `Debug.LogError` if either is missing. Node interaction will move to the Strategic Map UI.
 
 ### `View/DevConsole.cs`
 Development-only console for debugging and testing. Wrapped in `#if UNITY_EDITOR || DEVELOPMENT_BUILD` — excluded from release builds entirely. Standalone MonoBehaviour that builds its UI programmatically (no UXML). Requires a `UIDocument` and `SimulationRunner` reference (auto-resolved if not set).
@@ -523,9 +522,6 @@ Development-only console for debugging and testing. Wrapped in `#if UNITY_EDITOR
 - `/clear` — clears console output.
 - `/help` — lists all commands.
 
-### `View/NodeMarker.cs`
-Simple MonoBehaviour storing a `NodeId` string. Attached by `VisualSyncSystem.CreateNodeMarker()` to each node's GameObject so that raycasting can identify which world node was clicked. Used by `GameBootstrapper.TryPickNode()`.
-
 ### `View/BankMarker.cs`
 Simple MonoBehaviour (no fields) placed on the bank object inside the Node_GuildHall scene. Used by `GameBootstrapper.TryPickBank()` to detect bank clicks via the "Bank" physics layer.
 
@@ -539,7 +535,7 @@ MonoBehaviour attached to the root GameObject in each additive node scene. Store
 Static helper for sampling terrain height at any world XZ position. `GetHeight(worldX, worldZ)` returns terrain surface Y (or 0 if no active terrain). `GetPositionOnTerrain(worldX, worldZ, yOffset)` returns a full Vector3 on the terrain surface. Used by VisualSyncSystem to place runners and markers on terrain.
 
 ### `View/VisualSyncSystem.cs`
-Bridges sim state to 3D world. Builds overworld node markers and runner visuals, updates runner positions each `LateUpdate()`. Node markers use per-node entrance prefabs from a dictionary passed to `BuildWorld()`, falling back to a generic prefab or placeholder cylinder. When a runner is at a node with a loaded scene (via `WorldSceneManager`), positions the runner at the scene's gathering spots or spawn points. Traveling runners interpolate in overworld space with terrain-aware Y sampling. Attaches `NodeMarker` components to node GameObjects during creation for click-to-select.
+Bridges sim state to 3D world. Builds runner visuals and updates runner positions each `LateUpdate()`. When a runner is at a node with a loaded scene (via `WorldSceneManager`), positions the runner at the scene's gathering spots or spawn points. Traveling runners interpolate in overworld space with terrain-aware Y sampling. Node visuals are hand-placed in the overworld scene (Synty props) — no runtime marker spawning.
 
 Runner position calculation (`GetRunnerWorldPosition`):
 - **Traveling:** Lerps between start and destination using `Travel.Progress`, sampling terrain height at each interpolated XZ. If `StartWorldX`/`StartWorldZ` is set (redirect), uses those as the start position — prevents visual snapping on direction change.

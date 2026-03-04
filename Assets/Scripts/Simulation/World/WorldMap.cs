@@ -23,15 +23,6 @@ namespace ProjectGuild.Simulation.World
         public float WorldZ;
 
         /// <summary>
-        /// Node color for visual representation (RGB, 0-1 range).
-        /// Stored as floats to keep the simulation layer free of UnityEngine dependencies.
-        /// The view layer constructs a Color from these values.
-        /// </summary>
-        public float ColorR = 0.5f;
-        public float ColorG = 0.5f;
-        public float ColorB = 0.5f;
-
-        /// <summary>
         /// Unity scene name for this node's additive scene (e.g. "Node_CopperMine").
         /// Null or empty means the node has no dedicated scene — uses a default/placeholder.
         /// The view layer uses this to load/unload node environments at runtime.
@@ -296,9 +287,8 @@ namespace ProjectGuild.Simulation.World
             var map = new WorldMap();
             map.HubNodeId = "hub";
 
-            // Hub at origin (blue)
+            // Hub at origin
             map.AddNode("hub", "Guild Hall", 0f, 0f, "Node_GuildHall");
-            map.GetNode("hub").ColorR = 0.2f; map.GetNode("hub").ColorG = 0.6f; map.GetNode("hub").ColorB = 1f;
 
             // ─── Single-gatherable nodes (tutorial-distance) ────────
             map.AddNode("copper_mine", "Copper Mine", -15f, 10f, "Node_CopperMine");
