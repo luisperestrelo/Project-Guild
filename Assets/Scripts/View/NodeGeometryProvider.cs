@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.World;
@@ -41,7 +42,7 @@ namespace ProjectGuild.View
             Vector3 departureDir = ComputeDepartureDirection(nodeId, destinationNodeId);
             Vector3 exitPoint = sceneRoot.GetExitPosition(departureDir);
 
-            return DistanceOrZero(runnerPos.Value, exitPoint);
+            return NavMeshDistanceOrZero(runnerPos.Value, exitPoint);
         }
 
         public float? GetGatheringSpotDistance(string runnerId, string nodeId, int gatherableIndex, int spotIndex)
@@ -51,7 +52,7 @@ namespace ProjectGuild.View
 
             Vector3 gatheringSpot = sceneRoot.GetGatheringPosition(gatherableIndex, spotIndex);
 
-            return DistanceOrZero(runnerPos.Value, gatheringSpot);
+            return NavMeshDistanceOrZero(runnerPos.Value, gatheringSpot);
         }
 
         public float? GetDepositPointDistance(string runnerId, string nodeId)
@@ -62,7 +63,7 @@ namespace ProjectGuild.View
             if (!sceneRoot.DepositPointPosition.HasValue)
                 return null;
 
-            return DistanceOrZero(runnerPos.Value, sceneRoot.DepositPointPosition.Value);
+            return NavMeshDistanceOrZero(runnerPos.Value, sceneRoot.DepositPointPosition.Value);
         }
 
         // ─── Helpers ──────────────────────────────────────────────
@@ -111,10 +112,33 @@ namespace ProjectGuild.View
             return _visualSyncSystem.GetNodeSceneArrivalPosition(runner);
         }
 
-        private static float DistanceOrZero(Vector3 from, Vector3 to)
+        /// <summary>
+        /// Measure the distance from A to B using a NavMesh path if available.
+        /// Falls back to Euclidean distance if NavMesh sampling or pathing fails.
+        /// Returns 0 if trivially short (&lt; 0.5m) to avoid unnecessary transit phases.
+        /// </summary>
+        private static float NavMeshDistanceOrZero(Vector3 from, Vector3 to)
         {
-            float distance = Vector3.Distance(from, to);
+            float distance = NavMeshPathLength(from, to);
             return distance < 0.5f ? 0f : distance;
+        }
+
+        private static float NavMeshPathLength(Vector3 from, Vector3 to)
+        {
+            if (!NavMesh.SamplePosition(from, out NavMeshHit startHit, 5f, NavMesh.AllAreas)
+                || !NavMesh.SamplePosition(to, out NavMeshHit endHit, 5f, NavMesh.AllAreas))
+                return Vector3.Distance(from, to);
+
+            var path = new NavMeshPath();
+            if (!NavMesh.CalculatePath(startHit.position, endHit.position, NavMesh.AllAreas, path)
+                || path.status == NavMeshPathStatus.PathInvalid
+                || path.corners.Length < 2)
+                return Vector3.Distance(from, to);
+
+            float length = 0f;
+            for (int i = 1; i < path.corners.Length; i++)
+                length += Vector3.Distance(path.corners[i - 1], path.corners[i]);
+            return length;
         }
 
         private Vector3 ComputeDepartureDirection(string fromNodeId, string toNodeId)
