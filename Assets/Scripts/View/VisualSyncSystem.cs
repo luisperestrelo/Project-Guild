@@ -81,6 +81,22 @@ namespace ProjectGuild.View
             return _runnerVisuals.TryGetValue(runnerId, out var visual) ? visual : null;
         }
 
+        /// <summary>
+        /// Snap all runner visuals to their current sim-derived positions.
+        /// Called after dev console fast-forward (/tick, /advance) so visuals
+        /// don't lag behind the sim state.
+        /// </summary>
+        public void SnapAllToSimState()
+        {
+            if (Sim == null) return;
+            foreach (var runner in Sim.CurrentGameState.Runners)
+            {
+                if (!_runnerVisuals.TryGetValue(runner.Id, out var visual)) continue;
+                Vector3 targetPos = GetRunnerWorldPosition(runner);
+                visual.SnapToPosition(targetPos);
+            }
+        }
+
         private static Material CreatePlaceholderMaterial(Color color)
         {
             var shader = Shader.Find("Universal Render Pipeline/Lit");

@@ -26,6 +26,7 @@ namespace ProjectGuild.View
         [SerializeField] private UIDocument _uiDocument;
 
         private UI.UIManager _uiManager;
+        private VisualSyncSystem _visualSyncSystem;
 
         private VisualElement _consoleRoot;
         private ScrollView _outputScroll;
@@ -71,6 +72,7 @@ namespace ProjectGuild.View
             }
 
             _uiManager = FindAnyObjectByType<UI.UIManager>();
+            _visualSyncSystem = FindAnyObjectByType<VisualSyncSystem>();
 
             BuildUI();
             SetConsoleVisible(false);
@@ -1342,6 +1344,7 @@ namespace ProjectGuild.View
                 _isFastForwarding = false;
                 stopwatch.Stop();
                 long endTick = Sim.CurrentGameState.TickCount;
+                _visualSyncSystem?.SnapAllToSimState();
 
                 float seconds = (endTick - startTick) * Sim.TickDeltaTime;
                 Print($"Advanced {count} ticks ({seconds:F1}s game time) in {stopwatch.ElapsedMilliseconds}ms real time. Now at tick {endTick}.");
@@ -1388,6 +1391,7 @@ namespace ProjectGuild.View
             _isFastForwarding = false;
             stopwatch.Stop();
             long endTick = Sim.CurrentGameState.TickCount;
+            _visualSyncSystem?.SnapAllToSimState();
 
             float actualSeconds = (endTick - startTick) * Sim.TickDeltaTime;
             Print($"Advanced {actualSeconds:F1}s game time ({tickCount} ticks) in {stopwatch.ElapsedMilliseconds}ms real time. Now at tick {endTick}.");
