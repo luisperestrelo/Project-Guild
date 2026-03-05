@@ -130,6 +130,20 @@ namespace ProjectGuild.Simulation.Core
         public int RuleCount;
     }
 
+    // ─── Tutorial Events ──────────────────────────────────────────
+
+    public struct TutorialMilestoneCompleted
+    {
+        public string MilestoneId;
+        public Tutorial.TutorialPhase Phase;
+    }
+
+    public struct TutorialPhaseCompleted
+    {
+        public Tutorial.TutorialPhase CompletedPhase;
+        public Tutorial.TutorialPhase NextPhase;
+    }
+
     // ─── Simulation Lifecycle ────────────────────────────────────
 
     public struct SimulationTickCompleted

@@ -109,5 +109,25 @@ namespace ProjectGuild.Simulation.Automation
                 },
             };
         }
+
+        /// <summary>
+        /// Send to hub: Travel to hub → Deposit. Non-looping (runner goes Idle after).
+        /// </summary>
+        public static TaskSequence CreateSendToHub(string hubNodeId)
+        {
+            return new TaskSequence
+            {
+                Id = $"send-to-hub-{hubNodeId}",
+                Name = "Send to Guild Hall",
+                AutoGenerateName = false,
+                TargetNodeId = hubNodeId,
+                Loop = false,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo, hubNodeId),
+                    new TaskStep(TaskStepType.Deposit),
+                },
+            };
+        }
     }
 }

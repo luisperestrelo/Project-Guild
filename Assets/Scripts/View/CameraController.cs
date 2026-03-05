@@ -75,6 +75,9 @@ namespace ProjectGuild.View
         private InputAction _orbitButtonAction;
         private InputAction _zoomAction;
         private InputAction _hubHotkeyAction;
+        private InputAction _mapHotkeyAction;
+        private InputAction _automationHotkeyAction;
+        private InputAction _optionsHotkeyAction;
 
         public void SetTarget(Transform target)
         {
@@ -224,8 +227,21 @@ namespace ProjectGuild.View
             _zoomAction = new InputAction("Zoom", InputActionType.Value,
                 binding: "<Mouse>/scroll/y");
 
+            // Build hotkey actions from preferences (or defaults)
+            var prefs = _uiManager != null ? _uiManager.Preferences : null;
+            string hubKey = prefs?.HotkeyGuildHall ?? "h";
+            string mapKey = prefs?.HotkeyMap ?? "m";
+            string automationKey = prefs?.HotkeyAutomation ?? "a";
+            string optionsKey = prefs?.HotkeyOptions ?? "o";
+
             _hubHotkeyAction = new InputAction("HubHotkey", InputActionType.Button,
-                binding: "<Keyboard>/h");
+                binding: $"<Keyboard>/{hubKey}");
+            _mapHotkeyAction = new InputAction("MapHotkey", InputActionType.Button,
+                binding: $"<Keyboard>/{mapKey}");
+            _automationHotkeyAction = new InputAction("AutomationHotkey", InputActionType.Button,
+                binding: $"<Keyboard>/{automationKey}");
+            _optionsHotkeyAction = new InputAction("OptionsHotkey", InputActionType.Button,
+                binding: $"<Keyboard>/{optionsKey}");
         }
 
         private void OnEnable()
@@ -234,6 +250,9 @@ namespace ProjectGuild.View
             _orbitButtonAction.Enable();
             _zoomAction.Enable();
             _hubHotkeyAction.Enable();
+            _mapHotkeyAction.Enable();
+            _automationHotkeyAction.Enable();
+            _optionsHotkeyAction.Enable();
         }
 
         private void OnDisable()
@@ -242,6 +261,45 @@ namespace ProjectGuild.View
             _orbitButtonAction.Disable();
             _zoomAction.Disable();
             _hubHotkeyAction.Disable();
+            _mapHotkeyAction.Disable();
+            _automationHotkeyAction.Disable();
+            _optionsHotkeyAction.Disable();
+        }
+
+        /// <summary>
+        /// Rebuild hotkey InputActions from current PlayerPreferences bindings.
+        /// Called by OptionsPanelController when the user rebinds a hotkey.
+        /// </summary>
+        public void RebuildHotkeyActions()
+        {
+            // Disable old actions
+            _hubHotkeyAction?.Disable();
+            _mapHotkeyAction?.Disable();
+            _automationHotkeyAction?.Disable();
+            _optionsHotkeyAction?.Disable();
+
+            var prefs = _uiManager?.Preferences;
+            string hubKey = prefs?.HotkeyGuildHall ?? "h";
+            string mapKey = prefs?.HotkeyMap ?? "m";
+            string automationKey = prefs?.HotkeyAutomation ?? "a";
+            string optionsKey = prefs?.HotkeyOptions ?? "o";
+
+            _hubHotkeyAction = new InputAction("HubHotkey", InputActionType.Button,
+                binding: $"<Keyboard>/{hubKey}");
+            _mapHotkeyAction = new InputAction("MapHotkey", InputActionType.Button,
+                binding: $"<Keyboard>/{mapKey}");
+            _automationHotkeyAction = new InputAction("AutomationHotkey", InputActionType.Button,
+                binding: $"<Keyboard>/{automationKey}");
+            _optionsHotkeyAction = new InputAction("OptionsHotkey", InputActionType.Button,
+                binding: $"<Keyboard>/{optionsKey}");
+
+            if (enabled)
+            {
+                _hubHotkeyAction.Enable();
+                _mapHotkeyAction.Enable();
+                _automationHotkeyAction.Enable();
+                _optionsHotkeyAction.Enable();
+            }
         }
 
         private void Start()
@@ -255,11 +313,18 @@ namespace ProjectGuild.View
         {
             bool uiBlocking = _uiManager != null && _uiManager.IsPointerOverUI();
 
-            // H hotkey: jump to Guild Hall (suppress when typing in a text field)
-            if (_hubHotkeyAction.WasPressedThisFrame()
-                && (_uiManager == null || !_uiManager.IsTextFieldFocused()))
+            // Hotkeys (suppress when typing in a text field)
+            bool canUseHotkeys = _uiManager == null || !_uiManager.IsTextFieldFocused();
+            if (canUseHotkeys)
             {
-                _uiManager?.JumpToGuildHall();
+                if (_hubHotkeyAction.WasPressedThisFrame())
+                    _uiManager?.JumpToGuildHall();
+                if (_mapHotkeyAction.WasPressedThisFrame())
+                    _uiManager?.ToggleStrategicMap();
+                if (_automationHotkeyAction.WasPressedThisFrame())
+                    _uiManager?.ToggleAutomationPanel();
+                if (_optionsHotkeyAction.WasPressedThisFrame())
+                    _uiManager?.ToggleOptionsPanel();
             }
 
             // Orbit with right mouse button (skip when pointer is over UI)

@@ -24,6 +24,21 @@ namespace ProjectGuild.Bridge
         public bool SkipDeleteConfirmation = false;
         public bool SkipCancelCreationConfirmation = false;
 
+        // ─── Hotkeys ─────────────────────────────────────
+        public string HotkeyMap = "m";
+        public string HotkeyAutomation = "a";
+        public string HotkeyOptions = "o";
+        public string HotkeyGuildHall = "h";
+
+        // ─── Tutorial ────────────────────────────────────
+        public bool TutorialEnabledForNewGames = true;
+
+        // ─── Strategic Map ──────────────────────────────
+        // true = center on selected runner's node, false = always center on Guild Hall
+        public bool MapCenterOnRunner = true;
+        // true = close map after sending a runner on assignment (better for new players)
+        public bool MapCloseOnAssignment = true;
+
         // ─── Default scope filters ──────────────────────
         // Stored as strings to avoid coupling to view-layer enums.
         // Valid values: "CurrentNode", "SelectedRunner", "Global"/"All"

@@ -39,6 +39,8 @@ namespace ProjectGuild.View.UI
         [SerializeField] private VisualTreeAsset _decisionLogPanelAsset;
         [SerializeField] private VisualTreeAsset _logbookPanelAsset;
         [SerializeField] private VisualTreeAsset _optionsPanelAsset;
+        [SerializeField] private VisualTreeAsset _strategicMapPanelAsset;
+        [SerializeField] private VisualTreeAsset _tutorialOverlayAsset;
         [SerializeField] private PanelSettings _panelSettings;
 
         [Header("Scene References (Optional)")]
@@ -53,6 +55,10 @@ namespace ProjectGuild.View.UI
         private ResourceBarController _resourceBarController;
         private LogPanelContainerController _logPanelContainerController;
         private LogbookPanelController _logbookPanelController;
+        private StrategicMapPanelController _strategicMapPanelController;
+        private TutorialController _tutorialController;
+
+        private Button _worldButton;
 
         private PlayerPreferences _preferences;
 
@@ -68,6 +74,7 @@ namespace ProjectGuild.View.UI
         // ─── Tooltip ─────────────────────────────────────
         private VisualElement _tooltip;
         private Label _tooltipLabel;
+        private System.Func<string> _activeTooltipGetText;
 
         // ─── Context Menu (right-click) ─────────────────
         private VisualElement _contextMenu;
@@ -116,6 +123,7 @@ namespace ProjectGuild.View.UI
             if (_automationPanelController?.IsOpen == true) return true;
             if (_bankPanelController?.IsOpen == true) return true;
             if (_optionsPanelController?.IsOpen == true) return true;
+            if (_strategicMapPanelController?.IsOpen == true) return true;
             return false;
         }
 
@@ -249,6 +257,34 @@ namespace ProjectGuild.View.UI
                 root.Add(guildHallBtn);
             }
 
+            // Strategic Map panel (overlay)
+            if (_strategicMapPanelAsset != null)
+            {
+                var mapInstance = _strategicMapPanelAsset.Instantiate();
+                mapInstance.style.position = Position.Absolute;
+                mapInstance.style.left = 0;
+                mapInstance.style.top = 0;
+                mapInstance.style.right = 0;
+                mapInstance.style.bottom = 0;
+                mapInstance.pickingMode = PickingMode.Ignore;
+                root.Add(mapInstance);
+                _strategicMapPanelController = new StrategicMapPanelController(
+                    mapInstance, this, () =>
+                    {
+                        SetNormalGameUiVisible(true);
+                        var pb = _uiDocument?.rootVisualElement?.Q("portrait-bar-container");
+                        if (pb != null) pb.style.backgroundColor = StyleKeyword.Null;
+                        _tutorialController?.OnStrategicMapClosed();
+                    });
+
+                // Toggle button (top-left, next to Guild Hall)
+                var mapBtn = new Button(() => ToggleStrategicMap());
+                mapBtn.text = "World";
+                mapBtn.AddToClassList("strategicmap-toggle-button");
+                root.Add(mapBtn);
+                _worldButton = mapBtn;
+            }
+
             // Log panel container (Activity + Decisions tabs, bottom-left)
             var logPanelContainer = root.Q("log-panel-container");
             if (logPanelContainer != null && _logPanelContainerAsset != null)
@@ -293,6 +329,20 @@ namespace ProjectGuild.View.UI
             BuildTooltip(root);
             BuildContextMenu(root);
 
+            // Tutorial overlay (on top of everything)
+            if (_tutorialOverlayAsset != null)
+            {
+                var tutorialInstance = _tutorialOverlayAsset.Instantiate();
+                tutorialInstance.style.position = Position.Absolute;
+                tutorialInstance.style.left = 0;
+                tutorialInstance.style.top = 0;
+                tutorialInstance.style.right = 0;
+                tutorialInstance.style.bottom = 0;
+                tutorialInstance.pickingMode = PickingMode.Ignore;
+                root.Add(tutorialInstance);
+                _tutorialController = new TutorialController(tutorialInstance, this);
+            }
+
             // Select first runner
             var runners = Simulation.CurrentGameState.Runners;
             if (runners.Count > 0)
@@ -308,7 +358,11 @@ namespace ProjectGuild.View.UI
             _detailsPanelController?.ShowRunner(runnerId);
             _logbookPanelController?.OnRunnerSelected(runnerId);
 
-            // Move camera to selected runner's visual
+            // If strategic map is open, center on the runner's dot
+            if (_strategicMapPanelController?.IsOpen == true)
+                _strategicMapPanelController.CenterOnRunner(runnerId);
+
+            // Move camera to selected runner's visual (even with map open, so closing reveals the right view)
             if (_visualSyncSystem != null && _cameraController != null)
             {
                 var visual = _visualSyncSystem.GetRunnerVisual(runnerId);
@@ -407,6 +461,94 @@ namespace ProjectGuild.View.UI
 
         public void ToggleOptionsPanel() => _optionsPanelController?.Toggle();
 
+        // ─── Automation Panel ────────────────────────────
+
+        public void ToggleAutomationPanel() => _automationPanelController?.Toggle();
+
+        // ─── Strategic Map ──────────────────────────────
+
+        public bool IsStrategicMapOpen => _strategicMapPanelController?.IsOpen == true;
+
+        /// <summary>
+        /// Returns the World (map toggle) button element for tutorial highlighting.
+        /// </summary>
+        public VisualElement GetWorldButtonElement() => _worldButton;
+
+        /// <summary>
+        /// Returns a strategic map node element by node ID for tutorial highlighting.
+        /// </summary>
+        public VisualElement GetStrategicMapNodeElement(string nodeId) =>
+            _strategicMapPanelController?.GetNodeElement(nodeId);
+
+        /// <summary>
+        /// Force the strategic map to rebuild its nodes (e.g. when tutorial node gating changes).
+        /// </summary>
+        public void InvalidateStrategicMapNodes() =>
+            _strategicMapPanelController?.InvalidateNodes();
+
+        public void ToggleStrategicMap()
+        {
+            if (_strategicMapPanelController == null) return;
+
+            if (_strategicMapPanelController.IsOpen)
+            {
+                _strategicMapPanelController.Close();
+                // onClosed callback restores UI via SetNormalGameUiVisible(true) + tutorial notification
+            }
+            else
+            {
+                // Close other overlay panels first
+                _automationPanelController?.Close();
+                _bankPanelController?.Close();
+                _optionsPanelController?.Close();
+
+                SetNormalGameUiVisible(false);
+                _strategicMapPanelController.Open();
+                _tutorialController?.OnStrategicMapOpened();
+
+                // Dark bg on portrait bar so the 3D scene doesn't peek through
+                var portraitBar = _uiDocument.rootVisualElement.Q("portrait-bar-container");
+                if (portraitBar != null)
+                    portraitBar.style.backgroundColor =
+                        new StyleColor(new Color(0.03f, 0.04f, 0.07f, 1f));
+            }
+        }
+
+        /// <summary>
+        /// Show or hide normal game UI panels. Portrait bar stays visible (needed for
+        /// runner selection while the strategic map is open).
+        /// </summary>
+        private void SetNormalGameUiVisible(bool visible)
+        {
+            if (_uiDocument == null) return;
+            var root = _uiDocument.rootVisualElement;
+            if (root == null) return;
+
+            var display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+
+            var detailsContainer = root.Q("details-panel-container");
+            if (detailsContainer != null) detailsContainer.style.display = display;
+
+            var logContainer = root.Q("log-panel-container");
+            if (logContainer != null) logContainer.style.display = display;
+
+            var logbookContainer = root.Q("logbook-panel-container");
+            if (logbookContainer != null) logbookContainer.style.display = display;
+
+            var resourceBar = root.Q("resource-bar-container");
+            if (resourceBar != null) resourceBar.style.display = display;
+
+            // Toggle buttons (hide when map open, except the Map button itself)
+            foreach (var btn in root.Query(className: "automation-toggle-button").ToList())
+                btn.style.display = display;
+            foreach (var btn in root.Query(className: "options-toggle-button").ToList())
+                btn.style.display = display;
+            foreach (var btn in root.Query(className: "guildhall-toggle-button").ToList())
+                btn.style.display = display;
+            foreach (var btn in root.Query(className: "strategicmap-toggle-button").ToList())
+                btn.style.display = display;
+        }
+
         // ─── Save / Load delegation ─────────────────────────
 
         public void RequestSaveGame() => _gameBootstrapper?.SaveGame();
@@ -439,6 +581,9 @@ namespace ProjectGuild.View.UI
             _resourceBarController = null;
             _logPanelContainerController = null;
             _logbookPanelController = null;
+            _strategicMapPanelController = null;
+            _tutorialController?.Dispose();
+            _tutorialController = null;
             _tickRefreshables.Clear();
 
             // Reset pointer tracking
@@ -494,6 +639,19 @@ namespace ProjectGuild.View.UI
             _tooltip.Add(_tooltipLabel);
 
             root.Add(_tooltip);
+
+            // ALT key listener: re-evaluate tooltip text when ALT is pressed/released
+            // so ALT-expanded tooltips update instantly without requiring mouse movement.
+            root.RegisterCallback<KeyDownEvent>(evt =>
+            {
+                if (evt.keyCode == KeyCode.LeftAlt || evt.keyCode == KeyCode.RightAlt)
+                    RefreshActiveTooltip();
+            });
+            root.RegisterCallback<KeyUpEvent>(evt =>
+            {
+                if (evt.keyCode == KeyCode.LeftAlt || evt.keyCode == KeyCode.RightAlt)
+                    RefreshActiveTooltip();
+            });
         }
 
         /// <summary>
@@ -504,22 +662,50 @@ namespace ProjectGuild.View.UI
         {
             element.RegisterCallback<PointerEnterEvent>(evt =>
             {
+                _activeTooltipGetText = getText;
                 string text = getText();
                 if (string.IsNullOrEmpty(text)) return;
                 _tooltipLabel.text = text;
                 _tooltip.style.display = DisplayStyle.Flex;
+                PositionTooltip(evt.position.x, evt.position.y);
             });
 
             element.RegisterCallback<PointerLeaveEvent>(evt =>
             {
                 _tooltip.style.display = DisplayStyle.None;
+                if (_activeTooltipGetText == getText)
+                    _activeTooltipGetText = null;
             });
 
             element.RegisterCallback<PointerMoveEvent>(evt =>
             {
-                if (_tooltip.style.display == DisplayStyle.None) return;
+                _activeTooltipGetText = getText;
+                string moveText = getText();
+                if (string.IsNullOrEmpty(moveText))
+                {
+                    _tooltip.style.display = DisplayStyle.None;
+                    return;
+                }
+                _tooltipLabel.text = moveText;
+                _tooltip.style.display = DisplayStyle.Flex;
                 PositionTooltip(evt.position.x, evt.position.y);
             });
+        }
+
+        /// <summary>
+        /// Called when ALT key state changes. Re-evaluates the active tooltip text
+        /// so ALT-expanded content appears/disappears immediately (PoE-style).
+        /// </summary>
+        private void RefreshActiveTooltip()
+        {
+            if (_activeTooltipGetText == null || _tooltip.style.display == DisplayStyle.None) return;
+            string text = _activeTooltipGetText();
+            if (string.IsNullOrEmpty(text))
+            {
+                _tooltip.style.display = DisplayStyle.None;
+                return;
+            }
+            _tooltipLabel.text = text;
         }
 
         private void PositionTooltip(float pointerX, float pointerY)

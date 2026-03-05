@@ -110,7 +110,7 @@
 
 .portrait-node-label {
     font-size: 12px;
-    color: rgb(160, 160, 180);
+    color: rgb(220, 220, 230);
     -unity-text-align: middle-center;
     margin-bottom: 4px;
     white-space: nowrap;

@@ -1,0 +1,14 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="Common.uss" />
+    <ui:Style src="TutorialOverlay.uss" />
+    <ui:VisualElement name="tutorial-overlay-root" class="tutorial-overlay-root" picking-mode="Ignore">
+        <!-- Message panel pinned to bottom-center, above logbook -->
+        <ui:VisualElement name="tutorial-message-panel" class="tutorial-message-panel">
+            <ui:Label name="tutorial-message-text" class="tutorial-message-text" />
+            <ui:VisualElement name="tutorial-button-row" class="tutorial-button-row">
+                <ui:Button name="btn-tutorial-dismiss" text="Got it" class="tutorial-dismiss-button" />
+                <ui:Button name="btn-tutorial-skip" text="Skip Tutorial" class="tutorial-skip-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

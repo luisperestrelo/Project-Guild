@@ -151,12 +151,38 @@ namespace ProjectGuild.Tests
         [Test]
         public void GatherableSwitch_SetsNewTransitDistance()
         {
-            // Start gathering copper with no transit (provider returns 0 initially)
+            // Start gathering copper with no transit (provider returns 0 initially).
+            // Use a micro rule to force copper (index 0) — avoids RNG picking tin.
             _sim.NodeGeometryProvider = new MockNodeGeometryProvider(gatheringSpotDistance: 0f);
-            StartGatheringAtMine();
 
+            var pickCopperRuleset = new Ruleset
+            {
+                Id = "pick-copper",
+                Name = "Pick Copper",
+                Rules = new System.Collections.Generic.List<Rule>
+                {
+                    new()
+                    {
+                        Action = new AutomationAction
+                        {
+                            Type = ActionType.GatherHere,
+                            StringParam = "copper_ore",
+                        },
+                    },
+                },
+            };
+            _sim.CurrentGameState.MicroRulesetLibrary.Add(pickCopperRuleset);
+
+            var gatherSeq = TaskSequence.CreateLoop("mine", "hub");
+            foreach (var step in gatherSeq.Steps)
+            {
+                if (step.Type == TaskStepType.Work)
+                    step.MicroRulesetId = "pick-copper";
+            }
+            _sim.AssignRunner(_runner.Id, gatherSeq);
+            Assert.AreEqual(RunnerState.Gathering, _runner.State, "Runner should be gathering");
+            Assert.AreEqual(0, _runner.Gathering.GatherableIndex, "Should start on copper (index 0)");
             Assert.IsFalse(_runner.Gathering.IsInTransit);
-            Assert.AreEqual(0, _runner.Gathering.GatherableIndex);
 
             // Now set provider to return distance (simulates old spot -> new spot distance)
             _sim.NodeGeometryProvider = new MockNodeGeometryProvider(gatheringSpotDistance: 8f);

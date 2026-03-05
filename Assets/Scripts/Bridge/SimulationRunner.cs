@@ -82,6 +82,12 @@ namespace ProjectGuild.Bridge
             var map = _worldMapAsset != null ? _worldMapAsset.ToWorldMap() : null;
             string hubNodeId = map != null ? map.HubNodeId : "hub";
             Simulation.StartNewGame(GameSimulation.DefaultStarterDefinitions(), map, hubNodeId);
+
+            // Apply tutorial preference
+            var prefs = PlayerPreferences.Load();
+            if (!prefs.TutorialEnabledForNewGames)
+                Simulation.Tutorial.SkipTutorial();
+
             Debug.Log($"[SimulationRunner] New game started with {Simulation.CurrentGameState.Runners.Count} runners.");
         }
 

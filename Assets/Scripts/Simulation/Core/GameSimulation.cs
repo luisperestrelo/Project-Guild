@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
+using ProjectGuild.Simulation.Tutorial;
 using ProjectGuild.Simulation.World;
 
 namespace ProjectGuild.Simulation.Core
@@ -26,6 +27,7 @@ namespace ProjectGuild.Simulation.Core
         public ItemRegistry ItemRegistry { get; private set; }
         public EventLogService EventLog { get; private set; }
         public ChronicleService Chronicle { get; private set; }
+        public TutorialService Tutorial { get; private set; }
 
         /// <summary>
         /// Optional provider for real path distances (e.g. NavMesh-backed).
@@ -62,6 +64,8 @@ namespace ProjectGuild.Simulation.Core
             EventLog.SubscribeAll(Events);
             Chronicle = new ChronicleService(Config.ChronicleMaxEntries, () => CurrentGameState);
             Chronicle.SubscribeAll(Events);
+            Tutorial = new TutorialService(() => CurrentGameState, Events, TickDeltaTime);
+            Tutorial.SubscribeAll(Events);
         }
 
         /// <summary>
@@ -124,6 +128,10 @@ namespace ProjectGuild.Simulation.Core
                     RunnerName = runner.Name,
                 });
             }
+
+            // Initialize tutorial for new game
+            Tutorial.InitializeDiscoveredNodes();
+            Tutorial.CompleteIntroMilestone();
         }
 
         /// <summary>
@@ -628,6 +636,44 @@ namespace ProjectGuild.Simulation.Core
         }
 
         /// <summary>
+        /// Send a runner to the hub to deposit. Uses an existing "Send to Hub" sequence
+        /// from the library if one matches, otherwise creates a new one.
+        /// </summary>
+        public void CommandSendToHub(string runnerId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+
+            var hubId = CurrentGameState.Map.HubNodeId;
+            var taskSeq = FindMatchingSendToHub(hubId) ?? TaskSequence.CreateSendToHub(hubId);
+            runner.MacroSuspendedUntilLoop = true;
+            AssignRunner(runnerId, taskSeq, "Send to Hub");
+        }
+
+        /// <summary>
+        /// Search the TaskSequenceLibrary for an existing "Send to Hub" sequence:
+        /// non-looping, 2 steps (TravelTo hub, Deposit).
+        /// </summary>
+        public TaskSequence FindMatchingSendToHub(string hubId)
+        {
+            foreach (var seq in CurrentGameState.TaskSequenceLibrary)
+            {
+                if (seq.TargetNodeId != hubId) continue;
+                if (seq.Loop) continue;
+                if (seq.Steps == null || seq.Steps.Count != 2) continue;
+
+                var s0 = seq.Steps[0];
+                var s1 = seq.Steps[1];
+
+                if (s0.Type != TaskStepType.TravelTo || s0.TargetNodeId != hubId) continue;
+                if (s1.Type != TaskStepType.Deposit) continue;
+
+                return seq;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Clear a runner's task sequence and resume macro rule evaluation.
         /// This is the single entry point for the "Clear Task" player action.
         /// </summary>
@@ -685,10 +731,13 @@ namespace ProjectGuild.Simulation.Core
 
             runner.ActiveWarning = null;
 
-            // Cancel current activity — if mid-travel, capture virtual position for redirect
+            // Cancel current activity — if mid-travel, capture virtual position for redirect.
+            // Exit-phase runners (still walking out of a node) are NOT mid-overworld:
+            // cancel their exit and let the new travel start fresh with its own exit distance.
             float? redirectWorldX = null;
             float? redirectWorldZ = null;
-            if (runner.State == RunnerState.Traveling && runner.Travel != null)
+            if (runner.State == RunnerState.Traveling && runner.Travel != null
+                && !runner.Travel.IsExitingNode)
             {
                 var map = CurrentGameState.Map;
                 var fromNode = map.GetNode(runner.Travel.FromNodeId);

@@ -1,0 +1,31 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="Common.uss" />
+    <ui:Style src="StrategicMapPanel.uss" />
+    <ui:VisualElement name="strategic-map-root" class="strategic-map-root">
+        <!-- Title bar -->
+        <ui:VisualElement name="strategic-map-title-bar" class="strategic-map-title-bar">
+            <ui:Label text="World" class="strategic-map-title" />
+            <ui:Label text="Click node to send runner  |  Double-click to observe  |  Scroll to zoom  |  Drag to pan" class="strategic-map-hint" />
+            <ui:Button name="btn-close-map" class="strategic-map-close-button" text="X" />
+        </ui:VisualElement>
+
+        <!-- Viewport (zoomable/pannable area) -->
+        <ui:VisualElement name="strategic-map-viewport" class="strategic-map-viewport">
+            <!-- Transform container moves/scales inside the viewport -->
+            <ui:VisualElement name="strategic-map-transform-container" class="strategic-map-transform-container" />
+        </ui:VisualElement>
+
+        <!-- Node action popup (sibling of viewport, doesn't zoom/pan) -->
+        <ui:VisualElement name="strategic-map-node-popup" class="strategic-map-node-popup">
+            <ui:Label name="popup-node-name" class="popup-node-name" />
+            <ui:VisualElement name="popup-gatherables-list" class="popup-gatherables-list" />
+            <ui:Label name="popup-travel-info" class="popup-travel-info" />
+            <ui:VisualElement name="popup-runners-list" class="popup-runners-list" />
+            <ui:Label name="popup-macro-note" text="Macro rules will be paused for one cycle" class="popup-macro-note" />
+            <ui:VisualElement name="popup-buttons" class="popup-buttons">
+                <ui:Button name="btn-popup-confirm" class="popup-confirm-button" />
+                <ui:Button name="btn-popup-cancel" text="Cancel" class="popup-cancel-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

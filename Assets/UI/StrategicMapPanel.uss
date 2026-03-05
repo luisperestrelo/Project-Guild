@@ -1,0 +1,331 @@
+/* ─── Strategic Map Panel ─────────────────────────── */
+
+.strategic-map-root {
+    position: absolute;
+    left: 0;
+    top: 200px;
+    right: 0;
+    bottom: 0;
+    background-color: rgb(8, 10, 18);
+    flex-direction: column;
+}
+
+/* ─── Title Bar ──────────────────────────────────── */
+
+.strategic-map-title-bar {
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: rgba(15, 15, 25, 0.95);
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(80, 80, 100, 0.6);
+    flex-shrink: 0;
+}
+
+.strategic-map-title {
+    font-size: 16px;
+    color: rgb(220, 180, 60);
+    -unity-font-style: bold;
+    margin-right: 16px;
+}
+
+.strategic-map-hint {
+    font-size: 11px;
+    color: rgb(120, 120, 140);
+    flex-grow: 1;
+}
+
+.strategic-map-close-button {
+    background-color: rgba(40, 40, 55, 0.8);
+    color: rgb(200, 200, 220);
+    border-width: 1px;
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 3px;
+    padding: 3px 10px;
+    font-size: 12px;
+    -unity-font-style: bold;
+    flex-shrink: 0;
+}
+
+.strategic-map-close-button:hover {
+    background-color: rgba(140, 50, 50, 0.8);
+    border-color: rgba(180, 70, 70, 0.7);
+    color: rgb(240, 220, 220);
+}
+
+/* ─── Viewport ───────────────────────────────────── */
+
+.strategic-map-viewport {
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.strategic-map-transform-container {
+    position: absolute;
+    width: 10000px;
+    height: 10000px;
+}
+
+/* ─── Node Elements ──────────────────────────────── */
+
+.strategic-map-node {
+    position: absolute;
+    translate: -50% -50%;
+    align-items: center;
+    flex-direction: column;
+}
+
+.strategic-map-node-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    background-color: rgba(60, 60, 90, 0.9);
+    border-width: 2px;
+    border-color: rgba(100, 100, 140, 0.7);
+    align-items: center;
+    justify-content: center;
+}
+
+.strategic-map-node-icon:hover {
+    border-color: rgba(220, 180, 60, 0.8);
+    background-color: rgba(80, 80, 110, 0.95);
+}
+
+.strategic-map-node-hub .strategic-map-node-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    border-color: rgba(220, 180, 60, 0.7);
+    background-color: rgba(80, 70, 40, 0.9);
+}
+
+.strategic-map-node-hub .strategic-map-node-icon:hover {
+    border-color: rgba(220, 180, 60, 1.0);
+    background-color: rgba(100, 90, 50, 0.95);
+}
+
+.strategic-map-node-selected .strategic-map-node-icon {
+    border-color: rgba(100, 200, 100, 0.9);
+    background-color: rgba(50, 80, 50, 0.9);
+}
+
+.strategic-map-node-name {
+    font-size: 10px;
+    color: rgb(180, 180, 200);
+    margin-top: 2px;
+    -unity-text-align: upper-center;
+    white-space: nowrap;
+}
+
+.strategic-map-node-hub .strategic-map-node-name {
+    color: rgb(220, 180, 60);
+    font-size: 11px;
+    -unity-font-style: bold;
+}
+
+/* ─── Gatherable Dots Row ────────────────────────── */
+
+.strategic-map-gatherable-dots {
+    flex-direction: row;
+    justify-content: center;
+    margin-top: 1px;
+}
+
+.strategic-map-gatherable-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    margin: 0 1px;
+}
+
+.strategic-map-gatherable-dot-mining {
+    background-color: rgb(180, 130, 60);
+}
+
+.strategic-map-gatherable-dot-woodcutting {
+    background-color: rgb(80, 160, 60);
+}
+
+.strategic-map-gatherable-dot-fishing {
+    background-color: rgb(60, 130, 200);
+}
+
+.strategic-map-gatherable-dot-foraging {
+    background-color: rgb(140, 180, 60);
+}
+
+/* ─── Runner Indicators on Nodes ─────────────────── */
+
+.strategic-map-runner-indicators {
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 2px;
+    max-width: 80px;
+}
+
+.strategic-map-runner-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background-color: rgba(80, 200, 80, 0.85);
+    margin: 2px;
+    border-width: 0;
+}
+
+.strategic-map-runner-dot:hover {
+    background-color: rgba(100, 240, 100, 1.0);
+}
+
+.strategic-map-runner-dot-selected {
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background-color: rgba(80, 200, 80, 0.9);
+    border-width: 2px;
+    border-color: rgba(220, 180, 60, 0.9);
+}
+
+.strategic-map-runner-overflow {
+    font-size: 8px;
+    color: rgb(140, 140, 160);
+    margin-left: 2px;
+}
+
+/* ─── Runner Count Badge ─────────────────────────── */
+
+.strategic-map-runner-badge {
+    position: absolute;
+    right: -4px;
+    top: -4px;
+    min-width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background-color: rgba(80, 180, 80, 0.9);
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+}
+
+.strategic-map-runner-badge-label {
+    font-size: 9px;
+    color: rgb(240, 240, 255);
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+/* ─── Node Action Popup ──────────────────────────── */
+
+.strategic-map-node-popup {
+    position: absolute;
+    display: none;
+    background-color: rgba(15, 15, 25, 0.97);
+    border-width: 2px;
+    border-color: rgba(220, 180, 60, 0.5);
+    border-radius: 6px;
+    padding: 12px 16px;
+    min-width: 240px;
+    max-width: 320px;
+}
+
+.popup-node-name {
+    font-size: 14px;
+    color: rgb(220, 180, 60);
+    -unity-font-style: bold;
+    margin-bottom: 8px;
+}
+
+.popup-gatherables-list {
+    margin-bottom: 6px;
+}
+
+.popup-gatherable-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.popup-gatherable-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.popup-gatherable-text {
+    font-size: 11px;
+    color: rgb(200, 200, 215);
+}
+
+.popup-travel-info {
+    font-size: 11px;
+    color: rgb(140, 170, 200);
+    margin-bottom: 6px;
+    -unity-font-style: italic;
+}
+
+.popup-runners-list {
+    margin-bottom: 6px;
+}
+
+.popup-runner-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 0;
+}
+
+.popup-runner-name {
+    font-size: 11px;
+    color: rgb(180, 180, 200);
+}
+
+.popup-macro-note {
+    font-size: 10px;
+    color: rgb(140, 140, 160);
+    -unity-font-style: italic;
+    margin-bottom: 8px;
+}
+
+.popup-buttons {
+    flex-direction: row;
+    justify-content: flex-end;
+}
+
+.popup-confirm-button {
+    background-color: rgba(50, 100, 50, 0.8);
+    color: rgb(220, 220, 240);
+    border-width: 1px;
+    border-color: rgba(80, 160, 80, 0.6);
+    border-radius: 3px;
+    padding: 5px 14px;
+    margin-right: 6px;
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.popup-confirm-button:hover {
+    background-color: rgba(60, 120, 60, 0.9);
+    border-color: rgba(100, 180, 100, 0.8);
+}
+
+.popup-confirm-button:disabled {
+    background-color: rgba(40, 40, 55, 0.6);
+    color: rgb(100, 100, 120);
+    border-color: rgba(60, 60, 80, 0.4);
+}
+
+.popup-cancel-button {
+    background-color: rgba(40, 40, 55, 0.8);
+    color: rgb(160, 160, 180);
+    border-width: 1px;
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 3px;
+    padding: 5px 14px;
+    font-size: 12px;
+}
+
+.popup-cancel-button:hover {
+    background-color: rgba(55, 55, 70, 0.9);
+    border-color: rgba(90, 90, 110, 0.7);
+}

@@ -79,6 +79,56 @@
             <!-- Divider -->
             <ui:VisualElement class="options-divider" />
 
+            <!-- Strategic Map section -->
+            <ui:VisualElement class="options-section">
+                <ui:Label text="Strategic Map" class="options-subsection-header" />
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-map-center-on-runner" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Center on selected runner" class="options-toggle-label" />
+                        <ui:Label text="Map opens centered on the selected runner's node (otherwise always centers on Guild Hall)" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-map-close-on-assignment" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Close map on assignment" class="options-toggle-label" />
+                        <ui:Label text="Closes the map after sending a runner to a node (disable to send multiple runners without closing)" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Divider -->
+            <ui:VisualElement class="options-divider" />
+
+            <!-- Tutorial section -->
+            <ui:VisualElement class="options-section">
+                <ui:Label text="Tutorial" class="options-subsection-header" />
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-tutorial-enabled" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Enable tutorial for new games" class="options-toggle-label" />
+                        <ui:Label text="Show tutorial prompts and progressive node reveal when starting a new game" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Divider -->
+            <ui:VisualElement class="options-divider" />
+
+            <!-- Hotkeys section -->
+            <ui:VisualElement class="options-section">
+                <ui:Label text="Hotkeys" class="options-section-header" />
+                <ui:Label text="Click a key to rebind. Press Escape to cancel." class="options-toggle-desc" />
+                <ui:VisualElement name="hotkey-section" class="options-hotkey-section" />
+            </ui:VisualElement>
+
+            <!-- Divider -->
+            <ui:VisualElement class="options-divider" />
+
             <!-- Save / Load section -->
             <ui:VisualElement class="options-section">
                 <ui:Label text="Save / Load" class="options-section-header" />

@@ -10,6 +10,7 @@ using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Items;
+using ProjectGuild.Simulation.Tutorial;
 
 namespace ProjectGuild.View
 {
@@ -472,6 +473,7 @@ namespace ProjectGuild.View
                 case "state": HandleState(); break;
                 case "nodes": HandleNodes(); break;
                 case "items": HandleItems(); break;
+                case "tutorial": HandleTutorial(parts); break;
                 case "clear": ClearOutput(); break;
                 default:
                     Print($"<color=#CC4444>Unknown command: {cmd}. Type /help for commands.</color>");
@@ -542,6 +544,14 @@ namespace ProjectGuild.View
             Print("  /eventlog filter <cat>    Filter (warning/auto/state/prod/life)");
             Print("  /eventlog live            Toggle live streaming");
             Print("  /eventlog max             Buffer size");
+            Print("");
+            Print("<color=#DCB43C>--- Tutorial ---</color>");
+            Print("  /tutorial                 Show tutorial state");
+            Print("  /tutorial on|off          Enable/disable tutorial");
+            Print("  /tutorial reset           Reset to Gathering start");
+            Print("  /tutorial skip            Advance to next phase");
+            Print("  /tutorial milestone <id>  Complete a milestone");
+            Print("  /tutorial unlock <nodeId> Add node to discovered list");
             Print("");
             Print("<color=#DCB43C>--- Misc ---</color>");
             Print("  /hud on|off               Toggle tick/time HUD");
@@ -1503,6 +1513,75 @@ namespace ProjectGuild.View
             Print($"{items.Count} registered items:");
             foreach (var item in items)
                 Print($"  <color=#7CCD7C>{item.Id}</color> — {item.Name} ({item.Category})");
+        }
+
+        // ─── Tutorial ─────────────────────────────────────────────
+
+        private void HandleTutorial(string[] parts)
+        {
+            if (Sim == null) { Print("<color=#CC4444>No simulation running.</color>"); return; }
+
+            var tutorial = Sim.CurrentGameState.Tutorial;
+
+            if (parts.Length < 2)
+            {
+                // Show current state
+                Print($"<color=#DCB43C>Tutorial State</color>");
+                Print($"  Active: {tutorial.IsActive}");
+                Print($"  Phase:  {tutorial.CurrentPhase}");
+                Print($"  Milestones ({tutorial.CompletedMilestones.Count}):");
+                foreach (var m in tutorial.CompletedMilestones)
+                    Print($"    <color=#7CCD7C>{m}</color>");
+                Print($"  Discovered Nodes ({tutorial.DiscoveredNodeIds.Count}):");
+                foreach (var n in tutorial.DiscoveredNodeIds)
+                    Print($"    <color=#7CCD7C>{n}</color>");
+                return;
+            }
+
+            string sub = parts[1].ToLowerInvariant();
+
+            switch (sub)
+            {
+                case "on":
+                    tutorial.IsActive = true;
+                    Print("Tutorial <color=#7CCD7C>enabled</color>.");
+                    break;
+
+                case "off":
+                    Sim.Tutorial.SkipTutorial();
+                    Print("Tutorial <color=#CC4444>disabled</color>. All nodes visible.");
+                    break;
+
+                case "reset":
+                    Sim.Tutorial.ResetTutorial();
+                    Print("Tutorial <color=#DCB43C>reset</color> to Gathering phase.");
+                    break;
+
+                case "skip":
+                    var before = tutorial.CurrentPhase;
+                    Sim.Tutorial.AdvanceToNextPhase();
+                    Print($"Advanced from <color=#DCB43C>{before}</color> to <color=#7CCD7C>{tutorial.CurrentPhase}</color>.");
+                    break;
+
+                case "milestone":
+                    if (parts.Length < 3) { Print("<color=#CC4444>Usage: /tutorial milestone <id></color>"); return; }
+                    string milestoneId = parts[2];
+                    Sim.Tutorial.ForceCompleteMilestone(milestoneId);
+                    Print($"Milestone <color=#7CCD7C>{milestoneId}</color> completed.");
+                    break;
+
+                case "unlock":
+                    if (parts.Length < 3) { Print("<color=#CC4444>Usage: /tutorial unlock <nodeId></color>"); return; }
+                    string nodeId = parts[2];
+                    Sim.Tutorial.UnlockNode(nodeId);
+                    Print($"Node <color=#7CCD7C>{nodeId}</color> added to discovered list.");
+                    break;
+
+                default:
+                    Print($"<color=#CC4444>Unknown tutorial subcommand: {sub}</color>");
+                    Print("  Usage: /tutorial [on|off|reset|skip|milestone <id>|unlock <nodeId>]");
+                    break;
+            }
         }
 
         // ─── Event Log ─────────────────────────────────────────────
