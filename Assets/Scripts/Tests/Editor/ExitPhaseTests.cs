@@ -383,7 +383,7 @@ namespace ProjectGuild.Tests
             public float? GetExitDistance(string runnerId, string nodeId, string destinationNodeId)
                 => _exitDistance;
 
-            public float? GetGatheringSpotDistance(string runnerId, string nodeId, int gatherableIndex)
+            public float? GetGatheringSpotDistance(string runnerId, string nodeId, int gatherableIndex, int spotIndex)
                 => 0f;
 
             public float? GetDepositPointDistance(string runnerId, string nodeId)

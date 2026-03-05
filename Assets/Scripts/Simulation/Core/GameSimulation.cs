@@ -442,9 +442,10 @@ namespace ProjectGuild.Simulation.Core
         private void StartGathering(Runner runner, int gatherableIndex, GatherableConfig gatherableConfig)
         {
             float ticksRequired = CalculateTicksRequired(runner, gatherableConfig);
+            int spotIndex = CountRunnersAtGatherable(runner.Id, runner.CurrentNodeId, gatherableIndex);
 
             float transitDist = NodeGeometryProvider?.GetGatheringSpotDistance(
-                runner.Id, runner.CurrentNodeId, gatherableIndex) ?? 0f;
+                runner.Id, runner.CurrentNodeId, gatherableIndex, spotIndex) ?? 0f;
 
             runner.ActiveWarning = null;
             runner.State = RunnerState.Gathering;
@@ -452,6 +453,7 @@ namespace ProjectGuild.Simulation.Core
             {
                 NodeId = runner.CurrentNodeId,
                 GatherableIndex = gatherableIndex,
+                SpotIndex = spotIndex,
                 TickAccumulator = 0f,
                 TicksRequired = ticksRequired,
                 TransitDistance = transitDist,
@@ -465,6 +467,27 @@ namespace ProjectGuild.Simulation.Core
                 ItemId = gatherableConfig.ProducedItemId,
                 Skill = gatherableConfig.RequiredSkill,
             });
+        }
+
+        /// <summary>
+        /// Count how many other runners are already gathering the same gatherable at this node.
+        /// Used as the spot index so each runner gets a distinct physical position.
+        /// </summary>
+        private int CountRunnersAtGatherable(string excludeRunnerId, string nodeId, int gatherableIndex)
+        {
+            int count = 0;
+            foreach (var r in CurrentGameState.Runners)
+            {
+                if (r.Id == excludeRunnerId) continue;
+                if (r.CurrentNodeId == nodeId
+                    && r.State == RunnerState.Gathering
+                    && r.Gathering != null
+                    && r.Gathering.GatherableIndex == gatherableIndex)
+                {
+                    count++;
+                }
+            }
+            return count;
         }
 
         private float CalculateTicksRequired(Runner runner, GatherableConfig gatherable)
@@ -1223,13 +1246,15 @@ namespace ProjectGuild.Simulation.Core
                     }
                 }
 
+                int newSpotIndex = CountRunnersAtGatherable(runner.Id, runner.CurrentNodeId, newIndex);
                 runner.Gathering.GatherableIndex = newIndex;
+                runner.Gathering.SpotIndex = newSpotIndex;
                 runner.Gathering.TickAccumulator = 0f;
                 runner.Gathering.TicksRequired = CalculateTicksRequired(runner, gatherableConfig);
 
                 // Transit to new gathering spot
                 float transitDist = NodeGeometryProvider?.GetGatheringSpotDistance(
-                    runner.Id, runner.CurrentNodeId, newIndex) ?? 0f;
+                    runner.Id, runner.CurrentNodeId, newIndex, newSpotIndex) ?? 0f;
                 runner.Gathering.TransitDistance = transitDist;
                 runner.Gathering.TransitDistanceCovered = 0f;
             }

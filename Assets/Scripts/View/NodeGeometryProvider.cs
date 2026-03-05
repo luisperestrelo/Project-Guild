@@ -44,13 +44,12 @@ namespace ProjectGuild.View
             return DistanceOrZero(runnerPos.Value, exitPoint);
         }
 
-        public float? GetGatheringSpotDistance(string runnerId, string nodeId, int gatherableIndex)
+        public float? GetGatheringSpotDistance(string runnerId, string nodeId, int gatherableIndex, int spotIndex)
         {
             var runnerPos = GetRunnerPositionInScene(runnerId, nodeId, out var sceneRoot);
             if (!runnerPos.HasValue) return null;
 
-            int runnerIndexInGroup = GetRunnerIndexInGatherableGroup(runnerId, nodeId, gatherableIndex);
-            Vector3 gatheringSpot = sceneRoot.GetGatheringPosition(gatherableIndex, runnerIndexInGroup);
+            Vector3 gatheringSpot = sceneRoot.GetGatheringPosition(gatherableIndex, spotIndex);
 
             return DistanceOrZero(runnerPos.Value, gatheringSpot);
         }
@@ -116,30 +115,6 @@ namespace ProjectGuild.View
         {
             float distance = Vector3.Distance(from, to);
             return distance < 0.5f ? 0f : distance;
-        }
-
-        /// <summary>
-        /// Compute the runner's index among all runners gathering the same gatherable
-        /// at the same node. Same logic as VisualSyncSystem.GetRunnerIndexInGatherableGroup.
-        /// </summary>
-        private int GetRunnerIndexInGatherableGroup(string runnerId, string nodeId, int gatherableIndex)
-        {
-            var sim = _simulationRunner?.Simulation;
-            if (sim == null) return 0;
-
-            int index = 0;
-            foreach (var r in sim.CurrentGameState.Runners)
-            {
-                if (r.Id == runnerId) break;
-                if (r.CurrentNodeId == nodeId
-                    && r.State == RunnerState.Gathering
-                    && r.Gathering != null
-                    && r.Gathering.GatherableIndex == gatherableIndex)
-                {
-                    index++;
-                }
-            }
-            return index;
         }
 
         private Vector3 ComputeDepartureDirection(string fromNodeId, string toNodeId)

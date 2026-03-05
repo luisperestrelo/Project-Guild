@@ -19,10 +19,11 @@ namespace ProjectGuild.Simulation.World
 
         /// <summary>
         /// Distance from a runner's current position to the gathering spot for a given gatherable index.
+        /// The spotIndex selects which physical spot within the gatherable's spot group to measure to.
         /// Returns null if unavailable (scene not loaded, runner not found) — caller uses 0 (instant).
         /// Returns 0 if distance is trivially short (&lt; 0.5m).
         /// </summary>
-        float? GetGatheringSpotDistance(string runnerId, string nodeId, int gatherableIndex);
+        float? GetGatheringSpotDistance(string runnerId, string nodeId, int gatherableIndex, int spotIndex);
 
         /// <summary>
         /// Distance from a runner's current position to the deposit point at the node.

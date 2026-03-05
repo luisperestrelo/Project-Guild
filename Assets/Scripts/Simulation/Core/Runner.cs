@@ -202,6 +202,14 @@ namespace ProjectGuild.Simulation.Core
         /// Set by ExecuteGatherStep via micro rules or assignment default.
         /// </summary>
         public int GatherableIndex;
+
+        /// <summary>
+        /// Which physical spot within the gatherable's spot group this runner occupies.
+        /// Assigned once when gathering starts or when switching gatherables (micro rules).
+        /// Stable — does not shift when other runners arrive or depart.
+        /// </summary>
+        public int SpotIndex;
+
         public float TickAccumulator;
         public float TicksRequired;
 

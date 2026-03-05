@@ -581,12 +581,15 @@ namespace ProjectGuild.View
                 var gender = sub == "male" ? RunnerGender.Male : RunnerGender.Female;
                 var rng = new System.Random();
                 var def = new RunnerFactory.RunnerDefinition { Gender = gender };
-                // Fill with random levels like Create() does
                 for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
                 {
                     def.SkillLevels[i] = rng.Next(Sim.Config.MinStartingLevel, Sim.Config.MaxStartingLevel + 1);
                     def.SkillPassions[i] = rng.NextDouble() < Sim.Config.PassionChance;
                 }
+                if (!_presetCounters.TryGetValue(sub, out int genderCounter)) genderCounter = 0;
+                _presetCounters[sub] = ++genderCounter;
+                string capitalizedGender = sub == "male" ? "Male" : "Female";
+                def.Name = $"{capitalizedGender} #{genderCounter}";
                 var runner = RunnerFactory.CreateFromDefinition(def, hubId, Sim.Config.InventorySize, rng, Sim.Config);
                 Sim.AddRunner(runner);
                 Print($"Spawned {sub} runner: <color=#7CCD7C>{runner.Name}</color>");
@@ -600,6 +603,10 @@ namespace ProjectGuild.View
                 var rng = new System.Random();
                 var runner = RunnerFactory.Create(rng, Sim.Config, hubId);
                 runner.Skills[(int)SkillType.Athletics].Level = athleticsLevel;
+                if (!_presetCounters.TryGetValue(sub, out int speedCounter)) speedCounter = 0;
+                _presetCounters[sub] = ++speedCounter;
+                string capitalizedSub = sub == "fast" ? "Fast" : "Maxfast";
+                runner.Name = $"{capitalizedSub} #{speedCounter}";
                 Sim.AddRunner(runner);
                 Print($"Spawned {sub} runner: <color=#7CCD7C>{runner.Name}</color> ({runner.Gender}) — Athletics {athleticsLevel}");
                 PrintRunnerSkillSummary(runner);

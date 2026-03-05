@@ -451,5 +451,83 @@ namespace ProjectGuild.Tests
             Assert.GreaterOrEqual(gatheringStartedCount, 1,
                 "GatheringStarted should fire when gathering resumes after auto-return");
         }
+
+        // ─── Spot Stability ───────────────────────────────────────────────
+
+        [Test]
+        public void SpotIndex_StableWhenOtherRunnerDeparts()
+        {
+            // Setup: 3 runners at a mine with 1 gatherable (copper)
+            var config = new SimulationConfig
+            {
+                ItemDefinitions = new[]
+                {
+                    new ItemDefinition("copper_ore", "Copper Ore", ItemCategory.Ore),
+                },
+            };
+            var sim = new GameSimulation(config, tickRate: 10f);
+
+            var defs = new[]
+            {
+                new RunnerFactory.RunnerDefinition { Name = "Alpha" }
+                    .WithSkill(SkillType.Mining, 10),
+                new RunnerFactory.RunnerDefinition { Name = "Bravo" }
+                    .WithSkill(SkillType.Mining, 10),
+                new RunnerFactory.RunnerDefinition { Name = "Charlie" }
+                    .WithSkill(SkillType.Mining, 10),
+            };
+
+            var map = new WorldMap();
+            map.HubNodeId = "hub";
+            map.AddNode("hub", "Hub");
+            map.AddNode("mine", "Mine", 0f, 0f, null, CopperGatherable);
+            map.AddEdge("hub", "mine", 8f);
+            map.Initialize();
+
+            sim.StartNewGame(defs, map, "mine");
+
+            var alpha = sim.CurrentGameState.Runners[0];
+            var bravo = sim.CurrentGameState.Runners[1];
+            var charlie = sim.CurrentGameState.Runners[2];
+
+            // Assign all 3 to gather at the mine
+            var assignment = TaskSequence.CreateLoop("mine", "hub");
+            sim.AssignRunner(alpha.Id, assignment, "test");
+            sim.AssignRunner(bravo.Id, assignment, "test");
+            sim.AssignRunner(charlie.Id, assignment, "test");
+
+            // Tick until all 3 are gathering (past transit)
+            for (int i = 0; i < 200; i++)
+            {
+                sim.Tick();
+                if (alpha.State == RunnerState.Gathering && !alpha.Gathering.IsInTransit
+                    && bravo.State == RunnerState.Gathering && !bravo.Gathering.IsInTransit
+                    && charlie.State == RunnerState.Gathering && !charlie.Gathering.IsInTransit)
+                    break;
+            }
+
+            Assert.AreEqual(RunnerState.Gathering, alpha.State, "Alpha should be gathering");
+            Assert.AreEqual(RunnerState.Gathering, bravo.State, "Bravo should be gathering");
+            Assert.AreEqual(RunnerState.Gathering, charlie.State, "Charlie should be gathering");
+
+            int bravoSpotBefore = bravo.Gathering.SpotIndex;
+            int charlieSpotBefore = charlie.Gathering.SpotIndex;
+
+            // Alpha departs (send to hub)
+            sim.AssignRunner(alpha.Id, TaskSequence.CreateLoop("hub", "mine"), "test");
+
+            // Tick a few times so Alpha transitions out
+            for (int i = 0; i < 20; i++)
+                sim.Tick();
+
+            Assert.AreNotEqual(RunnerState.Gathering, alpha.State,
+                "Alpha should no longer be gathering");
+
+            // Bravo and Charlie's spot indices must NOT have changed
+            Assert.AreEqual(bravoSpotBefore, bravo.Gathering.SpotIndex,
+                "Bravo's spot index should be stable after Alpha departs");
+            Assert.AreEqual(charlieSpotBefore, charlie.Gathering.SpotIndex,
+                "Charlie's spot index should be stable after Alpha departs");
+        }
     }
 }

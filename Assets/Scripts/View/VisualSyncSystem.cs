@@ -473,8 +473,8 @@ namespace ProjectGuild.View
             if (runner.State == RunnerState.Gathering && runner.Gathering != null)
             {
                 int gatherableIndex = runner.Gathering.GatherableIndex;
-                int runnerIndexInGroup = GetRunnerIndexInGatherableGroup(runner, gatherableIndex);
-                return sceneRoot.GetGatheringPosition(gatherableIndex, runnerIndexInGroup) + RunnerYOffset;
+                int spotIndex = runner.Gathering.SpotIndex;
+                return sceneRoot.GetGatheringPosition(gatherableIndex, spotIndex) + RunnerYOffset;
             }
 
             // Idle or other states: use a spawn point
@@ -576,23 +576,6 @@ namespace ProjectGuild.View
         /// Get the index of this runner among all runners gathering the same gatherable
         /// at the same node. Used to spread runners across spots within a GatherableSpotGroup.
         /// </summary>
-        private int GetRunnerIndexInGatherableGroup(Runner runner, int gatherableIndex)
-        {
-            int index = 0;
-            foreach (var r in Sim.CurrentGameState.Runners)
-            {
-                if (r.Id == runner.Id) break;
-                if (r.CurrentNodeId == runner.CurrentNodeId
-                    && r.State == RunnerState.Gathering
-                    && r.Gathering != null
-                    && r.Gathering.GatherableIndex == gatherableIndex)
-                {
-                    index++;
-                }
-            }
-            return index;
-        }
-
         /// <summary>
         /// Calculate in-node walk speed for a runner's visual.
         /// Same formula as the sim: overworld travel speed * InNodeSpeedMultiplier.
