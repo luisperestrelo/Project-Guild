@@ -6,6 +6,16 @@ using ProjectGuild.Simulation.Items;
 namespace ProjectGuild.Simulation.Core
 {
     /// <summary>
+    /// Cosmetic gender for a runner. Drives name generation and visual selection.
+    /// No gameplay impact.
+    /// </summary>
+    public enum RunnerGender
+    {
+        Male,
+        Female,
+    }
+
+    /// <summary>
     /// The state of a runner's current activity.
     /// </summary>
     public enum RunnerState
@@ -37,6 +47,7 @@ namespace ProjectGuild.Simulation.Core
     {
         public string Id;
         public string Name;
+        public RunnerGender Gender;
         public RunnerState State;
         public string CurrentNodeId;
 

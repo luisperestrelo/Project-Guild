@@ -484,7 +484,12 @@ namespace ProjectGuild.View
         private void PrintHelp()
         {
             Print("<color=#DCB43C>--- Spawning ---</color>");
+            Print("  /spawn                            Random runner (same as /spawn random)");
             Print("  /spawn random                     Random runner at hub");
+            Print("  /spawn male                       Random male runner");
+            Print("  /spawn female                     Random female runner");
+            Print("  /spawn fast                       Random runner with Athletics 50");
+            Print("  /spawn maxfast                    Random runner with Athletics 99");
             Print("  /spawn tutorial                   Tutorial-biased runner");
             Print("  /spawn gatherer [N] [P]           All gathering skills (default 50)");
             Print("  /spawn crafter [N] [P]            Production skills");
@@ -551,8 +556,11 @@ namespace ProjectGuild.View
 
             if (parts.Length < 2)
             {
-                Print("<color=#CC4444>Usage: /spawn random | tutorial | gatherer | crafter | fighter | mage | healer | tank | fastgatherer | fastcrafter | jack [N] [P]</color>");
-                Print("<color=#CC4444>       /spawn [\"name\"] skill level [P] ...  (custom)</color>");
+                // No arguments = same as /spawn random
+                var randomRunner = RunnerFactory.Create(new System.Random(), Sim.Config, Sim.CurrentGameState.Map.HubNodeId);
+                Sim.AddRunner(randomRunner);
+                Print($"Spawned random runner: <color=#7CCD7C>{randomRunner.Name}</color> ({randomRunner.Gender})");
+                PrintRunnerSkillSummary(randomRunner);
                 return;
             }
 
@@ -563,7 +571,37 @@ namespace ProjectGuild.View
             {
                 var runner = RunnerFactory.Create(new System.Random(), Sim.Config, hubId);
                 Sim.AddRunner(runner);
-                Print($"Spawned random runner: <color=#7CCD7C>{runner.Name}</color> at {hubId}");
+                Print($"Spawned random runner: <color=#7CCD7C>{runner.Name}</color> ({runner.Gender})");
+                PrintRunnerSkillSummary(runner);
+                return;
+            }
+
+            if (sub == "male" || sub == "female")
+            {
+                var gender = sub == "male" ? RunnerGender.Male : RunnerGender.Female;
+                var rng = new System.Random();
+                var def = new RunnerFactory.RunnerDefinition { Gender = gender };
+                // Fill with random levels like Create() does
+                for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
+                {
+                    def.SkillLevels[i] = rng.Next(Sim.Config.MinStartingLevel, Sim.Config.MaxStartingLevel + 1);
+                    def.SkillPassions[i] = rng.NextDouble() < Sim.Config.PassionChance;
+                }
+                var runner = RunnerFactory.CreateFromDefinition(def, hubId, Sim.Config.InventorySize, rng, Sim.Config);
+                Sim.AddRunner(runner);
+                Print($"Spawned {sub} runner: <color=#7CCD7C>{runner.Name}</color>");
+                PrintRunnerSkillSummary(runner);
+                return;
+            }
+
+            if (sub == "fast" || sub == "maxfast")
+            {
+                int athleticsLevel = sub == "fast" ? 50 : 99;
+                var rng = new System.Random();
+                var runner = RunnerFactory.Create(rng, Sim.Config, hubId);
+                runner.Skills[(int)SkillType.Athletics].Level = athleticsLevel;
+                Sim.AddRunner(runner);
+                Print($"Spawned {sub} runner: <color=#7CCD7C>{runner.Name}</color> ({runner.Gender}) — Athletics {athleticsLevel}");
                 PrintRunnerSkillSummary(runner);
                 return;
             }

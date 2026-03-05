@@ -100,9 +100,23 @@ namespace ProjectGuild.Simulation.Core
             DefaultRulesets.EnsureTemplatesInLibrary(CurrentGameState);
 
             var rng = new Random();
+            var usedNames = new System.Collections.Generic.HashSet<string>();
             foreach (var def in starterDefinitions)
             {
                 var runner = RunnerFactory.CreateFromDefinition(def, hubNodeId, Config.InventorySize, rng, Config);
+
+                // Ensure unique names among starters (re-roll on collision)
+                if (def.Name == null)
+                {
+                    int attempts = 0;
+                    while (usedNames.Contains(runner.Name) && attempts < 50)
+                    {
+                        runner.Name = RunnerFactory.GenerateRandomName(rng, Config, runner.Gender);
+                        attempts++;
+                    }
+                }
+                usedNames.Add(runner.Name);
+
                 CurrentGameState.Runners.Add(runner);
                 Events.Publish(new RunnerCreated
                 {

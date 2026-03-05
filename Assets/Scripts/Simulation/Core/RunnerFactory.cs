@@ -17,13 +17,20 @@ namespace ProjectGuild.Simulation.Core
     {
         // ─── Name Lists ──────────────────────────────────────────────
 
-        private static readonly string[] FirstNames =
+        private static readonly string[] MaleFirstNames =
         {
-            "Aldric", "Brenna", "Corin", "Dahlia", "Edric",
-            "Faye", "Gareth", "Hilda", "Ivar", "Juna",
-            "Kael", "Lyra", "Magnus", "Nessa", "Orin",
-            "Petra", "Quinn", "Rowan", "Sable", "Theron",
-            "Uma", "Vesper", "Wren", "Xara", "Yorick", "Zara",
+            "Aldric", "Corin", "Edric", "Gareth", "Ivar",
+            "Kael", "Magnus", "Orin", "Quinn", "Rowan",
+            "Theron", "Yorick", "Cedric", "Dorian", "Leoric",
+            "Bran", "Torvald", "Halden", "Fenris", "Godric",
+        };
+
+        private static readonly string[] FemaleFirstNames =
+        {
+            "Brenna", "Dahlia", "Faye", "Hilda", "Juna",
+            "Lyra", "Nessa", "Petra", "Sable", "Uma",
+            "Vesper", "Wren", "Xara", "Zara", "Elara",
+            "Sigrid", "Isolde", "Rowena", "Astrid", "Maren",
         };
 
         private static readonly string[] LastNames =
@@ -49,10 +56,12 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public static Runner Create(Random rng, SimulationConfig config, string startingNodeId = "hub")
         {
+            var gender = rng.Next(2) == 0 ? RunnerGender.Male : RunnerGender.Female;
             var runner = new Runner
             {
                 Id = Guid.NewGuid().ToString(),
-                Name = GenerateName(rng, config),
+                Name = GenerateRandomName(rng, config, gender),
+                Gender = gender,
                 State = RunnerState.Idle,
                 CurrentNodeId = startingNodeId,
                 Inventory = new Inventory(config.InventorySize),
@@ -76,6 +85,7 @@ namespace ProjectGuild.Simulation.Core
         public class RunnerDefinition
         {
             public string Name;
+            public RunnerGender? Gender;   // Null = random
             public int[] SkillLevels;      // Length must be SkillCount, indexed by SkillType
             public bool[] SkillPassions;   // Length must be SkillCount, indexed by SkillType
 
@@ -107,18 +117,16 @@ namespace ProjectGuild.Simulation.Core
         public static Runner CreateFromDefinition(RunnerDefinition def, string startingNodeId = "hub",
             int inventorySize = 28, Random rng = null, SimulationConfig config = null)
         {
-            string name = def.Name;
-            if (name == null)
-            {
-                rng ??= new Random();
-                config ??= new SimulationConfig();
-                name = GenerateName(rng, config);
-            }
+            rng ??= new Random();
+            config ??= new SimulationConfig();
+            var gender = def.Gender ?? (rng.Next(2) == 0 ? RunnerGender.Male : RunnerGender.Female);
+            string name = def.Name ?? GenerateRandomName(rng, config, gender);
 
             var runner = new Runner
             {
                 Id = Guid.NewGuid().ToString(),
                 Name = name,
+                Gender = gender,
                 State = RunnerState.Idle,
                 CurrentNodeId = startingNodeId,
                 Inventory = new Inventory(inventorySize),
@@ -236,7 +244,7 @@ namespace ProjectGuild.Simulation.Core
 
         // ─── Name Generation ─────────────────────────────────────────
 
-        private static string GenerateName(Random rng, SimulationConfig config)
+        public static string GenerateRandomName(Random rng, SimulationConfig config, RunnerGender gender)
         {
             // Roll for easter egg name
             if (EasterEggNames.Length > 0 && rng.NextDouble() < config.EasterEggNameChance)
@@ -244,7 +252,8 @@ namespace ProjectGuild.Simulation.Core
                 return EasterEggNames[rng.Next(EasterEggNames.Length)];
             }
 
-            string first = FirstNames[rng.Next(FirstNames.Length)];
+            var firstNames = gender == RunnerGender.Male ? MaleFirstNames : FemaleFirstNames;
+            string first = firstNames[rng.Next(firstNames.Length)];
             string last = LastNames[rng.Next(LastNames.Length)];
             return $"{first} {last}";
         }

@@ -14,8 +14,9 @@ namespace ProjectGuild.View.Runners
     /// - WalkAlongPath: visible walk through NavMesh waypoints (avoids obstacles)
     /// - SnapToPosition: instant teleport for scene transitions and initial placement
     ///
-    /// For now this is a placeholder capsule. Will be replaced with actual character
-    /// models and animations later.
+    /// Supports Synty character prefabs with Animator. When an Animator is present,
+    /// drives a "Speed" float parameter (0=idle, 1=moving) for locomotion blending.
+    /// Root motion is disabled — movement is fully code-driven.
     /// </summary>
     public class RunnerVisual : MonoBehaviour
     {
@@ -40,8 +41,18 @@ namespace ProjectGuild.View.Runners
         private float _walkSpeed = 8f;
         public float WalkSpeed { get => _walkSpeed; set => _walkSpeed = value; }
 
+        // Animation
+        private Animator _animator;
+        private static readonly int SpeedParam = Animator.StringToHash("Speed");
+
+        // Ground snap: Y offset from ground surface to transform.position.
+        // Capsule pivot is at center (1m), Synty character pivot is at feet (0m).
+        private float _groundYOffset;
+
         // Name label
         private TextMeshPro _nameLabel;
+        private const float NameLabelHeightPrefab = 2.5f;
+        private const float NameLabelHeightCapsule = 2.2f;
 
         public void Initialize(string runnerId, string runnerName, Vector3 startPosition)
         {
@@ -52,12 +63,27 @@ namespace ProjectGuild.View.Runners
             _targetPosition = startPosition;
             _interpolationT = 1f;
             _pathWaypoints = null;
+            _lastFramePosition = startPosition;
             gameObject.name = $"Runner_{runnerName}";
 
-            // Create a floating name label above the capsule
+            // Detect and configure Animator (Synty character prefabs)
+            _animator = GetComponentInChildren<Animator>();
+            if (_animator != null)
+            {
+                _animator.applyRootMotion = false;
+                _groundYOffset = 0f; // Synty characters have pivot at feet
+            }
+            else
+            {
+                _groundYOffset = 1f; // Capsule pivot is at center, half-height = 1m
+            }
+
+            // Create a floating name label above the character
+            bool hasPrefabModel = _animator != null;
+            float labelHeight = hasPrefabModel ? NameLabelHeightPrefab : NameLabelHeightCapsule;
             var labelObj = new GameObject("NameLabel");
             labelObj.transform.SetParent(transform);
-            labelObj.transform.localPosition = new Vector3(0f, 2.2f, 0f);
+            labelObj.transform.localPosition = new Vector3(0f, labelHeight, 0f);
             _nameLabel = labelObj.AddComponent<TextMeshPro>();
             _nameLabel.text = runnerName;
             _nameLabel.fontSize = 4f;
@@ -141,6 +167,9 @@ namespace ProjectGuild.View.Runners
                 ? _pathWaypoints[^1]
                 : _targetPosition;
 
+        // Track position for velocity-based animation
+        private Vector3 _lastFramePosition;
+
         private void Update()
         {
             if (_interpolationT < 1f)
@@ -148,7 +177,8 @@ namespace ProjectGuild.View.Runners
                 _interpolationT += Time.deltaTime * _interpolationSpeed;
                 if (_interpolationT > 1f) _interpolationT = 1f;
 
-                transform.position = Vector3.Lerp(_previousPosition, _targetPosition, _interpolationT);
+                Vector3 lerpedPos = Vector3.Lerp(_previousPosition, _targetPosition, _interpolationT);
+                transform.position = lerpedPos;
 
                 // Face movement direction
                 Vector3 direction = _targetPosition - _previousPosition;
@@ -179,6 +209,19 @@ namespace ProjectGuild.View.Runners
                 }
             }
 
+            // Snap to ground every frame (not just during interpolation)
+            transform.position = SnapToGround(transform.position, _groundYOffset);
+
+            // Drive animation from actual velocity (avoids stop-go flicker between ticks)
+            if (_animator != null)
+            {
+                Vector3 delta = transform.position - _lastFramePosition;
+                delta.y = 0f;
+                float frameSpeed = delta.magnitude / Mathf.Max(Time.deltaTime, 0.001f);
+                _animator.SetFloat(SpeedParam, frameSpeed > 0.1f ? 1f : 0f);
+            }
+            _lastFramePosition = transform.position;
+
             // Billboard name label — Y-axis only so it stays upright from any angle
             if (_nameLabel != null && Camera.main != null)
             {
@@ -187,6 +230,36 @@ namespace ProjectGuild.View.Runners
                 if (camForward.sqrMagnitude > 0.001f)
                     _nameLabel.transform.rotation = Quaternion.LookRotation(camForward);
             }
+        }
+
+        /// <summary>
+        /// Raycast down from above the position to stick the runner to the ground surface.
+        /// Works with terrain, mesh colliders, any physics surface.
+        /// Falls back to the original position if nothing is hit (flat plane, no collider).
+        /// </summary>
+        private static int _groundLayerMask = -1;
+
+        /// <summary>
+        /// Raycast down to find the ground surface, then place the runner at
+        /// groundY + yOffset. The yOffset preserves the hovering offset that
+        /// VisualSyncSystem bakes into target positions (RunnerYOffset = 1m
+        /// for capsules so the pivot sits above ground, 0 for character models).
+        /// </summary>
+        private static Vector3 SnapToGround(Vector3 pos, float yOffset)
+        {
+            // Cache layer mask excluding the Runners layer
+            if (_groundLayerMask == -1)
+            {
+                int runnersLayer = LayerMask.NameToLayer("Runners");
+                _groundLayerMask = runnersLayer >= 0 ? ~(1 << runnersLayer) : ~0;
+            }
+
+            Vector3 origin = new Vector3(pos.x, pos.y + 20f, pos.z);
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 40f, _groundLayerMask))
+            {
+                return new Vector3(pos.x, hit.point.y + yOffset, pos.z);
+            }
+            return pos;
         }
     }
 }

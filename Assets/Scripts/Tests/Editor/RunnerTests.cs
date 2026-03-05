@@ -196,5 +196,64 @@ namespace ProjectGuild.Tests
 
             Assert.AreEqual("Special Runner", runner.Name);
         }
+
+        // ─── Gender ────────────────────────────────────────────────────
+
+        [Test]
+        public void RunnerFactory_Create_AssignsGender()
+        {
+            bool sawMale = false;
+            bool sawFemale = false;
+
+            for (int seed = 0; seed < 50; seed++)
+            {
+                var runner = RunnerFactory.Create(new Random(seed), _config);
+                if (runner.Gender == RunnerGender.Male) sawMale = true;
+                if (runner.Gender == RunnerGender.Female) sawFemale = true;
+            }
+
+            Assert.IsTrue(sawMale, "Should produce at least one male runner across 50 seeds");
+            Assert.IsTrue(sawFemale, "Should produce at least one female runner across 50 seeds");
+        }
+
+        [Test]
+        public void RunnerFactory_CreateFromDefinition_RespectsExplicitGender()
+        {
+            var def = new RunnerFactory.RunnerDefinition
+            {
+                Name = "Lady Test",
+                Gender = RunnerGender.Female,
+            };
+
+            var runner = RunnerFactory.CreateFromDefinition(def);
+
+            Assert.AreEqual(RunnerGender.Female, runner.Gender);
+        }
+
+        [Test]
+        public void RunnerFactory_CreateFromDefinition_RandomGenderWhenNull()
+        {
+            var def = new RunnerFactory.RunnerDefinition(); // Gender = null
+
+            bool sawMale = false;
+            bool sawFemale = false;
+
+            for (int seed = 0; seed < 50; seed++)
+            {
+                var runner = RunnerFactory.CreateFromDefinition(def, rng: new Random(seed), config: _config);
+                if (runner.Gender == RunnerGender.Male) sawMale = true;
+                if (runner.Gender == RunnerGender.Female) sawFemale = true;
+            }
+
+            Assert.IsTrue(sawMale, "Should produce at least one male runner across 50 seeds");
+            Assert.IsTrue(sawFemale, "Should produce at least one female runner across 50 seeds");
+        }
+
+        [Test]
+        public void Runner_DefaultConstructor_GenderDefaultsToMale()
+        {
+            var runner = new Runner();
+            Assert.AreEqual(RunnerGender.Male, runner.Gender);
+        }
     }
 }

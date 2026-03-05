@@ -21,9 +21,15 @@ namespace ProjectGuild.View
     /// </summary>
     public class VisualSyncSystem : MonoBehaviour
     {
-        [Header("Prefabs")]
-        [Tooltip("Prefab for runner visual. If null, creates a placeholder capsule.")]
-        [SerializeField] private GameObject _runnerPrefab;
+        [Header("Runner Visuals")]
+        [Tooltip("Character prefabs for male runners. One picked randomly per runner.")]
+        [SerializeField] private GameObject[] _maleRunnerPrefabs;
+        [Tooltip("Character prefabs for female runners. One picked randomly per runner.")]
+        [SerializeField] private GameObject[] _femaleRunnerPrefabs;
+        [Tooltip("Animator controller for male runners (built by Tools > Project Guild > Build Runner Animator Controllers).")]
+        [SerializeField] private RuntimeAnimatorController _masculineAnimatorController;
+        [Tooltip("Animator controller for female runners.")]
+        [SerializeField] private RuntimeAnimatorController _feminineAnimatorController;
 
         [Header("References")]
         [SerializeField] private SimulationRunner _simulationRunner;
@@ -140,13 +146,37 @@ namespace ProjectGuild.View
             if (_runnerVisuals.ContainsKey(runner.Id)) return;
 
             GameObject obj;
-            if (_runnerPrefab != null)
+            var prefabs = runner.Gender == RunnerGender.Female ? _femaleRunnerPrefabs : _maleRunnerPrefabs;
+            if (prefabs != null && prefabs.Length > 0)
             {
-                obj = Instantiate(_runnerPrefab);
+                // Deterministic pick based on runner ID so the same runner always gets the same model
+                int hash = runner.Id.GetHashCode() & 0x7FFFFFFF;
+                var prefab = prefabs[hash % prefabs.Length];
+                obj = Instantiate(prefab);
+
+                // Assign the gender-appropriate animator controller
+                var animator = obj.GetComponentInChildren<Animator>();
+                if (animator != null)
+                {
+                    var controller = runner.Gender == RunnerGender.Female
+                        ? _feminineAnimatorController
+                        : _masculineAnimatorController;
+                    if (controller != null)
+                        animator.runtimeAnimatorController = controller;
+                }
+
+                // Synty prefabs have no collider — add one for 3D click-picking
+                if (obj.GetComponentInChildren<Collider>() == null)
+                {
+                    var col = obj.AddComponent<CapsuleCollider>();
+                    col.center = new Vector3(0f, 0.9f, 0f);
+                    col.radius = 0.3f;
+                    col.height = 1.8f;
+                }
             }
             else
             {
-                // Placeholder: capsule
+                // Placeholder: capsule (no prefabs assigned or tests)
                 obj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 obj.transform.localScale = new Vector3(0.5f, 1f, 0.5f);
                 var capsuleRenderer = obj.GetComponent<Renderer>();
@@ -363,7 +393,7 @@ namespace ProjectGuild.View
         /// If at a node with a loaded scene, uses the scene's gathering/spawn spots.
         /// If at a node without a scene, uses overworld position with idle spread.
         /// </summary>
-        private static readonly Vector3 RunnerYOffset = new(0f, 1f, 0f);
+        private static readonly Vector3 RunnerYOffset = Vector3.zero;
 
         private Vector3 GetRunnerWorldPosition(Runner runner)
         {
