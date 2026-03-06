@@ -27,17 +27,17 @@ namespace ProjectGuild.View
 
         // Combat animation clip paths (shared between masculine/feminine, generic humanoid)
         private const string CombatIdlePath =
-            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Idle/Base/A_Idle_Menacing_Sword.fbx";
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Idle/Menacing01/A_Idle_Menacing01_Sword.fbx";
         private const string AttackPath =
             "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Attack/LightCombo01/A_Attack_LightCombo01A_Sword.fbx";
         private const string HitReactPath =
-            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Hit/HitReact/A_Hit_React_R_Sword.fbx";
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Hit/HitReact/A_Hit_F_React_Sword.fbx";
         private const string DeathPath =
-            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Death/A_Death_01_Sword.fbx";
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Death/A_Death_F_01_Sword.fbx";
 
-        // Cast animation: use the taunt/roar animation as a stand-in for spellcasting
+        // Cast animation: use the roar animation as a stand-in for spellcasting
         private const string CastPath =
-            "Assets/Art/Synty/AnimationEmotesAndTaunts/Animations/Polygon/Aggressive/A_Aggressive_Roar_High.fbx";
+            "Assets/Art/Synty/AnimationEmotesAndTaunts/Animations/Polygon/Masculine/Aggressive/A_POLY_EMOT_Aggressive_Roar_High_Masc.fbx";
 
         [MenuItem("Tools/Project Guild/Build Runner Animator Controllers")]
         public static void BuildControllers()

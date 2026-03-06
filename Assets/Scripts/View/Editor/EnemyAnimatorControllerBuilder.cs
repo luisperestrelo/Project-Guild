@@ -14,13 +14,13 @@ namespace ProjectGuild.View
         private const string OutputFolder = "Assets/Art/AnimatorControllers";
 
         private const string GoblinIdlePath =
-            "Assets/Art/Synty/AnimationGoblinLocomotion/Animations/A_Goblin_Idle_01.fbx";
+            "Assets/Art/Synty/AnimationGoblinLocomotion/Animations/Polygon/Neutral/Idles/A_POLY_GBL_Idle_Standing_Neut.fbx";
         private const string AttackPath =
             "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Attack/LightCombo01/A_Attack_LightCombo01A_Sword.fbx";
         private const string HitReactPath =
-            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Hit/HitReact/A_Hit_React_R_Sword.fbx";
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Hit/HitReact/A_Hit_F_React_Sword.fbx";
         private const string DeathPath =
-            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Death/A_Death_01_Sword.fbx";
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Death/A_Death_F_01_Sword.fbx";
 
         [MenuItem("Tools/Project Guild/Build Enemy Animator Controller")]
         public static void Build()

@@ -42,6 +42,10 @@ namespace ProjectGuild.View.Combat
         [Header("Settings")]
         [Tooltip("Time in seconds before a dead enemy's visual is hidden (after death anim plays).")]
         [SerializeField] private float _deathHideDelay = 2f;
+        [Tooltip("Speed at which enemies walk toward their target runner.")]
+        [SerializeField] private float _enemyWalkSpeed = 3f;
+
+        private float EnemyWalkSpeed => _enemyWalkSpeed;
 
         private readonly Dictionary<string, EnemyVisual> _enemyVisuals = new();
         private readonly Dictionary<string, float> _deathTimers = new();
@@ -102,8 +106,8 @@ namespace ProjectGuild.View.Combat
                         if (config != null)
                             visual.SetHpPercent(enemy.CurrentHp / config.MaxHitpoints);
 
-                        // Face nearest runner at node
-                        FaceNearestRunner(visual, encounter.NodeId);
+                        // Walk toward target runner (or nearest)
+                        MoveTowardTarget(visual, enemy, encounter.NodeId);
                     }
                 }
             }
@@ -259,27 +263,59 @@ namespace ProjectGuild.View.Combat
             return new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 3f;
         }
 
-        private void FaceNearestRunner(EnemyVisual visual, string nodeId)
+        /// <summary>
+        /// Move enemy toward its taunted runner or nearest fighter. Stops at melee range.
+        /// </summary>
+        private void MoveTowardTarget(EnemyVisual visual, EnemyInstance enemy, string nodeId)
         {
-            float bestDist = float.MaxValue;
-            Vector3 bestPos = visual.transform.position;
+            Vector3 targetPos = visual.transform.position;
             bool found = false;
 
-            foreach (var runner in Sim.CurrentGameState.Runners)
+            // Priority: taunted runner
+            if (!string.IsNullOrEmpty(enemy.TauntedByRunnerId))
             {
-                if (runner.State != RunnerState.Fighting || runner.CurrentNodeId != nodeId) continue;
-                Vector3 rPos = GetRunnerPosition(runner.Id);
-                float d = (rPos - visual.transform.position).sqrMagnitude;
-                if (d < bestDist)
+                Vector3 pos = GetRunnerPosition(enemy.TauntedByRunnerId);
+                if (pos.sqrMagnitude > 0.01f)
                 {
-                    bestDist = d;
-                    bestPos = rPos;
+                    targetPos = pos;
                     found = true;
                 }
             }
 
-            if (found)
-                visual.FaceTarget(bestPos);
+            // Fallback: nearest fighting runner at this node
+            if (!found)
+            {
+                float bestDist = float.MaxValue;
+                foreach (var runner in Sim.CurrentGameState.Runners)
+                {
+                    if (runner.State != RunnerState.Fighting || runner.CurrentNodeId != nodeId) continue;
+                    Vector3 rPos = GetRunnerPosition(runner.Id);
+                    float d = (rPos - visual.transform.position).sqrMagnitude;
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        targetPos = rPos;
+                        found = true;
+                    }
+                }
+            }
+
+            if (!found) return;
+
+            visual.FaceTarget(targetPos);
+
+            // Walk toward target, stop at melee range (~1.5m)
+            const float meleeRange = 1.5f;
+            Vector3 toTarget = targetPos - visual.transform.position;
+            toTarget.y = 0f;
+            float dist = toTarget.magnitude;
+
+            if (dist > meleeRange)
+            {
+                float step = EnemyWalkSpeed * Time.deltaTime;
+                Vector3 move = toTarget.normalized * Mathf.Min(step, dist - meleeRange);
+                visual.transform.position += move;
+            }
         }
 
         private Vector3 GetRunnerPosition(string runnerId)
