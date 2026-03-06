@@ -1,4 +1,5 @@
 using System;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
 
@@ -193,7 +194,8 @@ namespace ProjectGuild.Simulation.Core
 
         /// <summary>
         /// Maximum entries kept in the micro decision log (ring buffer eviction).
-        /// Micro decisions fire every tick per gathering runner — smaller buffer is fine.
+        /// Micro decisions fire per action completion (item produced, ability resolved),
+        /// not every tick. Smaller buffer is fine.
         /// </summary>
         public int MicroDecisionLogMaxEntries = 1000;
 
@@ -223,5 +225,79 @@ namespace ProjectGuild.Simulation.Core
         /// A value of 1.2 means respawn takes 20% longer than the walk would have.
         /// </summary>
         public float DeathRespawnTravelMultiplier = 1.2f;
+
+        // ─── Combat ───────────────────────────────────────────────────
+
+        /// <summary>
+        /// Base hitpoints at Hitpoints level 1.
+        /// MaxHP = BaseHitpoints + (hitpointsLevel - 1) * HitpointsPerLevel.
+        /// </summary>
+        public float BaseHitpoints = 50f;
+
+        /// <summary>
+        /// Additional hitpoints per Hitpoints skill level beyond 1.
+        /// </summary>
+        public float HitpointsPerLevel = 5f;
+
+        /// <summary>
+        /// Base mana pool at Restoration level 1.
+        /// MaxMana = BaseMana + (restorationLevel - 1) * ManaPerRestorationLevel.
+        /// </summary>
+        public float BaseMana = 50f;
+
+        /// <summary>
+        /// Additional mana per Restoration skill level beyond 1.
+        /// </summary>
+        public float ManaPerRestorationLevel = 3f;
+
+        /// <summary>
+        /// Flat mana regenerated every tick. At 10 ticks/sec, 0.5 = 5 mana/sec.
+        /// </summary>
+        public float BaseManaRegenPerTick = 0.5f;
+
+        /// <summary>
+        /// Minimum time in ticks before a disengaging runner can exit combat.
+        /// Enemies still attack during disengage. Prevents instant flee.
+        /// </summary>
+        public int MinDisengageTimeTicks = 20;
+
+        /// <summary>
+        /// XP awarded per tick of action time on ability completion.
+        /// A 10-tick ability awards 10 * this value in XP to the ability's governing skill.
+        /// </summary>
+        public float CombatXpPerActionTimeTick = 1.0f;
+
+        /// <summary>
+        /// Flat damage reduction per Defence skill level.
+        /// </summary>
+        public float DefenceReductionPerLevel = 0.5f;
+
+        /// <summary>
+        /// Maximum percentage of incoming damage that can be reduced by defence (cap).
+        /// Prevents defence from making runners invulnerable.
+        /// </summary>
+        public float MaxDefenceReductionPercent = 75f;
+
+        /// <summary>
+        /// Per-level scaling factor for combat damage/heal formulas.
+        /// Damage = baseValue * scalingFactor * (1 + attackerLevel * this).
+        /// </summary>
+        public float CombatDamageScalingPerLevel = 0.1f;
+
+        // ─── Combat: Ability Definitions ──────────────────────────────
+
+        /// <summary>
+        /// All ability definitions in the game. Registered into AbilityRegistry at game start.
+        /// Populated from AbilityConfigAsset ScriptableObjects via SimulationConfigAsset.ToConfig().
+        /// Tests can set these directly.
+        /// </summary>
+        public Combat.AbilityConfig[] AbilityDefinitions = Array.Empty<Combat.AbilityConfig>();
+
+        /// <summary>
+        /// All enemy definitions in the game.
+        /// Populated from EnemyConfigAsset ScriptableObjects via SimulationConfigAsset.ToConfig().
+        /// Tests can set these directly.
+        /// </summary>
+        public Combat.EnemyConfig[] EnemyDefinitions = Array.Empty<Combat.EnemyConfig>();
     }
 }

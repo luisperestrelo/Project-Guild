@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Gathering;
 
 namespace ProjectGuild.Simulation.World
@@ -44,6 +45,12 @@ namespace ProjectGuild.Simulation.World
         /// The automation layer decides which gatherable a runner works on.
         /// </summary>
         public GatherableConfig[] Gatherables = Array.Empty<GatherableConfig>();
+
+        /// <summary>
+        /// Enemies that spawn at this node. Empty for non-combat nodes (gathering, hub).
+        /// Parallel to Gatherables: defines what enemies appear and their respawn behavior.
+        /// </summary>
+        public EnemySpawnEntry[] EnemySpawns = Array.Empty<EnemySpawnEntry>();
     }
 
     /// <summary>
@@ -248,6 +255,12 @@ namespace ProjectGuild.Simulation.World
         public WorldMap AddNode(string id, string name, float worldX = 0f, float worldZ = 0f,
             string sceneName = null, params GatherableConfig[] gatherables)
         {
+            return AddNode(id, name, worldX, worldZ, sceneName, gatherables, null);
+        }
+
+        public WorldMap AddNode(string id, string name, float worldX, float worldZ,
+            string sceneName, GatherableConfig[] gatherables, EnemySpawnEntry[] enemySpawns)
+        {
             Nodes.Add(new WorldNode
             {
                 Id = id,
@@ -256,6 +269,7 @@ namespace ProjectGuild.Simulation.World
                 WorldZ = worldZ,
                 SceneName = sceneName,
                 Gatherables = gatherables ?? Array.Empty<GatherableConfig>(),
+                EnemySpawns = enemySpawns ?? Array.Empty<EnemySpawnEntry>(),
             });
             // Invalidate lookups so they rebuild on next access
             _nodeLookup = null;

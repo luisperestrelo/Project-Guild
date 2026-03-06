@@ -33,5 +33,6 @@ namespace ProjectGuild.Simulation.Automation
         public string ActionDetail;
         public string ConditionSnapshot;
         public bool WasDeferred;
+        public bool WasInterrupted;
     }
 }

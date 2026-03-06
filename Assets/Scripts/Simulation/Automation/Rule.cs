@@ -33,6 +33,13 @@ namespace ProjectGuild.Simulation.Automation
         public bool FinishCurrentSequence = true;
 
         /// <summary>
+        /// When true, this rule is checked every tick even during an action commitment window
+        /// (e.g. mid-gather cycle, mid-ability cast). Non-interrupt rules are only evaluated
+        /// at action boundaries (item produced, ability completed). Default false.
+        /// </summary>
+        public bool CanInterrupt;
+
+        /// <summary>
         /// Player-editable label for this rule. Optional.
         /// </summary>
         public string Label = "";

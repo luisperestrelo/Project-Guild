@@ -1,4 +1,5 @@
 using System;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Core;
 
 namespace ProjectGuild.Simulation.Automation
@@ -16,12 +17,22 @@ namespace ProjectGuild.Simulation.Automation
         /// </summary>
         public static int EvaluateRuleset(Ruleset ruleset, EvaluationContext ctx)
         {
+            return EvaluateRuleset(ruleset, ctx, interruptOnly: false);
+        }
+
+        /// <summary>
+        /// Evaluate a ruleset with optional interrupt-only filtering.
+        /// When interruptOnly is true, only rules with CanInterrupt=true are considered.
+        /// </summary>
+        public static int EvaluateRuleset(Ruleset ruleset, EvaluationContext ctx, bool interruptOnly)
+        {
             if (ruleset == null || ruleset.Rules == null) return -1;
 
             for (int i = 0; i < ruleset.Rules.Count; i++)
             {
                 var rule = ruleset.Rules[i];
                 if (!rule.Enabled) continue;
+                if (interruptOnly && !rule.CanInterrupt) continue;
 
                 if (EvaluateRule(rule, ctx))
                     return i;
@@ -82,9 +93,13 @@ namespace ProjectGuild.Simulation.Automation
                     return ctx.Runner.CurrentNodeId == condition.StringParam;
 
                 case ConditionType.SelfHP:
-                    // Runners don't have HP yet in Phase 3. This condition
-                    // always returns false until the combat system is implemented.
-                    return false;
+                {
+                    if (ctx.Runner.CurrentHitpoints < 0f) return false; // HP not initialized
+                    float maxHp = Combat.CombatFormulas.CalculateMaxHitpoints(
+                        ctx.Runner.GetEffectiveLevel(SkillType.Hitpoints, ctx.Config), ctx.Config);
+                    float hpPercent = maxHp > 0f ? (ctx.Runner.CurrentHitpoints / maxHp) * 100f : 0f;
+                    return Compare(hpPercent, condition.Operator, condition.NumericValue);
+                }
 
                 default:
                     return false;

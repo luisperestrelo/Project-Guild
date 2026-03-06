@@ -51,6 +51,13 @@ namespace ProjectGuild.Simulation.Automation
             => new AutomationAction { Type = ActionType.FinishTask };
 
         /// <summary>
+        /// Micro action: start fighting enemies at the current node.
+        /// Requires the node to have EnemySpawns configured.
+        /// </summary>
+        public static AutomationAction FightHere()
+            => new AutomationAction { Type = ActionType.FightHere };
+
+        /// <summary>
         /// Micro action: gather the highest-tier resource the runner qualifies for at the current node,
         /// filtered by the given skill type. Picks the gatherable with the highest MinLevel the runner
         /// can meet. Mid-gather stable: keeps current resource until an item is produced.

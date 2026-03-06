@@ -1162,8 +1162,15 @@ namespace ProjectGuild.Tests
 
             _sim.CommandSetMicroOverride(_runner.Id, workStepIndex, "tin-micro");
 
-            // Tick to re-evaluate (runner is gathering, micro re-evaluates each tick)
-            _sim.Tick();
+            // Action commitment: micro re-eval fires on item completion, not every tick.
+            // Tick until an item is produced and the override takes effect.
+            int ticks = 0;
+            while (_runner.Gathering != null && _runner.Gathering.GatherableIndex == 0
+                && ticks < 200)
+            {
+                _sim.Tick();
+                ticks++;
+            }
 
             Assert.AreEqual(1, _runner.Gathering.GatherableIndex,
                 "Override should cause runner to gather tin (index 1)");
@@ -1350,7 +1357,15 @@ namespace ProjectGuild.Tests
                 if (seq.Steps[i].Type == TaskStepType.Work) { workStepIndex = i; break; }
 
             _sim.CommandSetMicroOverride(_runner.Id, workStepIndex, "non-existent-micro");
-            _sim.Tick();
+
+            // Action commitment: micro re-eval fires on item completion, not every tick.
+            // Tick until the runner produces an item and the broken override is detected.
+            int ticks = 0;
+            while (_runner.State == RunnerState.Gathering && ticks < 200)
+            {
+                _sim.Tick();
+                ticks++;
+            }
 
             Assert.IsNotNull(_runner.ActiveWarning,
                 "Invalid override micro should cause a warning (let it break)");

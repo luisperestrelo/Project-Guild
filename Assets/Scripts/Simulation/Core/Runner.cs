@@ -75,6 +75,30 @@ namespace ProjectGuild.Simulation.Core
         // Depositing state (populated when State == Depositing)
         public DepositingState Depositing;
 
+        // Combat state (populated when State == Fighting)
+        public FightingState Fighting;
+
+        // Death state (populated when State == Dead)
+        public DeathState Death;
+
+        /// <summary>
+        /// Current hitpoints. Starts at max and decreases from combat damage.
+        /// Restored to max on respawn. -1 means uninitialized (set on first combat entry).
+        /// </summary>
+        public float CurrentHitpoints = -1f;
+
+        /// <summary>
+        /// Current mana. Used only by Restoration abilities.
+        /// Regenerates at a flat rate per tick. -1 means uninitialized.
+        /// </summary>
+        public float CurrentMana = -1f;
+
+        /// <summary>
+        /// ID reference into CombatStyleLibrary. Null means no combat style assigned.
+        /// A runner with no combat style will idle in combat ("let it break").
+        /// </summary>
+        public string CombatStyleId;
+
         // ─── Automation ────────────────────────────────────────────
 
         /// <summary>
@@ -322,5 +346,89 @@ namespace ProjectGuild.Simulation.Core
         /// </summary>
         public float? StartWorldX;
         public float? StartWorldZ;
+    }
+
+    /// <summary>
+    /// State tracked while a runner is fighting enemies at a combat node.
+    /// </summary>
+    [Serializable]
+    public class FightingState
+    {
+        /// <summary>
+        /// Node where combat is taking place.
+        /// </summary>
+        public string NodeId;
+
+        /// <summary>
+        /// Instance ID of the enemy currently being targeted. Null = no target.
+        /// </summary>
+        public string CurrentTargetEnemyId;
+
+        /// <summary>
+        /// Ability currently being executed. Null = not mid-action.
+        /// </summary>
+        public string CurrentAbilityId;
+
+        /// <summary>
+        /// Ticks remaining on the current ability. 0 = ready to act.
+        /// </summary>
+        public int ActionTicksRemaining;
+
+        /// <summary>
+        /// Total ticks for the current ability (for progress display).
+        /// </summary>
+        public int ActionTicksTotal;
+
+        /// <summary>
+        /// True when the runner is leaving combat (walking to exit).
+        /// Enemies can still hit them during this phase.
+        /// </summary>
+        public bool IsDisengaging;
+
+        /// <summary>
+        /// Ticks remaining on the disengage exit walk.
+        /// </summary>
+        public int DisengageTicksRemaining;
+
+        /// <summary>
+        /// Per-ability cooldown tracking. Key = abilityId, Value = ticks remaining.
+        /// Decremented every tick.
+        /// </summary>
+        public Dictionary<string, int> CooldownTrackers = new();
+
+        /// <summary>
+        /// True while the runner is executing an ability (committed to action).
+        /// </summary>
+        public bool IsActing => ActionTicksRemaining > 0;
+
+        /// <summary>
+        /// 0.0 to 1.0 progress on the current ability cast.
+        /// </summary>
+        public float ActionProgress => ActionTicksTotal > 0
+            ? 1f - (float)ActionTicksRemaining / ActionTicksTotal
+            : 1f;
+    }
+
+    /// <summary>
+    /// State tracked while a runner is dead and waiting to respawn.
+    /// </summary>
+    [Serializable]
+    public class DeathState
+    {
+        /// <summary>
+        /// Ticks remaining until the runner respawns.
+        /// </summary>
+        public int RespawnTicksRemaining;
+
+        /// <summary>
+        /// Node where the runner died (for death log / chronicle).
+        /// </summary>
+        public string DeathNodeId;
+
+        /// <summary>
+        /// 0.0 to 1.0 respawn progress.
+        /// </summary>
+        public float RespawnProgress(int totalTicks) =>
+            totalTicks > 0 ? 1f - (float)RespawnTicksRemaining / totalTicks : 1f;
     }
 }

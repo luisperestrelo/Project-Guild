@@ -580,11 +580,17 @@ namespace ProjectGuild.Simulation.Core
                 }
             }
 
-            // Re-evaluate micro rules every tick — may switch resources, FinishTask,
-            // or handle InventoryFull (the default micro ruleset has IF InventoryFull → FinishTask).
-            // Runs every tick, not just after item production, so condition changes are caught immediately.
-            // itemJustProduced tells GatherAny whether to re-roll (true) or keep current (false).
-            ReevaluateMicroDuringGathering(runner, node, itemJustProduced);
+            // Action Commitment: re-evaluate micro rules only on item completion.
+            // Interrupt-flagged rules are checked every tick (e.g. InventoryFull -> FinishTask
+            // when CanInterrupt=true). Non-interrupt rules wait for the action boundary.
+            if (itemJustProduced)
+            {
+                ReevaluateMicroDuringGathering(runner, node, itemJustProduced: true);
+            }
+            else
+            {
+                ReevaluateInterruptRulesDuringGathering(runner, node);
+            }
         }
 
         // ─── Macro Layer: Task Sequence + Step Logic ───────────────────
@@ -755,6 +761,8 @@ namespace ProjectGuild.Simulation.Core
             runner.Gathering = null;
             runner.Travel = null;
             runner.Depositing = null;
+            runner.Fighting = null;
+            runner.Death = null;
             runner.State = RunnerState.Idle;
             runner.RedirectWorldX = redirectWorldX;
             runner.RedirectWorldZ = redirectWorldZ;
@@ -1021,7 +1029,7 @@ namespace ProjectGuild.Simulation.Core
         /// Null or empty micro ruleset = no valid rule matched = runner is stuck (let it break).
         /// </summary>
         private int EvaluateMicroRules(Runner runner, World.WorldNode node,
-            bool itemJustProduced = false)
+            bool itemJustProduced = false, bool interruptOnly = false)
         {
             Ruleset microRuleset = null;
             bool isOverride = false;
@@ -1044,8 +1052,9 @@ namespace ProjectGuild.Simulation.Core
                 return MicroResultNoMatch; // let it break
 
             string logSource = isOverride ? "MicroEval Override" : "MicroEval";
+            if (interruptOnly) logSource += " Interrupt";
             var ctx = new EvaluationContext(runner, CurrentGameState, Config);
-            int ruleIndex = RuleEvaluator.EvaluateRuleset(microRuleset, ctx);
+            int ruleIndex = RuleEvaluator.EvaluateRuleset(microRuleset, ctx, interruptOnly);
 
             if (ruleIndex >= 0)
             {
@@ -1055,7 +1064,8 @@ namespace ProjectGuild.Simulation.Core
                 if (action.Type == ActionType.FinishTask)
                 {
                     LogDecision(runner, ruleIndex, rule, logSource,
-                        "Finish Task", false, DecisionLayer.Micro);
+                        "Finish Task", false, DecisionLayer.Micro,
+                        wasInterrupted: interruptOnly && rule.CanInterrupt);
                     return MicroResultFinishTask;
                 }
 
@@ -1308,6 +1318,37 @@ namespace ProjectGuild.Simulation.Core
                 runner.Gathering.TransitDistanceCovered = 0f;
             }
             // Same resource — keep going, accumulator rolls over naturally
+        }
+
+        /// <summary>
+        /// Mid-action interrupt check: evaluate only CanInterrupt rules during the action
+        /// commitment window. Non-interrupt rules are skipped. Only fires FinishTask
+        /// (the primary interrupt use case: InventoryFull mid-gather).
+        /// </summary>
+        private void ReevaluateInterruptRulesDuringGathering(Runner runner, World.WorldNode node)
+        {
+            if (GetRunnerTaskSequence(runner) == null) return;
+
+            int result = EvaluateMicroRules(runner, node, itemJustProduced: false, interruptOnly: true);
+
+            if (result == MicroResultFinishTask)
+            {
+                runner.State = RunnerState.Idle;
+                runner.Gathering = null;
+
+                var seq = GetRunnerTaskSequence(runner);
+                if (seq != null && AdvanceRunnerStepIndex(runner, seq))
+                {
+                    PublishStepAdvanced(runner, seq);
+                    ExecuteCurrentStep(runner);
+                }
+                else
+                {
+                    HandleSequenceCompleted(runner);
+                }
+            }
+            // All other results (no match, same resource, different resource) are ignored
+            // during interrupt-only evaluation. The runner continues the current action.
         }
 
         private void TickDepositing(Runner runner)
@@ -2608,7 +2649,7 @@ namespace ProjectGuild.Simulation.Core
 
         private void LogDecision(Runner runner, int ruleIndex, Rule rule,
             string triggerReason, string actionDetail, bool wasDeferred,
-            DecisionLayer layer = DecisionLayer.Macro)
+            DecisionLayer layer = DecisionLayer.Macro, bool wasInterrupted = false)
         {
             var targetLog = layer == DecisionLayer.Macro
                 ? CurrentGameState.MacroDecisionLog
@@ -2627,6 +2668,7 @@ namespace ProjectGuild.Simulation.Core
                 ActionType = rule.Action.Type,
                 ActionDetail = actionDetail,
                 WasDeferred = wasDeferred,
+                WasInterrupted = wasInterrupted,
                 ConditionSnapshot = FormatConditionSnapshot(rule, runner),
             });
         }

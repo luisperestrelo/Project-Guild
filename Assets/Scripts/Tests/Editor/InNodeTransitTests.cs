@@ -216,8 +216,15 @@ namespace ProjectGuild.Tests
                 }
             }
 
-            // Tick to trigger micro re-eval — will switch from copper (0) to tin (1)
-            _sim.Tick();
+            // Action commitment: micro re-eval only fires on item completion.
+            // Tick until the runner produces an item, then the re-eval switches to tin.
+            int ticks = 0;
+            while (_runner.Gathering != null && _runner.Gathering.GatherableIndex == 0
+                && ticks < 200)
+            {
+                _sim.Tick();
+                ticks++;
+            }
 
             Assert.AreEqual(1, _runner.Gathering.GatherableIndex, "Should have switched to tin");
             Assert.AreEqual(8f, _runner.Gathering.TransitDistance, 0.01f);

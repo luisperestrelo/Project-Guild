@@ -54,6 +54,7 @@ namespace ProjectGuild.Simulation.Automation
                     },
                     Enabled = rule.Enabled,
                     FinishCurrentSequence = rule.FinishCurrentSequence,
+                    CanInterrupt = rule.CanInterrupt,
                     Label = rule.Label,
                 };
                 foreach (var cond in rule.Conditions)

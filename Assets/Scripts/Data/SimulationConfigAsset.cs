@@ -123,6 +123,44 @@ namespace ProjectGuild.Data
         [Tooltip("Multiplier on travel-time-to-hub for respawn duration. Must be > 1.0 so dying is always slower than walking back. 1.2 = 20% longer than the walk.")]
         public float DeathRespawnTravelMultiplier = 1.2f;
 
+        [Header("Combat")]
+        [Tooltip("Base hitpoints at Hitpoints level 1. MaxHP = BaseHitpoints + (level - 1) * HitpointsPerLevel.")]
+        public float BaseHitpoints = 50f;
+
+        [Tooltip("Additional hitpoints per Hitpoints skill level beyond 1.")]
+        public float HitpointsPerLevel = 5f;
+
+        [Tooltip("Base mana pool at Restoration level 1.")]
+        public float BaseMana = 50f;
+
+        [Tooltip("Additional mana per Restoration skill level beyond 1.")]
+        public float ManaPerRestorationLevel = 3f;
+
+        [Tooltip("Flat mana regenerated every tick. At 10 ticks/sec, 0.5 = 5 mana/sec.")]
+        public float BaseManaRegenPerTick = 0.5f;
+
+        [Tooltip("Minimum time in ticks before a disengaging runner can exit. Enemies still attack during disengage.")]
+        public int MinDisengageTimeTicks = 20;
+
+        [Tooltip("XP per tick of action time on ability completion. 10-tick ability = 10 * this value.")]
+        public float CombatXpPerActionTimeTick = 1.0f;
+
+        [Tooltip("Flat damage reduction per Defence skill level.")]
+        public float DefenceReductionPerLevel = 0.5f;
+
+        [Tooltip("Maximum percentage of incoming damage that defence can reduce (cap). Prevents invulnerability.")]
+        public float MaxDefenceReductionPercent = 75f;
+
+        [Tooltip("Per-level scaling factor for combat damage/heal. Damage = base * scaling * (1 + level * this).")]
+        public float CombatDamageScalingPerLevel = 0.1f;
+
+        [Header("Combat Definitions")]
+        [Tooltip("All ability definitions in the game. Each ability is its own ScriptableObject asset.")]
+        public AbilityConfigAsset[] AbilityDefinitions = new AbilityConfigAsset[0];
+
+        [Tooltip("All enemy definitions in the game. Each enemy is its own ScriptableObject asset.")]
+        public EnemyConfigAsset[] EnemyDefinitions = new EnemyConfigAsset[0];
+
         /// <summary>
         /// Convert this ScriptableObject's values into a plain C# SimulationConfig
         /// that the simulation layer can use.
@@ -133,6 +171,20 @@ namespace ProjectGuild.Data
             var itemDefs = new Simulation.Items.ItemDefinition[ItemDefinitions.Length];
             for (int i = 0; i < ItemDefinitions.Length; i++)
                 itemDefs[i] = ItemDefinitions[i].ToItemDefinition();
+
+            // Convert ability SO array to plain C# array
+            var abilityDefs = new Simulation.Combat.AbilityConfig[AbilityDefinitions.Length];
+            for (int i = 0; i < AbilityDefinitions.Length; i++)
+                abilityDefs[i] = AbilityDefinitions[i] != null
+                    ? AbilityDefinitions[i].ToAbilityConfig()
+                    : new Simulation.Combat.AbilityConfig();
+
+            // Convert enemy SO array to plain C# array
+            var enemyDefs = new Simulation.Combat.EnemyConfig[EnemyDefinitions.Length];
+            for (int i = 0; i < EnemyDefinitions.Length; i++)
+                enemyDefs[i] = EnemyDefinitions[i] != null
+                    ? EnemyDefinitions[i].ToEnemyConfig()
+                    : new Simulation.Combat.EnemyConfig();
 
             return new SimulationConfig
             {
@@ -162,6 +214,18 @@ namespace ProjectGuild.Data
                 EventLogMaxEntries = EventLogMaxEntries,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
                 DeathRespawnTravelMultiplier = DeathRespawnTravelMultiplier,
+                BaseHitpoints = BaseHitpoints,
+                HitpointsPerLevel = HitpointsPerLevel,
+                BaseMana = BaseMana,
+                ManaPerRestorationLevel = ManaPerRestorationLevel,
+                BaseManaRegenPerTick = BaseManaRegenPerTick,
+                MinDisengageTimeTicks = MinDisengageTimeTicks,
+                CombatXpPerActionTimeTick = CombatXpPerActionTimeTick,
+                DefenceReductionPerLevel = DefenceReductionPerLevel,
+                MaxDefenceReductionPercent = MaxDefenceReductionPercent,
+                CombatDamageScalingPerLevel = CombatDamageScalingPerLevel,
+                AbilityDefinitions = abilityDefs,
+                EnemyDefinitions = enemyDefs,
             };
         }
     }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.World;
 
@@ -52,6 +53,11 @@ namespace ProjectGuild.Data
             "A single GatherableConfigAsset can be reused across multiple nodes.")]
         public GatherableConfigAsset[] Gatherables = new GatherableConfigAsset[0];
 
+        [Header("Enemies")]
+        [Tooltip("Enemy spawn configuration for combat nodes.\n" +
+            "Leave empty for non-combat nodes (gathering, hub).")]
+        public EnemySpawnEntryAsset[] EnemySpawns = new EnemySpawnEntryAsset[0];
+
         private void OnValidate()
         {
             if (string.IsNullOrWhiteSpace(Id))
@@ -75,6 +81,14 @@ namespace ProjectGuild.Data
                     : new GatherableConfig();
             }
 
+            var enemySpawns = new EnemySpawnEntry[EnemySpawns != null ? EnemySpawns.Length : 0];
+            for (int i = 0; i < enemySpawns.Length; i++)
+            {
+                enemySpawns[i] = EnemySpawns[i] != null
+                    ? EnemySpawns[i].ToEnemySpawnEntry()
+                    : new EnemySpawnEntry();
+            }
+
             return new WorldNode
             {
                 Id = Id,
@@ -84,6 +98,7 @@ namespace ProjectGuild.Data
                 SceneName = SceneName,
                 ApproachRadius = ApproachRadius,
                 Gatherables = gatherables,
+                EnemySpawns = enemySpawns,
             };
         }
     }

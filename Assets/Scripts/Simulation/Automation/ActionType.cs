@@ -9,6 +9,7 @@ namespace ProjectGuild.Simulation.Automation
         GatherHere = 3,         // IntParam = gatherableIndex at current node (-1 = any)
         FinishTask = 4,         // Signal macro to advance past current Work step
         GatherBestAvailable = 6, // IntParam = (int)SkillType — gather highest-tier resource for that skill
+        FightHere = 7,          // Start fighting at the current node (combat micro action)
 
         // ─── Library-reference macro action ───
         AssignSequence = 5,     // StringParam = taskSequenceId in library
