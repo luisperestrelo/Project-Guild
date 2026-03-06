@@ -399,7 +399,7 @@ namespace ProjectGuild.View.UI
                         ? $" to up to <b>{(effect.MaxTargets < 0 ? "all" : effect.MaxTargets.ToString())}</b> enemies" : "";
                     parts.Add($"{condPrefix}Deals <b><color={DmgColor}>{dmg:F1}</color></b> damage{aoe}.");
                     if (showMath)
-                        parts.Add($"<color=#888888>  {effect.BaseValue} base x {effect.ScalingFactor}x x (1 + {level:F1} x {sim.Config.DamageScalingPerLevel})</color>");
+                        parts.Add($"<color=#888888>  {effect.BaseValue} base x {effect.ScalingFactor}x x (1 + {level:F1} x {sim.Config.CombatDamageScalingPerLevel})</color>");
                 }
                 else if (isHeal)
                 {
@@ -410,7 +410,7 @@ namespace ProjectGuild.View.UI
                             : "";
                     parts.Add($"{condPrefix}Heals <b><color={HealColor}>{heal:F1}</color></b>{target}.");
                     if (showMath)
-                        parts.Add($"<color=#888888>  {effect.BaseValue} base x {effect.ScalingFactor}x x (1 + {level:F1} x {sim.Config.HealScalingPerLevel})</color>");
+                        parts.Add($"<color=#888888>  {effect.BaseValue} base x {effect.ScalingFactor}x x (1 + {level:F1} x {sim.Config.CombatDamageScalingPerLevel})</color>");
                 }
                 else if (isTaunt)
                 {
