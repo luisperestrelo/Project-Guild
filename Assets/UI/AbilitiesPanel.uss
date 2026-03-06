@@ -1,0 +1,244 @@
+/* ---- Abilities Panel (overlay) ---- */
+
+.abilities-panel-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.abilities-panel {
+    position: absolute;
+    left: 120px;
+    top: 80px;
+    right: 120px;
+    bottom: 80px;
+    background-color: rgba(12, 12, 20, 0.96);
+    border-width: 1px;
+    border-color: rgba(80, 80, 100, 0.6);
+    border-radius: 6px;
+    flex-direction: column;
+}
+
+/* ---- Title bar ---- */
+
+.abilities-title-bar {
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.4);
+}
+
+.abilities-title {
+    font-size: 16px;
+    color: rgb(220, 180, 60);
+    -unity-font-style: bold;
+}
+
+.abilities-runner-name {
+    font-size: 13px;
+    color: rgb(160, 160, 180);
+    margin-left: 12px;
+}
+
+.abilities-close-button {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    color: rgb(180, 180, 200);
+    background-color: rgba(40, 40, 55, 0.6);
+    border-width: 1px;
+    border-color: rgba(80, 80, 100, 0.4);
+    border-radius: 3px;
+    -unity-text-align: middle-center;
+}
+
+.abilities-close-button:hover {
+    background-color: rgba(60, 40, 40, 0.8);
+    border-color: rgba(200, 80, 80, 0.6);
+    color: rgb(220, 100, 100);
+}
+
+/* ---- Skill tabs ---- */
+
+.abilities-tab-bar {
+    flex-direction: row;
+    padding: 4px 12px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.4);
+    flex-wrap: wrap;
+}
+
+.abilities-tab {
+    padding: 4px 14px;
+    margin-right: 3px;
+    margin-bottom: 2px;
+    font-size: 12px;
+    color: rgb(160, 160, 180);
+    background-color: rgba(25, 25, 40, 0.6);
+    border-width: 1px;
+    border-color: rgba(60, 60, 80, 0.4);
+    border-radius: 3px;
+}
+
+.abilities-tab:hover {
+    background-color: rgba(40, 40, 55, 0.8);
+    border-color: rgba(100, 100, 120, 0.6);
+}
+
+.abilities-tab-active {
+    color: rgb(220, 180, 60);
+    border-color: rgba(220, 180, 60, 0.5);
+    background-color: rgba(50, 45, 30, 0.6);
+}
+
+/* Skill type color accents on tabs */
+.abilities-tab-melee.abilities-tab-active {
+    color: rgb(220, 100, 80);
+    border-color: rgba(220, 100, 80, 0.5);
+    background-color: rgba(50, 30, 25, 0.6);
+}
+
+.abilities-tab-magic.abilities-tab-active {
+    color: rgb(100, 130, 230);
+    border-color: rgba(100, 130, 230, 0.5);
+    background-color: rgba(25, 30, 55, 0.6);
+}
+
+.abilities-tab-restoration.abilities-tab-active {
+    color: rgb(80, 200, 110);
+    border-color: rgba(80, 200, 110, 0.5);
+    background-color: rgba(25, 50, 30, 0.6);
+}
+
+/* ---- Filter bar ---- */
+
+.abilities-filter-bar {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 12px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(60, 60, 80, 0.4);
+}
+
+.abilities-search-field {
+    flex-grow: 1;
+    max-width: 300px;
+    font-size: 12px;
+    background-color: rgba(20, 20, 35, 0.8);
+    border-color: rgba(70, 70, 90, 0.5);
+    border-radius: 3px;
+    color: rgb(200, 200, 215);
+}
+
+.abilities-search-field:focus {
+    border-color: rgba(220, 180, 60, 0.6);
+}
+
+/* ---- Ability grid ---- */
+
+.abilities-scroll {
+    flex-grow: 1;
+}
+
+.abilities-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 8px;
+}
+
+/* Individual ability card */
+.ability-card {
+    width: 140px;
+    min-height: 160px;
+    margin: 4px;
+    padding: 8px;
+    background-color: rgba(30, 30, 50, 0.8);
+    border-width: 1px;
+    border-color: rgba(70, 70, 90, 0.6);
+    border-radius: 4px;
+    align-items: center;
+}
+
+.ability-card:hover {
+    border-color: rgba(140, 140, 170, 0.8);
+    background-color: rgba(40, 40, 60, 0.9);
+}
+
+.ability-card-pick-mode:hover {
+    border-color: rgba(220, 180, 60, 0.8);
+    background-color: rgba(55, 50, 35, 0.9);
+}
+
+/* Icon */
+.ability-card-icon {
+    width: 56px;
+    height: 56px;
+    -unity-background-scale-mode: scale-to-fit;
+    margin-bottom: 6px;
+    border-radius: 4px;
+}
+
+/* Name */
+.ability-card-name {
+    font-size: 12px;
+    color: rgb(210, 210, 225);
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    max-width: 130px;
+    margin-bottom: 2px;
+}
+
+/* Info line (action time, mana, cooldown) */
+.ability-card-info {
+    font-size: 10px;
+    color: rgb(140, 140, 160);
+    -unity-text-align: middle-center;
+    white-space: normal;
+    max-width: 130px;
+}
+
+/* Unlock level */
+.ability-card-unlock {
+    font-size: 10px;
+    color: rgb(180, 120, 100);
+    -unity-text-align: middle-center;
+    margin-top: 2px;
+}
+
+/* Skill type color accents on cards */
+.ability-card-melee .ability-card-name { color: rgb(220, 140, 120); }
+.ability-card-magic .ability-card-name { color: rgb(140, 160, 230); }
+.ability-card-restoration .ability-card-name { color: rgb(120, 210, 140); }
+
+/* Locked state */
+.ability-card-locked {
+    opacity: 0.45;
+}
+
+.ability-card-locked .ability-card-name {
+    color: rgb(140, 130, 130);
+}
+
+/* Selected state (in pick mode) */
+.ability-card-selected {
+    border-color: rgba(220, 180, 60, 0.9);
+    border-width: 2px;
+    background-color: rgba(60, 55, 30, 0.8);
+}
+
+/* ---- Footer ---- */
+
+.abilities-footer {
+    padding: 6px 12px;
+    border-top-width: 1px;
+    border-top-color: rgba(60, 60, 80, 0.4);
+}
+
+.abilities-footer-label {
+    font-size: 11px;
+    color: rgb(140, 140, 160);
+}

@@ -4,7 +4,8 @@
     "references": [
         "ProjectGuild.View",
         "ProjectGuild.Data",
-        "ProjectGuild.Simulation"
+        "ProjectGuild.Simulation",
+        "Unity.RenderPipelines.Universal.Runtime"
     ],
     "includePlatforms": [
         "Editor"

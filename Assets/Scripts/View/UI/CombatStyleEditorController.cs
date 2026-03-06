@@ -468,19 +468,26 @@ namespace ProjectGuild.View.UI
             enabledBtn.AddToClassList("rule-editor-toggle");
             header.Add(enabledBtn);
 
-            var abilityLabel = new Label("Ability:");
-            abilityLabel.AddToClassList("rule-editor-field-label");
-            header.Add(abilityLabel);
+            // Show current ability name + pick button
+            var abilityName = ResolveAbilityName(rule.AbilityId, sim);
+            var abilityNameLabel = new Label(abilityName);
+            abilityNameLabel.AddToClassList("rule-editor-ability-name");
+            header.Add(abilityNameLabel);
 
-            // Ability dropdown populated from config
-            var abilityDropdown = BuildAbilityDropdown(rule.AbilityId, sim, newVal =>
+            // Pick button opens Abilities panel
+            var pickBtn = new Button(() =>
             {
-                var s = _uiManager.Simulation?.FindCombatStyleInLibrary(_selectedId);
-                if (s == null || capturedIndex >= s.AbilityRules.Count) return;
-                s.AbilityRules[capturedIndex].AbilityId = newVal;
+                _uiManager.OpenAbilitiesPanelPickMode(pickedId =>
+                {
+                    var s = _uiManager.Simulation?.FindCombatStyleInLibrary(_selectedId);
+                    if (s == null || capturedIndex >= s.AbilityRules.Count) return;
+                    s.AbilityRules[capturedIndex].AbilityId = pickedId;
+                    ForceRebuild();
+                });
             });
-            abilityDropdown.AddToClassList("rule-editor-dropdown");
-            header.Add(abilityDropdown);
+            pickBtn.text = string.IsNullOrEmpty(rule.AbilityId) ? "Select Ability" : "Change";
+            pickBtn.AddToClassList("rule-editor-browse-button");
+            header.Add(pickBtn);
 
             // CanInterrupt toggle
             var interruptLabel = new Label("Interrupt:");
@@ -514,7 +521,19 @@ namespace ProjectGuild.View.UI
             return row;
         }
 
-        // ─── Ability Dropdown ────────────────────────────────
+        // ─── Ability Helpers ─────────────────────────────────
+
+        private static string ResolveAbilityName(string abilityId, GameSimulation sim)
+        {
+            if (string.IsNullOrEmpty(abilityId)) return "(none)";
+            var abilities = sim?.Config.AbilityDefinitions;
+            if (abilities == null) return abilityId;
+            foreach (var a in abilities)
+                if (a.Id == abilityId) return a.Name ?? abilityId;
+            return abilityId;
+        }
+
+        // ─── Ability Dropdown (kept as fallback, not shown in UI) ───
 
         private DropdownField BuildAbilityDropdown(string currentAbilityId, GameSimulation sim,
             Action<string> onChange)

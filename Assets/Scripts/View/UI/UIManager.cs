@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -40,6 +41,7 @@ namespace ProjectGuild.View.UI
         [SerializeField] private VisualTreeAsset _logbookPanelAsset;
         [SerializeField] private VisualTreeAsset _optionsPanelAsset;
         [SerializeField] private VisualTreeAsset _strategicMapPanelAsset;
+        [SerializeField] private VisualTreeAsset _abilitiesPanelAsset;
         [SerializeField] private VisualTreeAsset _tutorialOverlayAsset;
         [SerializeField] private PanelSettings _panelSettings;
 
@@ -56,6 +58,7 @@ namespace ProjectGuild.View.UI
         private LogPanelContainerController _logPanelContainerController;
         private LogbookPanelController _logbookPanelController;
         private StrategicMapPanelController _strategicMapPanelController;
+        private AbilitiesPanelController _abilitiesPanelController;
         private TutorialController _tutorialController;
 
         private Button _worldButton;
@@ -124,6 +127,7 @@ namespace ProjectGuild.View.UI
             if (_bankPanelController?.IsOpen == true) return true;
             if (_optionsPanelController?.IsOpen == true) return true;
             if (_strategicMapPanelController?.IsOpen == true) return true;
+            if (_abilitiesPanelController?.IsOpen == true) return true;
             return false;
         }
 
@@ -143,6 +147,15 @@ namespace ProjectGuild.View.UI
         {
             if (_simulationRunner?.ItemIcons == null) return null;
             return _simulationRunner.ItemIcons.TryGetValue(itemId, out var icon) ? icon : null;
+        }
+
+        /// <summary>
+        /// Get the icon sprite for an ability by its ID. Returns null if no icon is assigned.
+        /// </summary>
+        public Sprite GetAbilityIcon(string abilityId)
+        {
+            if (_simulationRunner?.AbilityIcons == null) return null;
+            return _simulationRunner.AbilityIcons.TryGetValue(abilityId, out var icon) ? icon : null;
         }
 
         /// <summary>
@@ -255,6 +268,20 @@ namespace ProjectGuild.View.UI
                 guildHallBtn.text = "Guild Hall";
                 guildHallBtn.AddToClassList("guildhall-toggle-button");
                 root.Add(guildHallBtn);
+            }
+
+            // Abilities panel (overlay)
+            if (_abilitiesPanelAsset != null)
+            {
+                var abilitiesInstance = _abilitiesPanelAsset.Instantiate();
+                abilitiesInstance.style.position = Position.Absolute;
+                abilitiesInstance.style.left = 0;
+                abilitiesInstance.style.top = 0;
+                abilitiesInstance.style.right = 0;
+                abilitiesInstance.style.bottom = 0;
+                abilitiesInstance.pickingMode = PickingMode.Ignore;
+                root.Add(abilitiesInstance);
+                _abilitiesPanelController = new AbilitiesPanelController(abilitiesInstance, this);
             }
 
             // Strategic Map panel (overlay)
@@ -425,6 +452,24 @@ namespace ProjectGuild.View.UI
         public void OpenAutomationPanelForChangeAssignment(string tabType, string runnerId)
         {
             _automationPanelController?.OpenForChangeAssignment(tabType, runnerId);
+        }
+
+        // ─── Abilities Panel ─────────────────────────────────
+
+        /// <summary>
+        /// Open the Abilities panel for the currently selected runner.
+        /// </summary>
+        public void OpenAbilitiesPanel()
+        {
+            _abilitiesPanelController?.Open(_selectedRunnerId);
+        }
+
+        /// <summary>
+        /// Open the Abilities panel in pick mode. Clicking an ability invokes the callback.
+        /// </summary>
+        public void OpenAbilitiesPanelPickMode(Action<string> onPick)
+        {
+            _abilitiesPanelController?.OpenPickMode(onPick, _selectedRunnerId);
         }
 
         // ─── Logbook ─────────────────────────────────────────

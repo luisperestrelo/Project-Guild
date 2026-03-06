@@ -1,0 +1,32 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="AbilitiesPanel.uss" />
+    <ui:VisualElement name="abilities-panel-root" class="abilities-panel-root" picking-mode="Ignore">
+        <ui:VisualElement name="abilities-panel" class="abilities-panel">
+            <!-- Title bar -->
+            <ui:VisualElement name="abilities-title-bar" class="abilities-title-bar">
+                <ui:Label name="abilities-title" text="Abilities" class="abilities-title" />
+                <ui:Label name="abilities-runner-name" class="abilities-runner-name" />
+                <ui:VisualElement style="flex-grow: 1;" />
+                <ui:Button name="btn-close-abilities" class="abilities-close-button" text="X" />
+            </ui:VisualElement>
+
+            <!-- Skill tabs -->
+            <ui:VisualElement name="abilities-tab-bar" class="abilities-tab-bar" />
+
+            <!-- Search bar -->
+            <ui:VisualElement name="abilities-filter-bar" class="abilities-filter-bar">
+                <ui:TextField name="abilities-search-field" class="abilities-search-field" />
+            </ui:VisualElement>
+
+            <!-- Ability grid -->
+            <ui:ScrollView name="abilities-scroll" class="abilities-scroll">
+                <ui:VisualElement name="abilities-grid" class="abilities-grid" />
+            </ui:ScrollView>
+
+            <!-- Footer / info -->
+            <ui:VisualElement name="abilities-footer" class="abilities-footer">
+                <ui:Label name="abilities-footer-label" class="abilities-footer-label" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

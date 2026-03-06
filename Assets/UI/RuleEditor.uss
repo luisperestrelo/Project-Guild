@@ -499,3 +499,35 @@ DropdownField.condition-state-dropdown {
     margin-top: 4px;
     margin-bottom: 2px;
 }
+
+/* Ability name display in ability rules */
+.rule-editor-ability-name {
+    font-size: 12px;
+    color: rgb(180, 200, 230);
+    -unity-font-style: bold;
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-top: 3px;
+    min-width: 80px;
+}
+
+/* Pick/Change button (opens Abilities panel in pick mode) */
+.rule-editor-browse-button {
+    background-color: rgba(40, 45, 60, 0.7);
+    color: rgb(140, 170, 220);
+    border-width: 1px;
+    border-color: rgba(80, 100, 140, 0.4);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+    margin-left: 4px;
+    margin-top: 3px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.rule-editor-browse-button:hover {
+    background-color: rgba(50, 55, 75, 0.9);
+    border-color: rgba(100, 130, 180, 0.6);
+    color: rgb(180, 200, 240);
+}

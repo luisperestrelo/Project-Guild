@@ -52,6 +52,13 @@ namespace ProjectGuild.Bridge
         public IReadOnlyDictionary<string, Sprite> ItemIcons => _itemIcons;
         private readonly Dictionary<string, Sprite> _itemIcons = new();
 
+        /// <summary>
+        /// Ability icons extracted from AbilityConfigAssets during Awake.
+        /// Keyed by ability ID. View layer uses this for Abilities panel rendering.
+        /// </summary>
+        public IReadOnlyDictionary<string, Sprite> AbilityIcons => _abilityIcons;
+        private readonly Dictionary<string, Sprite> _abilityIcons = new();
+
         public bool IsPaused { get; set; }
 
         private float _tickAccumulator;
@@ -70,6 +77,11 @@ namespace ProjectGuild.Bridge
                 {
                     if (itemAsset != null && itemAsset.Icon != null)
                         _itemIcons[itemAsset.Id] = itemAsset.Icon;
+                }
+                foreach (var abilityAsset in _configAsset.AbilityDefinitions)
+                {
+                    if (abilityAsset != null && abilityAsset.Icon != null)
+                        _abilityIcons[abilityAsset.Id] = abilityAsset.Icon;
                 }
             }
         }

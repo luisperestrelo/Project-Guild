@@ -44,6 +44,9 @@ namespace ProjectGuild.Data
         [TextArea(2, 4)]
         public string Description;
 
+        [Tooltip("Icon sprite for the Abilities panel. Displayed in ability browser and combat style editor.")]
+        public Sprite Icon;
+
         [Tooltip("Effects applied when the ability resolves.")]
         public AbilityEffectData[] Effects = new AbilityEffectData[0];
 

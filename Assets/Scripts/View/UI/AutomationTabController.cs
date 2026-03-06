@@ -233,19 +233,14 @@ namespace ProjectGuild.View.UI
             _btnCopyCombat.clicked += OnCopyCombatClicked;
             _btnClearCombat.clicked += OnClearCombatClicked;
 
-            // Ability Browser (collapsible section in Combat sub-tab)
+            // Ability Browser: "Open Abilities" button opens the dedicated Abilities Panel
             _btnToggleAbilityBrowser = root.Q<Button>("btn-toggle-ability-browser");
             _abilityBrowserContent = root.Q("ability-browser-content");
             _abilityBrowserContent.style.display = DisplayStyle.None;
+            _btnToggleAbilityBrowser.text = "Open Abilities";
             _btnToggleAbilityBrowser.clicked += () =>
             {
-                _abilityBrowserExpanded = !_abilityBrowserExpanded;
-                _abilityBrowserContent.style.display = _abilityBrowserExpanded
-                    ? DisplayStyle.Flex : DisplayStyle.None;
-                _btnToggleAbilityBrowser.text = _abilityBrowserExpanded
-                    ? "Abilities \u25B2" : "Abilities \u25BC";
-                if (_abilityBrowserExpanded)
-                    _cachedAbilityBrowserKey = null; // force rebuild on next refresh
+                _uiManager.OpenAbilitiesPanel();
             };
 
             // Copy Setup / Copy from... buttons (below sub-tab bar)
