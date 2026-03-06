@@ -2383,6 +2383,7 @@ namespace ProjectGuild.Simulation.Core
                     encounter.IsActive = false;
                     encounter.Enemies.Clear();
                     CurrentGameState.EncounterStates.Remove(nodeId);
+                    Events.Publish(new EncounterEnded { NodeId = nodeId });
                     continue;
                 }
 
@@ -2553,6 +2554,7 @@ namespace ProjectGuild.Simulation.Core
                 CurrentGameState.EncounterStates[nodeId].IsActive = false;
                 CurrentGameState.EncounterStates[nodeId].Enemies.Clear();
                 CurrentGameState.EncounterStates.Remove(nodeId);
+                Events.Publish(new EncounterEnded { NodeId = nodeId });
             }
         }
 

@@ -179,6 +179,11 @@ namespace ProjectGuild.Simulation.Core
         public string NodeId;
     }
 
+    public struct EncounterEnded
+    {
+        public string NodeId;
+    }
+
     public struct RunnerDied
     {
         public string RunnerId;

@@ -204,6 +204,11 @@ namespace ProjectGuild.View.Runners
         private bool _isDead;
         private bool _isHidden;
 
+        // Ghost mode: original model disabled, ghost prefab instantiated as child
+        private GameObject _ghostChild;
+        private Renderer[] _originalRenderers;
+        public bool IsGhost => _ghostChild != null;
+
         // Track position for velocity-based animation
         private Vector3 _lastFramePosition;
 
@@ -254,6 +259,70 @@ namespace ProjectGuild.View.Runners
                 _nameLabel.gameObject.SetActive(!hidden);
             if (_barGroup != null)
                 _barGroup.SetActive(!hidden);
+        }
+
+        public void EnterGhostMode(GameObject ghostPrefab)
+        {
+            if (_ghostChild != null) return;
+
+            // Cache original renderers (exclude nameplate bar sprites)
+            _originalRenderers = GetModelRenderers();
+            foreach (var r in _originalRenderers)
+                r.enabled = false;
+
+            // Disable original animator
+            if (_animator != null)
+                _animator.enabled = false;
+
+            // Spawn ghost model as child, centered on this transform
+            _ghostChild = Instantiate(ghostPrefab, transform);
+            _ghostChild.transform.localPosition = Vector3.zero;
+            _ghostChild.transform.localRotation = Quaternion.identity;
+            _ghostChild.name = "GhostModel";
+        }
+
+        public void ExitGhostMode()
+        {
+            if (_ghostChild == null) return;
+
+            Destroy(_ghostChild);
+            _ghostChild = null;
+
+            // Re-enable original renderers
+            if (_originalRenderers != null)
+            {
+                foreach (var r in _originalRenderers)
+                    if (r != null) r.enabled = true;
+                _originalRenderers = null;
+            }
+
+            // Re-enable animator and reset to idle
+            if (_animator != null)
+            {
+                _animator.enabled = true;
+                _animator.Rebind();
+                _animator.Update(0f);
+            }
+
+            _isDead = false;
+        }
+
+        /// <summary>
+        /// Get renderers belonging to the character model (not nameplate bars/labels).
+        /// </summary>
+        private Renderer[] GetModelRenderers()
+        {
+            var all = GetComponentsInChildren<Renderer>(true);
+            var result = new System.Collections.Generic.List<Renderer>();
+            foreach (var r in all)
+            {
+                // Skip nameplate bar sprites and name label
+                if (_barGroup != null && r.transform.IsChildOf(_barGroup.transform)) continue;
+                if (_manaBarGroup != null && r.transform.IsChildOf(_manaBarGroup.transform)) continue;
+                if (_nameLabel != null && r.transform.IsChildOf(_nameLabel.transform)) continue;
+                result.Add(r);
+            }
+            return result.ToArray();
         }
 
         public void FaceTarget(Vector3 targetPos)

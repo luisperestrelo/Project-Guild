@@ -28,6 +28,8 @@ namespace ProjectGuild.View.Combat
         [SerializeField] private GameObject _fireballVfx;
         [Tooltip("Fire Nova explosion.")]
         [SerializeField] private GameObject _fireNovaVfx;
+        [Tooltip("Fire impact explosion (spawns when fireball arrives).")]
+        [SerializeField] private GameObject _fireImpactVfx;
         [Tooltip("Ice/frost effect for Culling Frost.")]
         [SerializeField] private GameObject _frostVfx;
         [Tooltip("Heal sparkle effect.")]
@@ -44,10 +46,13 @@ namespace ProjectGuild.View.Combat
         [SerializeField] private float _deathHideDelay = 2f;
         [Tooltip("Speed at which enemies walk toward their target runner.")]
         [SerializeField] private float _enemyWalkSpeed = 3f;
+        [Tooltip("Speed of projectile VFX (fireball, etc.) in m/s.")]
+        [SerializeField] private float _projectileSpeed = 6f;
 
         private float EnemyWalkSpeed => _enemyWalkSpeed;
 
         private readonly Dictionary<string, EnemyVisual> _enemyVisuals = new();
+        private readonly Dictionary<string, string> _enemyNodeMap = new(); // instanceId → nodeId
         private readonly Dictionary<string, float> _deathTimers = new();
         private GameSimulation Sim => _simulationRunner?.Simulation;
 
@@ -65,6 +70,7 @@ namespace ProjectGuild.View.Combat
 
             Sim.Events.Subscribe<EnemySpawned>(OnEnemySpawned);
             Sim.Events.Subscribe<EnemyDied>(OnEnemyDied);
+            Sim.Events.Subscribe<EncounterEnded>(OnEncounterEnded);
             Sim.Events.Subscribe<CombatActionCompleted>(OnCombatActionCompleted);
             Sim.Events.Subscribe<RunnerTookDamage>(OnRunnerTookDamage);
 
@@ -155,6 +161,25 @@ namespace ProjectGuild.View.Combat
             _deathTimers[evt.EnemyInstanceId] = _deathHideDelay;
         }
 
+        private void OnEncounterEnded(EncounterEnded evt)
+        {
+            // Destroy all enemy visuals for this node
+            var toRemove = new List<string>();
+            foreach (var kvp in _enemyNodeMap)
+            {
+                if (kvp.Value == evt.NodeId)
+                    toRemove.Add(kvp.Key);
+            }
+            foreach (var id in toRemove)
+            {
+                _deathTimers.Remove(id);
+                _enemyNodeMap.Remove(id);
+                if (_enemyVisuals.TryGetValue(id, out var visual) && visual != null)
+                    Destroy(visual.gameObject);
+                _enemyVisuals.Remove(id);
+            }
+        }
+
         private void OnCombatActionCompleted(CombatActionCompleted evt)
         {
             // Play VFX based on ability effect type
@@ -222,6 +247,7 @@ namespace ProjectGuild.View.Combat
             visual.Initialize(enemy.InstanceId, enemy.ConfigId, displayName, pos);
 
             _enemyVisuals[enemy.InstanceId] = visual;
+            _enemyNodeMap[enemy.InstanceId] = nodeId;
         }
 
         private GameObject PickPrefabForEnemy(string configId)
@@ -337,8 +363,10 @@ namespace ProjectGuild.View.Combat
 
             if (abilityId != null && abilityId.Contains("fireball"))
             {
-                vfxPrefab = _fireballVfx;
-                spawnPos = targetPos + Vector3.up;
+                // Fireball travels from caster to target
+                if (_fireballVfx != null)
+                    SpawnProjectile(_fireballVfx, casterPos + Vector3.up, targetPos + Vector3.up, _fireImpactVfx);
+                return;
             }
             else if (abilityId != null && abilityId.Contains("fire_nova"))
             {
@@ -379,12 +407,20 @@ namespace ProjectGuild.View.Combat
             Destroy(obj, duration);
         }
 
+        private void SpawnProjectile(GameObject prefab, Vector3 origin, Vector3 target, GameObject impactPrefab)
+        {
+            var obj = Instantiate(prefab, origin, Quaternion.identity);
+            var proj = obj.AddComponent<ProjectileVfx>();
+            proj.Launch(target, _projectileSpeed, impactPrefab);
+        }
+
         public void Cleanup()
         {
             foreach (var kvp in _enemyVisuals)
                 if (kvp.Value != null)
                     Destroy(kvp.Value.gameObject);
             _enemyVisuals.Clear();
+            _enemyNodeMap.Clear();
             _deathTimers.Clear();
         }
 
@@ -394,6 +430,7 @@ namespace ProjectGuild.View.Combat
             {
                 Sim.Events.Unsubscribe<EnemySpawned>(OnEnemySpawned);
                 Sim.Events.Unsubscribe<EnemyDied>(OnEnemyDied);
+                Sim.Events.Unsubscribe<EncounterEnded>(OnEncounterEnded);
                 Sim.Events.Unsubscribe<CombatActionCompleted>(OnCombatActionCompleted);
                 Sim.Events.Unsubscribe<RunnerTookDamage>(OnRunnerTookDamage);
             }

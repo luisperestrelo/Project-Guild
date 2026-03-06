@@ -38,6 +38,12 @@ namespace ProjectGuild.View
         [SerializeField] private WorldSceneManager _worldSceneManager;
         [SerializeField] private NavMeshTravelPathCache _navMeshPathCache;
 
+        [Header("Death / Ghost")]
+        [Tooltip("Ghost prefab for male runners (PolygonDungeon Character_Ghost_01).")]
+        [SerializeField] private GameObject _maleGhostPrefab;
+        [Tooltip("Ghost prefab for female runners (PolygonDungeon Character_Ghost_02).")]
+        [SerializeField] private GameObject _femaleGhostPrefab;
+
         [Header("Scene Transitions")]
         [SerializeField] private CameraController _cameraController;
         [SerializeField] private SceneTransitionOverlay _sceneTransitionOverlay;
@@ -55,6 +61,10 @@ namespace ProjectGuild.View
         // Runners with a pending arrival fade — suppresses normal position updates
         // until the fade callback snaps the visual to the correct position.
         private readonly HashSet<string> _pendingArrivalFades = new();
+
+        // Death hide timers: after death animation plays, swap to ghost model at hub
+        private readonly Dictionary<string, float> _deathHideTimers = new();
+        private const float RunnerDeathHideDelay = 2f;
 
         private bool _worldBuilt;
 
@@ -149,6 +159,7 @@ namespace ProjectGuild.View
             _runnerPositionContexts.Clear();
             _travelDirectionCache.Clear();
             _pendingArrivalFades.Clear();
+            _deathHideTimers.Clear();
 
             _worldBuilt = false;
         }
@@ -231,6 +242,36 @@ namespace ProjectGuild.View
                 UpdateRunnerVisualPosition(runner, visual);
             }
 
+            // Process runner death hide timers
+            if (_deathHideTimers.Count > 0)
+            {
+                var expired = new List<string>();
+                foreach (var key in new List<string>(_deathHideTimers.Keys))
+                {
+                    float remaining = _deathHideTimers[key] - Time.deltaTime;
+                    _deathHideTimers[key] = remaining;
+                    if (remaining <= 0f)
+                        expired.Add(key);
+                }
+                foreach (var id in expired)
+                {
+                    _deathHideTimers.Remove(id);
+                    if (_runnerVisuals.TryGetValue(id, out var v) && v != null)
+                    {
+                        var runner = Sim.FindRunner(id);
+                        GameObject ghostPrefab = runner?.Gender == RunnerGender.Female
+                            ? _femaleGhostPrefab : _maleGhostPrefab;
+                        if (ghostPrefab != null)
+                            v.EnterGhostMode(ghostPrefab);
+                        else
+                            v.SetHidden(true);
+
+                        // Snap to hub
+                        v.SnapToPosition(GetHubSpawnPosition(id));
+                    }
+                }
+            }
+
         }
 
         // ─── Runner Visual Updates ────────────────────────────────
@@ -241,6 +282,10 @@ namespace ProjectGuild.View
         /// </summary>
         private void UpdateRunnerVisualPosition(Runner runner, RunnerVisual visual)
         {
+            // Dead runners: freeze during death anim, stay at hub once in ghost mode
+            if (runner.State == RunnerState.Dead)
+                return;
+
             // Pending arrival fade: visual is being faded in to a node scene.
             // Don't touch position until the fade callback snaps the visual.
             if (_pendingArrivalFades.Contains(runner.Id))
@@ -505,7 +550,7 @@ namespace ProjectGuild.View
                 return GetCombatPosition(runner, sceneRoot) + RunnerYOffset;
             }
 
-            // Dead: hide at node (the visual will be toggled off by UpdateRunnerCombatState)
+            // Dead: keep at spawn position until death hide timer hides the visual
             if (runner.State == RunnerState.Dead)
             {
                 return sceneRoot.GetSpawnPosition(0) + RunnerYOffset;
@@ -789,16 +834,61 @@ namespace ProjectGuild.View
             {
                 visual.SetDead(true);
                 visual.SetCombatState(false);
+                _deathHideTimers[evt.RunnerId] = RunnerDeathHideDelay;
             }
         }
 
         private void OnRunnerRespawned(RunnerRespawned evt)
         {
+            _deathHideTimers.Remove(evt.RunnerId);
             if (_runnerVisuals.TryGetValue(evt.RunnerId, out var visual) && visual != null)
             {
-                visual.SetDead(false);
-                visual.SetHidden(false);
+                // Snap to hub position before restoring model
+                var runner = Sim?.FindRunner(evt.RunnerId);
+                if (runner != null)
+                    visual.SnapToPosition(GetRunnerWorldPosition(runner));
+
+                if (visual.IsGhost)
+                    visual.ExitGhostMode();
+                else
+                {
+                    visual.SetDead(false);
+                    visual.SetHidden(false);
+                }
+
+                // Reset position context so normal positioning picks up cleanly
+                _runnerPositionContexts[evt.RunnerId] = new RunnerPositionContext
+                {
+                    InNodeScene = runner != null && !IsRunnerInOverworld(runner),
+                    NodeId = runner?.CurrentNodeId,
+                    WasExitingNode = false,
+                };
             }
+        }
+
+        private Vector3 GetHubSpawnPosition(string runnerId)
+        {
+            var map = Sim?.CurrentGameState?.Map;
+            if (map == null) return Vector3.zero;
+
+            string hubId = map.HubNodeId;
+            if (_worldSceneManager != null && _worldSceneManager.IsNodeSceneReady(hubId))
+            {
+                var sceneRoot = _worldSceneManager.GetNodeSceneRoot(hubId);
+                if (sceneRoot != null)
+                {
+                    int hash = runnerId.GetHashCode() & 0x7FFFFFFF;
+                    int idx = hash % Mathf.Max(1, sceneRoot.SpawnPoints.Length);
+                    return sceneRoot.GetSpawnPosition(idx);
+                }
+            }
+
+            // Fallback: overworld hub position
+            var hubNode = map.GetNode(hubId);
+            if (hubNode != null)
+                return new Vector3(hubNode.WorldX, 0f, hubNode.WorldZ);
+
+            return Vector3.zero;
         }
 
         /// <summary>
