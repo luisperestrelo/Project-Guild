@@ -221,14 +221,16 @@ namespace ProjectGuild.Tests
         public void RunnerHpInitializedOnFirstCombat()
         {
             Setup();
-            Assert.AreEqual(-1f, _runner.CurrentHitpoints, "HP uninitialized before combat");
+            // Runners now spawn with full HP/mana (RestoreRunnerToFull in StartNewGame)
+            Assert.Greater(_runner.CurrentHitpoints, 0f, "HP should be initialized at spawn");
+            Assert.Greater(_runner.CurrentMana, 0f, "Mana should be initialized at spawn");
 
             var micro = CreateFightMicro();
             AssignFightSequence(micro.Id);
             _sim.Tick();
 
-            Assert.Greater(_runner.CurrentHitpoints, 0f, "HP should be initialized");
-            Assert.Greater(_runner.CurrentMana, 0f, "Mana should be initialized");
+            Assert.Greater(_runner.CurrentHitpoints, 0f, "HP should still be positive after entering combat");
+            Assert.Greater(_runner.CurrentMana, 0f, "Mana should still be positive after entering combat");
         }
 
         [Test]

@@ -85,8 +85,8 @@ namespace ProjectGuild.Tests
 
             Assert.AreEqual(0, _sim.CurrentGameState.MacroRulesetLibrary.Count,
                 "Should have 0 macro rulesets (no default macro)");
-            Assert.AreEqual(1, _sim.CurrentGameState.MicroRulesetLibrary.Count,
-                "Should have exactly 1 micro ruleset (default)");
+            Assert.AreEqual(2, _sim.CurrentGameState.MicroRulesetLibrary.Count,
+                "Should have exactly 2 micro rulesets (default gather + default combat)");
         }
 
         // ─── Shared template editing ─────────────────────────────

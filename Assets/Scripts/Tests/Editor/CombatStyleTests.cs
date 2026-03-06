@@ -722,12 +722,10 @@ namespace ProjectGuild.Tests
             var micro = CreateFightMicro();
 
             // Runner 0: healer, Runner 1: fighter
-            var healerStyle = DefaultRulesets.CreateBasicHealerCombatStyle();
-            AddCombatStyle(healerStyle);
+            AddCombatStyle(DefaultRulesets.CreateBasicHealerCombatStyle());
             _runner.CombatStyleId = DefaultRulesets.BasicHealerCombatStyleId;
 
-            var meleeStyle = DefaultRulesets.CreateBasicMeleeCombatStyle();
-            AddCombatStyle(meleeStyle);
+            AddCombatStyle(DefaultRulesets.CreateBasicMeleeCombatStyle());
             var runner2 = _sim.CurrentGameState.Runners[1];
             runner2.CombatStyleId = DefaultRulesets.BasicMeleeCombatStyleId;
 
@@ -739,16 +737,32 @@ namespace ProjectGuild.Tests
             Assert.AreEqual(RunnerState.Fighting, _runner.State);
             Assert.AreEqual(RunnerState.Fighting, runner2.State);
 
-            // Healer targets allies, not enemies. With LowestHpAlly targeting,
-            // the evaluator returns null for enemy targeting (ally rules don't resolve to enemies).
-            // The healer should idle since EvaluateTargeting returns null for ally-only styles.
-            _sim.Tick();
+            // Damage runner2 below 80% HP so the healer's "Heal weakest ally" rule triggers
+            runner2.CurrentHitpoints = 50f;
 
-            // The healer has LowestHpAlly targeting which returns null from EvaluateTargeting
-            // (it returns EnemyInstance, not Runner). So healer idles.
-            // This is correct: healer targeting is separate from enemy targeting.
-            Assert.IsFalse(_runner.Fighting.IsActing,
-                "Healer with LowestHpAlly should not target enemies directly");
+            // Verify evaluator directly: targeting, ally resolution, and ability selection
+            var encounter = _sim.CurrentGameState.EncounterStates["goblin_camp"];
+            var combatStyle = _sim.FindCombatStyleInLibrary(_runner.CombatStyleId);
+            var ctx = new CombatEvaluationContext(_runner, encounter, _sim.CurrentGameState, _config);
+
+            // EvaluateTargeting returns null: ally-typed rule matched first (first-match-wins)
+            int ruleIdx;
+            var evalTarget = CombatStyleEvaluator.EvaluateTargeting(combatStyle, ctx, out ruleIdx);
+            Assert.IsNull(evalTarget,
+                "EvaluateTargeting should return null when ally-typed rule matches first");
+            Assert.AreEqual(0, ruleIdx,
+                "Should match rule 0 (LowestHpAlly), not fall through to rule 1 (NearestEnemy)");
+
+            // EvaluateTargetingForAlly resolves to the damaged runner
+            var allyResult = CombatStyleEvaluator.EvaluateTargetingForAlly(combatStyle, ctx, out _);
+            Assert.IsNotNull(allyResult, "Should find the damaged ally");
+            Assert.AreEqual(runner2.Id, allyResult.Id, "Should target runner2 (lowest HP)");
+
+            // EvaluateAbility picks Heal (not BasicAttack) when ally is hurt
+            var abilityResult = CombatStyleEvaluator.EvaluateAbility(
+                combatStyle, ctx, _config.AbilityDefinitions, out _);
+            Assert.AreEqual("heal", abilityResult.Id,
+                "Should select Heal when ally HP condition is met");
         }
 
         // ─── Interrupt Ability Rule ─────────────────────────

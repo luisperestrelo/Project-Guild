@@ -60,8 +60,16 @@ namespace ProjectGuild.Simulation.Combat
                     return target;
                 }
 
-                // Selection is ally-targeting (NearestAlly, LowestHpAlly): not an enemy target.
-                // Or no alive enemies matched. Either way, continue to next rule.
+                // First-match-wins: if the matched rule is ally-targeting, stop here.
+                // Return null so the caller falls through to EvaluateTargetingForAlly.
+                if (rule.Selection == TargetSelection.NearestAlly ||
+                    rule.Selection == TargetSelection.LowestHpAlly)
+                {
+                    matchedRuleIndex = i;
+                    return null;
+                }
+
+                // No alive enemies matched this enemy-typed selection. Continue to next rule.
             }
             return null;
         }
