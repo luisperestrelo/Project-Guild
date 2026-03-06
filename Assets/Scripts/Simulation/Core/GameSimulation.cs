@@ -3188,7 +3188,7 @@ namespace ProjectGuild.Simulation.Core
             var runner = RunnerFactory.CreateBiased(_random, Config, bias, CurrentGameState.Map.HubNodeId);
 
             // Initialize HP/mana
-            float maxHp = CombatFormulas.CalculateMaxHp(
+            float maxHp = CombatFormulas.CalculateMaxHitpoints(
                 runner.GetEffectiveLevel(SkillType.Hitpoints, Config), Config);
             float maxMana = CombatFormulas.CalculateMaxMana(
                 runner.GetEffectiveLevel(SkillType.Restoration, Config), Config);
