@@ -6,6 +6,7 @@ namespace ProjectGuild.Simulation.Automation
     {
         Macro,
         Micro,
+        Combat,
     }
 
     /// <summary>

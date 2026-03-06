@@ -423,6 +423,19 @@ namespace ProjectGuild.View.UI
                             navBtn.AddToClassList("editor-step-nav-btn");
                             row.Add(navBtn);
                         }
+
+                        // Combat style override dropdown: only show for steps with FightHere micro rules
+                        if (HasFightHereAction(step.MicroRulesetId, sim))
+                        {
+                            var combatDropdown = CreateCombatStyleOverrideDropdown(
+                                step.CombatStyleOverrideId, sim, newStyleId =>
+                                {
+                                    sim.CommandSetWorkStepCombatStyleOverride(seq.Id, stepIndex, newStyleId);
+                                });
+                            combatDropdown.AddToClassList("editor-step-dropdown");
+                            combatDropdown.AddToClassList("editor-step-dropdown-combat");
+                            row.Add(combatDropdown);
+                        }
                         break;
 
                     case TaskStepType.Deposit:
@@ -614,10 +627,26 @@ namespace ProjectGuild.View.UI
             var choices = new List<string>();
             var displayNames = new List<string>();
 
-            foreach (var micro in sim.CurrentGameState.MicroRulesetLibrary)
+            // Sort by category then name for grouped display
+            var sorted = new List<Ruleset>(sim.CurrentGameState.MicroRulesetLibrary);
+            sorted.Sort((a, b) =>
+            {
+                int catCmp = a.Category.CompareTo(b.Category);
+                if (catCmp != 0) return catCmp;
+                return string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+            });
+
+            foreach (var micro in sorted)
             {
                 choices.Add(micro.Id);
-                displayNames.Add(micro.Name ?? micro.Id);
+                string prefix = micro.Category switch
+                {
+                    RulesetCategory.Gathering => "[G] ",
+                    RulesetCategory.Combat => "[C] ",
+                    RulesetCategory.Crafting => "[K] ",
+                    _ => "",
+                };
+                displayNames.Add($"{prefix}{micro.Name ?? micro.Id}");
             }
 
             // "+ New Micro Ruleset..." option (only when navigation callback is available)
@@ -667,6 +696,47 @@ namespace ProjectGuild.View.UI
             return dropdown;
         }
 
+        private static bool HasFightHereAction(string microRulesetId, GameSimulation sim)
+        {
+            if (string.IsNullOrEmpty(microRulesetId)) return false;
+            var ruleset = sim.CurrentGameState.MicroRulesetLibrary.Find(r => r.Id == microRulesetId);
+            if (ruleset?.Rules == null) return false;
+            foreach (var rule in ruleset.Rules)
+            {
+                if (rule.Action.Type == ActionType.FightHere)
+                    return true;
+            }
+            return false;
+        }
+
+        private DropdownField CreateCombatStyleOverrideDropdown(string currentStyleId,
+            GameSimulation sim, System.Action<string> onChange)
+        {
+            var choices = new List<string> { null };
+            var displayNames = new List<string> { "(runner default)" };
+
+            foreach (var style in sim.CurrentGameState.CombatStyleLibrary)
+            {
+                choices.Add(style.Id);
+                displayNames.Add(style.Name ?? style.Id);
+            }
+
+            var dropdown = new DropdownField(displayNames, 0);
+            dropdown.label = "Style:";
+            int currentIndex = choices.IndexOf(currentStyleId);
+            if (currentIndex >= 0)
+                dropdown.index = currentIndex;
+
+            dropdown.RegisterValueChangedCallback(evt =>
+            {
+                int idx = dropdown.index;
+                if (idx >= 0 && idx < choices.Count)
+                    onChange(choices[idx]);
+            });
+
+            return dropdown;
+        }
+
         // ─── Button Handlers ────────────────────────────
 
         private void OnNewClicked()
@@ -701,9 +771,26 @@ namespace ProjectGuild.View.UI
                             newStep = new TaskStep(TaskStepType.TravelTo, defaultNode);
                             break;
                         case TaskStepType.Work:
-                            newStep = new TaskStep(TaskStepType.Work,
-                                microRulesetId: DefaultRulesets.DefaultMicroId);
+                        {
+                            // Pick combat vs gather micro based on preceding TravelTo target
+                            string microId = DefaultRulesets.DefaultMicroId;
+                            var seq = sim.FindTaskSequenceInLibrary(_selectedId);
+                            if (seq?.Steps != null && seq.Steps.Count > 0)
+                            {
+                                var lastStep = seq.Steps[seq.Steps.Count - 1];
+                                if (lastStep.Type == TaskStepType.TravelTo)
+                                {
+                                    var targetNode = sim.CurrentGameState.Map?.GetNode(lastStep.TargetNodeId);
+                                    if (targetNode != null && targetNode.EnemySpawns.Length > 0
+                                        && targetNode.Gatherables.Length == 0)
+                                    {
+                                        microId = DefaultRulesets.DefaultCombatMicroId;
+                                    }
+                                }
+                            }
+                            newStep = new TaskStep(TaskStepType.Work, microRulesetId: microId);
                             break;
+                        }
                         default:
                             newStep = new TaskStep(type);
                             break;

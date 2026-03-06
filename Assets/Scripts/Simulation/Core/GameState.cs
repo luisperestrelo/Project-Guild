@@ -23,6 +23,7 @@ namespace ProjectGuild.Simulation.Core
         public Bank Bank = new();
         public DecisionLog MacroDecisionLog = new();
         public DecisionLog MicroDecisionLog = new();
+        public DecisionLog CombatDecisionLog = new();
         public LogbookState Logbook = new();
         public TutorialState Tutorial = new();
 

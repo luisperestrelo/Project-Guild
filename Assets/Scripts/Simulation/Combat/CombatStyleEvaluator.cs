@@ -37,8 +37,10 @@ namespace ProjectGuild.Simulation.Combat
         /// For ally-targeting rules (healer), returns null for enemy targeting;
         /// use EvaluateTargetingForAlly for ally resolution.
         /// </summary>
-        public static EnemyInstance EvaluateTargeting(CombatStyle style, CombatEvaluationContext ctx)
+        public static EnemyInstance EvaluateTargeting(CombatStyle style, CombatEvaluationContext ctx,
+            out int matchedRuleIndex)
         {
+            matchedRuleIndex = -1;
             if (style == null || style.TargetingRules == null) return null;
             if (ctx.Encounter == null) return null;
 
@@ -53,7 +55,10 @@ namespace ProjectGuild.Simulation.Combat
                 // Rule matched: resolve the TargetSelection to a concrete enemy
                 var target = ResolveEnemyTarget(rule.Selection, ctx);
                 if (target != null)
+                {
+                    matchedRuleIndex = i;
                     return target;
+                }
 
                 // Selection is ally-targeting (NearestAlly, LowestHpAlly): not an enemy target.
                 // Or no alive enemies matched. Either way, continue to next rule.
@@ -65,8 +70,10 @@ namespace ProjectGuild.Simulation.Combat
         /// Evaluate targeting rules to select an ally runner (for healing).
         /// Returns the resolved Runner or null.
         /// </summary>
-        public static Runner EvaluateTargetingForAlly(CombatStyle style, CombatEvaluationContext ctx)
+        public static Runner EvaluateTargetingForAlly(CombatStyle style, CombatEvaluationContext ctx,
+            out int matchedRuleIndex)
         {
+            matchedRuleIndex = -1;
             if (style == null || style.TargetingRules == null) return null;
 
             for (int i = 0; i < style.TargetingRules.Count; i++)
@@ -79,7 +86,10 @@ namespace ProjectGuild.Simulation.Combat
 
                 var ally = ResolveAllyTarget(rule.Selection, ctx);
                 if (ally != null)
+                {
+                    matchedRuleIndex = i;
                     return ally;
+                }
             }
             return null;
         }
@@ -92,7 +102,12 @@ namespace ProjectGuild.Simulation.Combat
         /// </summary>
         public static AbilityConfig EvaluateAbility(CombatStyle style, CombatEvaluationContext ctx,
             AbilityConfig[] abilityDefinitions, bool interruptOnly = false)
+            => EvaluateAbility(style, ctx, abilityDefinitions, out _, interruptOnly);
+
+        public static AbilityConfig EvaluateAbility(CombatStyle style, CombatEvaluationContext ctx,
+            AbilityConfig[] abilityDefinitions, out int matchedRuleIndex, bool interruptOnly = false)
         {
+            matchedRuleIndex = -1;
             if (style == null || style.AbilityRules == null) return null;
             if (abilityDefinitions == null) return null;
 
@@ -112,6 +127,7 @@ namespace ProjectGuild.Simulation.Combat
                 if (!CanUseAbility(ctx.Runner, ability, ctx.Config))
                     continue;
 
+                matchedRuleIndex = i;
                 return ability;
             }
             return null;
@@ -229,8 +245,73 @@ namespace ProjectGuild.Simulation.Combat
                     return !ctx.Runner.Fighting.CooldownTrackers.ContainsKey(condition.StringParam);
                 }
 
+                case CombatConditionType.LowestAllyHpPercent:
+                {
+                    string nodeId = ctx.Runner.CurrentNodeId;
+                    float lowestPct = 100f;
+                    bool foundAny = false;
+                    foreach (var r in ctx.GameState.Runners)
+                    {
+                        if (r.CurrentNodeId != nodeId) continue;
+                        if (r.State != RunnerState.Fighting && r.Id != ctx.Runner.Id) continue;
+                        if (r.CurrentHitpoints < 0f) continue;
+                        float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                            r.GetEffectiveLevel(SkillType.Hitpoints, ctx.Config), ctx.Config);
+                        float pct = maxHp > 0f ? (r.CurrentHitpoints / maxHp) * 100f : 0f;
+                        if (pct < lowestPct)
+                            lowestPct = pct;
+                        foundAny = true;
+                    }
+                    if (!foundAny) return false;
+                    return RuleEvaluator.Compare(lowestPct, condition.Operator, condition.NumericValue);
+                }
+
                 case CombatConditionType.EnemyIsCasting:
                     return false; // stub for future
+
+                case CombatConditionType.AnyUntauntedEnemy:
+                {
+                    if (ctx.Encounter == null) return false;
+                    foreach (var enemy in ctx.Encounter.Enemies)
+                    {
+                        if (enemy.IsAlive && enemy.TauntedByRunnerId != ctx.Runner.Id)
+                            return true;
+                    }
+                    return false;
+                }
+
+                case CombatConditionType.AlliesBelowHpPercent:
+                {
+                    string nodeId = ctx.Runner.CurrentNodeId;
+                    float hpThreshold = condition.NumericValue;
+                    int minCount = 1;
+                    if (!string.IsNullOrEmpty(condition.StringParam))
+                        int.TryParse(condition.StringParam, out minCount);
+
+                    int belowCount = 0;
+                    foreach (var r in ctx.GameState.Runners)
+                    {
+                        if (r.CurrentNodeId != nodeId) continue;
+                        if (r.State != RunnerState.Fighting && r.Id != ctx.Runner.Id) continue;
+                        if (r.CurrentHitpoints < 0f) continue;
+                        float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                            r.GetEffectiveLevel(SkillType.Hitpoints, ctx.Config), ctx.Config);
+                        float pct = maxHp > 0f ? (r.CurrentHitpoints / maxHp) * 100f : 0f;
+                        if (pct < hpThreshold)
+                            belowCount++;
+                    }
+                    return belowCount >= minCount;
+                }
+
+                case CombatConditionType.EnemyTargetingSelf:
+                {
+                    // Check if runner's current target is targeting (taunted by or would naturally attack) this runner
+                    if (ctx.Runner.Fighting == null || ctx.Encounter == null) return false;
+                    var target = ctx.Encounter.FindEnemy(ctx.Runner.Fighting.CurrentTargetEnemyId);
+                    if (target == null || !target.IsAlive) return false;
+                    // Enemy targets this runner if taunted by them, or if this runner is first fighter at node (default AI)
+                    return target.TauntedByRunnerId == ctx.Runner.Id;
+                }
 
                 default:
                     return false;
@@ -286,6 +367,37 @@ namespace ProjectGuild.Simulation.Combat
                             highest = enemy;
                     }
                     return highest;
+                }
+
+                case TargetSelection.NotTauntedBySelfEnemy:
+                {
+                    foreach (var enemy in ctx.Encounter.Enemies)
+                    {
+                        if (enemy.IsAlive && enemy.TauntedByRunnerId != ctx.Runner.Id)
+                            return enemy;
+                    }
+                    return null;
+                }
+
+                case TargetSelection.UntauntedEnemy:
+                {
+                    foreach (var enemy in ctx.Encounter.Enemies)
+                    {
+                        if (enemy.IsAlive && enemy.TauntedByRunnerId == null)
+                            return enemy;
+                    }
+                    return null;
+                }
+
+                case TargetSelection.EnemyTargetingAlly:
+                {
+                    // Find an enemy NOT targeting (taunted by) this runner
+                    foreach (var enemy in ctx.Encounter.Enemies)
+                    {
+                        if (enemy.IsAlive && enemy.TauntedByRunnerId != ctx.Runner.Id)
+                            return enemy;
+                    }
+                    return null;
                 }
 
                 // Ally selections don't resolve to an enemy

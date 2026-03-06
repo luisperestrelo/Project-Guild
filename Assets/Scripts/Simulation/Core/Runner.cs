@@ -376,6 +376,11 @@ namespace ProjectGuild.Simulation.Core
         public string CurrentTargetEnemyId;
 
         /// <summary>
+        /// Runner ID of the ally currently being targeted (for healing). Null = targeting enemy.
+        /// </summary>
+        public string CurrentTargetAllyId;
+
+        /// <summary>
         /// Ability currently being executed. Null = not mid-action.
         /// </summary>
         public string CurrentAbilityId;

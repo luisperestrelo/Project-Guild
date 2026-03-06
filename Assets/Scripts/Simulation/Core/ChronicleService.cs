@@ -17,6 +17,12 @@ namespace ProjectGuild.Simulation.Core
         private readonly Func<GameState> _getState;
         private readonly Func<SimulationConfig> _getConfig;
 
+        /// <summary>
+        /// Monotonically increasing counter. Incremented on every Add (including collapses).
+        /// Used by the UI to detect changes even when the buffer is full and entry count stays constant.
+        /// </summary>
+        public int GenerationCounter { get; private set; }
+
         public ChronicleService(int maxEntries, Func<GameState> getState,
             Func<SimulationConfig> getConfig = null)
         {
@@ -35,6 +41,8 @@ namespace ProjectGuild.Simulation.Core
 
         public void Add(ChronicleEntry entry)
         {
+            GenerationCounter++;
+
             // Collapsing: consecutive entries with same CollapseKey + RunnerId merge
             if (entry.CollapseKey != null && _entries.Count > 0)
             {
@@ -453,6 +461,7 @@ namespace ProjectGuild.Simulation.Core
                 RunnerName = name,
                 NodeId = e.NodeId,
                 Text = $"{name} engaged enemies at {nodeName}",
+                Direction = ChronicleDirection.Neutral,
             });
         }
 
@@ -464,10 +473,23 @@ namespace ProjectGuild.Simulation.Core
             bool isHeal = e.PrimaryEffectType == Combat.EffectType.Heal
                 || e.PrimaryEffectType == Combat.EffectType.HealSelf
                 || e.PrimaryEffectType == Combat.EffectType.HealAoe;
-            string text = isHeal
-                ? $"{name} used {abilityName} for {e.Value:F2} healing"
-                : $"{name} used {abilityName} on {targetName} for {e.Value:F2} damage";
+            string text;
+            if (isHeal)
+            {
+                string healTarget = e.HealTargetRunnerId != null ? RunnerName(e.HealTargetRunnerId) : "allies";
+                text = $"{name} used {abilityName} on {healTarget} for {e.Value:F2} healing";
+            }
+            else if (e.PrimaryEffectType == Combat.EffectType.DamageAoe)
+            {
+                text = $"{name} used {abilityName} for {e.Value:F2} damage (AoE)";
+            }
+            else
+            {
+                text = $"{name} used {abilityName} on {targetName} for {e.Value:F2} damage";
+            }
             if (e.WasKill) text += " (killed)";
+            if (e.SecondaryHealValue > 0f)
+                text += $", healed self for {e.SecondaryHealValue:F2}";
 
             Add(new ChronicleEntry
             {
@@ -478,6 +500,8 @@ namespace ProjectGuild.Simulation.Core
                 RunnerName = name,
                 NodeId = RunnerNodeId(e.RunnerId),
                 Text = text,
+                Direction = ChronicleDirection.Outgoing,
+                AffectedRunnerId = isHeal ? e.HealTargetRunnerId : null,
             });
         }
 
@@ -494,6 +518,7 @@ namespace ProjectGuild.Simulation.Core
                 RunnerName = name,
                 NodeId = e.NodeId,
                 Text = $"{name} defeated {enemyName}",
+                Direction = ChronicleDirection.Outgoing,
             });
         }
 
@@ -509,6 +534,7 @@ namespace ProjectGuild.Simulation.Core
                 RunnerName = name,
                 NodeId = RunnerNodeId(e.RunnerId),
                 Text = $"{name} received {e.Quantity}x {e.ItemId}",
+                Direction = ChronicleDirection.Incoming,
             });
         }
 
@@ -525,6 +551,7 @@ namespace ProjectGuild.Simulation.Core
                 RunnerName = name,
                 NodeId = e.NodeId,
                 Text = $"{name} was slain at {nodeName}",
+                Direction = ChronicleDirection.Incoming,
             });
         }
 
@@ -539,6 +566,7 @@ namespace ProjectGuild.Simulation.Core
                 RunnerId = e.RunnerId,
                 RunnerName = name,
                 Text = $"{name} has recovered at the Guild Hall",
+                Direction = ChronicleDirection.Neutral,
             });
         }
 
@@ -566,6 +594,7 @@ namespace ProjectGuild.Simulation.Core
                 RunnerName = runnerName,
                 NodeId = RunnerNodeId(e.RunnerId),
                 Text = $"{enemyName} attacked {runnerName} for {e.Damage:F2} damage ({runnerName} at {hpPercent:F2}%)",
+                Direction = ChronicleDirection.Incoming,
             });
         }
 

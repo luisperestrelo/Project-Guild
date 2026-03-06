@@ -200,6 +200,12 @@ namespace ProjectGuild.Simulation.Core
         public int MicroDecisionLogMaxEntries = 1000;
 
         /// <summary>
+        /// Maximum entries kept in the combat decision log (ring buffer eviction).
+        /// Combat decisions fire per ability selection (target + ability chosen).
+        /// </summary>
+        public int CombatDecisionLogMaxEntries = 1000;
+
+        /// <summary>
         /// (Dev only) Maximum entries kept in the event log (ring buffer eviction).
         /// The event log is for debugging, not player-facing. 500 covers several minutes.
         /// </summary>
@@ -251,9 +257,9 @@ namespace ProjectGuild.Simulation.Core
         public float ManaPerRestorationLevel = 3f;
 
         /// <summary>
-        /// Flat mana regenerated every tick. At 10 ticks/sec, 0.5 = 5 mana/sec.
+        /// Flat mana regenerated every tick. At 10 ticks/sec, 0.15 = 1.5 mana/sec.
         /// </summary>
-        public float BaseManaRegenPerTick = 0.5f;
+        public float BaseManaRegenPerTick = 0.15f;
 
         /// <summary>
         /// Base disengage time in ticks before Athletics reduction.
@@ -278,6 +284,13 @@ namespace ProjectGuild.Simulation.Core
         /// A 10-tick ability awards 10 * this value in XP to the ability's governing skill.
         /// </summary>
         public float CombatXpPerActionTimeTick = 1.0f;
+
+        /// <summary>
+        /// Multiplier on combat XP for Restoration abilities.
+        /// Healers cast less frequently (longer action times, mana-gated), so they need
+        /// a higher XP rate per action-tick to keep pace with melee/magic leveling.
+        /// </summary>
+        public float RestorationXpMultiplier = 2.0f;
 
         /// <summary>
         /// Percentage damage reduction per Defence skill level.

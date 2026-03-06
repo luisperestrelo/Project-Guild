@@ -60,6 +60,12 @@ namespace ProjectGuild.Simulation.Combat
         HighestHpEnemy,
         NearestAlly,
         LowestHpAlly,
+        /// <summary>First alive enemy not taunted by this runner.</summary>
+        NotTauntedBySelfEnemy,
+        /// <summary>First alive enemy not taunted by anyone.</summary>
+        UntauntedEnemy,
+        /// <summary>First alive enemy NOT targeting this runner (attacking an ally).</summary>
+        EnemyTargetingAlly,
     }
 
     /// <summary>

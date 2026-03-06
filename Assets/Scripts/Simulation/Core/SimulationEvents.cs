@@ -157,8 +157,10 @@ namespace ProjectGuild.Simulation.Core
         public string RunnerId;
         public string AbilityId;
         public string TargetEnemyInstanceId;
+        public string HealTargetRunnerId;
         public Combat.EffectType PrimaryEffectType;
         public float Value;
+        public float SecondaryHealValue;
         public bool WasKill;
     }
 

@@ -475,6 +475,8 @@ namespace ProjectGuild.View
                 case "nodes": HandleNodes(); break;
                 case "items": HandleItems(); break;
                 case "tutorial": HandleTutorial(parts); break;
+                case "heal": HandleHeal(parts); break;
+                case "mana": HandleMana(parts); break;
                 case "clear": ClearOutput(); break;
                 default:
                     Print($"<color=#CC4444>Unknown command: {cmd}. Type /help for commands.</color>");
@@ -506,6 +508,7 @@ namespace ProjectGuild.View
             Print("  /spawn mining 50 P woodcutting 30 Custom stats (P = passion)");
             Print("  /spawn \"Name\" mining 50 P         Named + custom stats");
             Print("  /spawn gatherer \"Name\" 50 P       Named preset");
+            Print("  /spawn combattest                 One runner per ability (combat testing)");
             Print("");
             Print("<color=#DCB43C>--- Inspection ---</color>");
             Print("  /inspect [name]           Full runner state dump");
@@ -524,6 +527,8 @@ namespace ProjectGuild.View
             Print("  /empty [name]               Clear inventory");
             Print("  /xp [name] <skill> <amount> Grant XP");
             Print("  /level [name] <skill> <lvl> Set skill level");
+            Print("  /heal [name]                Heal to full HP (all if no name)");
+            Print("  /mana [name]                Restore full mana (all if no name)");
             Print("  /assign [name] <node>       Work At (creates gather loop)");
             Print("  /idle [name]                Force idle");
             Print("  /tp [name] <node>           Teleport to node");
@@ -638,6 +643,12 @@ namespace ProjectGuild.View
                 Sim.AddRunner(runner);
                 Print($"Spawned tutorial runner: <color=#7CCD7C>{runner.Name}</color> at {hubId}");
                 PrintRunnerSkillSummary(runner);
+                return;
+            }
+
+            if (sub == "combattest")
+            {
+                HandleSpawnCombatTest();
                 return;
             }
 
@@ -844,6 +855,116 @@ namespace ProjectGuild.View
 
             // Try exact enum parse
             return Enum.TryParse(input, true, out result);
+        }
+
+        /// <summary>
+        /// Creates one test runner per combat ability, each with the right skill level to use it,
+        /// a dedicated combat style with only that ability, and named after the ability.
+        /// Usage: /spawn combattest
+        /// </summary>
+        private void HandleSpawnCombatTest()
+        {
+            if (Sim == null) { Print("<color=#CC4444>No simulation running.</color>"); return; }
+
+            string hubId = Sim.CurrentGameState.Map.HubNodeId;
+            var abilities = Sim.Config.AbilityDefinitions;
+            if (abilities == null || abilities.Length == 0)
+            {
+                Print("<color=#CC4444>No abilities defined in config.</color>");
+                return;
+            }
+
+            int count = 0;
+            foreach (var ability in abilities)
+            {
+                // Create a combat style with just this ability (+ Basic Attack fallback)
+                string styleId = $"test-style-{ability.Id}";
+                var style = new CombatStyle
+                {
+                    Id = styleId,
+                    Name = $"Test: {ability.Name}",
+                    TargetingRules =
+                    {
+                        new TargetingRule
+                        {
+                            Label = "Attack nearest",
+                            Conditions = { CombatCondition.Always() },
+                            Selection = TargetSelection.NearestEnemy,
+                            Enabled = true,
+                        },
+                    },
+                    AbilityRules =
+                    {
+                        new AbilityRule
+                        {
+                            Label = ability.Name,
+                            Conditions = { CombatCondition.Always() },
+                            AbilityId = ability.Id,
+                            Enabled = true,
+                        },
+                    },
+                };
+
+                // Add Basic Attack fallback if this isn't already Basic Attack
+                if (ability.Id != "basic_attack")
+                {
+                    style.AbilityRules.Add(new AbilityRule
+                    {
+                        Label = "Basic Attack (fallback)",
+                        Conditions = { CombatCondition.Always() },
+                        AbilityId = "basic_attack",
+                        Enabled = true,
+                    });
+                }
+
+                // For healer abilities, add ally targeting first
+                if (ability.SkillType == SkillType.Restoration)
+                {
+                    style.TargetingRules.Insert(0, new TargetingRule
+                    {
+                        Label = "Heal weakest ally",
+                        Conditions = { CombatCondition.LowestAllyHpPercent(
+                            ComparisonOperator.LessThan, 80f) },
+                        Selection = TargetSelection.LowestHpAlly,
+                        Enabled = true,
+                    });
+                }
+
+                // Add style to library (remove existing with same ID first)
+                Sim.CurrentGameState.CombatStyleLibrary.RemoveAll(s => s.Id == styleId);
+                Sim.CurrentGameState.CombatStyleLibrary.Add(style);
+
+                // Create the runner with the right skill level + high survivability
+                int requiredLevel = Math.Max(ability.UnlockLevel, 5);
+                var def = new RunnerFactory.RunnerDefinition();
+                def.Name = $"Test_{ability.Name.Replace(" ", "")}";
+                def.WithSkill(ability.SkillType, requiredLevel, true);
+                def.WithSkill(SkillType.Hitpoints, 50);
+                def.WithSkill(SkillType.Defence, 40);
+                def.WithSkill(SkillType.Athletics, 30);
+                // Melee for basic attack fallback
+                if (ability.SkillType != SkillType.Melee)
+                    def.WithSkill(SkillType.Melee, 3);
+
+                var runner = RunnerFactory.CreateFromDefinition(
+                    def, hubId, Sim.Config.InventorySize, new System.Random(), Sim.Config);
+                runner.CombatStyleId = styleId;
+
+                // Give the runner a fight micro + sequence
+                var fightMicro = DefaultRulesets.CreateDefaultCombatMicro();
+                bool hasMicro = false;
+                foreach (var m in Sim.CurrentGameState.MicroRulesetLibrary)
+                    if (m.Id == fightMicro.Id) { hasMicro = true; break; }
+                if (!hasMicro)
+                    Sim.CurrentGameState.MicroRulesetLibrary.Add(fightMicro);
+
+                Sim.AddRunner(runner);
+                count++;
+                Print($"  <color=#7CCD7C>{runner.Name}</color> — {ability.SkillType} Lv{requiredLevel}P, style: {style.Name}");
+            }
+
+            Print($"<color=#DCB43C>Spawned {count} combat test runners at hub.</color>");
+            Print("Use /assign <name> goblin_camp to send them to fight.");
         }
 
         private void PrintRunnerSkillSummary(Runner runner)
@@ -1532,6 +1653,7 @@ namespace ProjectGuild.View
             Print($"  Event Log: {Sim.EventLog.Entries.Count} entries");
             Print($"  Macro Decision Log: {gs.MacroDecisionLog.Entries.Count} entries");
             Print($"  Micro Decision Log: {gs.MicroDecisionLog.Entries.Count} entries");
+            Print($"  Combat Decision Log: {gs.CombatDecisionLog.Entries.Count} entries");
         }
 
         private void HandleNodes()
@@ -1561,6 +1683,44 @@ namespace ProjectGuild.View
         }
 
         // ─── Tutorial ─────────────────────────────────────────────
+
+        private void HandleHeal(string[] parts)
+        {
+            // /heal [name] — heal to full HP. No name = heal all.
+            if (Sim == null) { Print("<color=#CC4444>No simulation running.</color>"); return; }
+
+            var runners = parts.Length >= 2
+                ? new List<Runner> { ResolveRunner(parts[1]) }
+                : new List<Runner>(Sim.CurrentGameState.Runners);
+            runners.RemoveAll(r => r == null);
+
+            foreach (var runner in runners)
+            {
+                float hpLevel = runner.GetEffectiveLevel(SkillType.Hitpoints, Sim.Config);
+                float maxHp = CombatFormulas.CalculateMaxHitpoints(hpLevel, Sim.Config);
+                runner.CurrentHitpoints = maxHp;
+                Print($"  <color=#7CCD7C>{runner.Name}</color> healed to {maxHp:F0} HP");
+            }
+        }
+
+        private void HandleMana(string[] parts)
+        {
+            // /mana [name] — restore to full mana. No name = all runners.
+            if (Sim == null) { Print("<color=#CC4444>No simulation running.</color>"); return; }
+
+            var runners = parts.Length >= 2
+                ? new List<Runner> { ResolveRunner(parts[1]) }
+                : new List<Runner>(Sim.CurrentGameState.Runners);
+            runners.RemoveAll(r => r == null);
+
+            foreach (var runner in runners)
+            {
+                float resLevel = runner.GetEffectiveLevel(SkillType.Restoration, Sim.Config);
+                float maxMana = CombatFormulas.CalculateMaxMana(resLevel, Sim.Config);
+                runner.CurrentMana = maxMana;
+                Print($"  <color=#7CCD7C>{runner.Name}</color> mana restored to {maxMana:F0}");
+            }
+        }
 
         private void HandleTutorial(string[] parts)
         {

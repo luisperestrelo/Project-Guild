@@ -33,8 +33,20 @@ namespace ProjectGuild.Simulation.Combat
         /// <summary>True if the specified ability is off cooldown. StringParam = abilityId.</summary>
         AbilityOffCooldown,
 
+        /// <summary>Lowest ally HP percentage at this node (including self). Operator + NumericValue (0-100).</summary>
+        LowestAllyHpPercent,
+
         /// <summary>True if the current target is casting (future, stub). Always returns false.</summary>
         EnemyIsCasting,
+
+        /// <summary>True if any alive enemy at this node is NOT taunted by this runner. No params.</summary>
+        AnyUntauntedEnemy,
+
+        /// <summary>Count of allies at this node below NumericValue% HP. Operator + NumericValue for threshold, StringParam for count comparison.</summary>
+        AlliesBelowHpPercent,
+
+        /// <summary>True if the current target is attacking (targeting) this runner. No params.</summary>
+        EnemyTargetingSelf,
     }
 
     /// <summary>
@@ -84,7 +96,23 @@ namespace ProjectGuild.Simulation.Combat
         public static CombatCondition AlliesInCombatAtNode(Automation.ComparisonOperator op, int count)
             => new CombatCondition { Type = CombatConditionType.AlliesInCombatAtNode, Operator = op, NumericValue = count };
 
+        public static CombatCondition LowestAllyHpPercent(Automation.ComparisonOperator op, float percent)
+            => new CombatCondition { Type = CombatConditionType.LowestAllyHpPercent, Operator = op, NumericValue = percent };
+
         public static CombatCondition AbilityOffCooldown(string abilityId)
             => new CombatCondition { Type = CombatConditionType.AbilityOffCooldown, StringParam = abilityId };
+
+        public static CombatCondition AnyUntauntedEnemy()
+            => new CombatCondition { Type = CombatConditionType.AnyUntauntedEnemy };
+
+        /// <summary>
+        /// True if at least `count` allies at this node are below `hpPercent`% HP.
+        /// NumericValue = HP threshold (0-100), StringParam = minimum count as string.
+        /// </summary>
+        public static CombatCondition AlliesBelowHpPercent(float hpPercent, int minCount)
+            => new CombatCondition { Type = CombatConditionType.AlliesBelowHpPercent, NumericValue = hpPercent, StringParam = minCount.ToString() };
+
+        public static CombatCondition EnemyTargetingSelf()
+            => new CombatCondition { Type = CombatConditionType.EnemyTargetingSelf };
     }
 }

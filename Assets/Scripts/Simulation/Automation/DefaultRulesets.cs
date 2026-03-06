@@ -13,6 +13,7 @@ namespace ProjectGuild.Simulation.Automation
         public const string DefaultMicroId = "default-micro";
         public const string ReturnToHubSequenceId = "return-to-hub";
         public const string DefaultGatherSequenceId = "default-gather-copper";
+        public const string DefaultFightSequenceId = "default-fight-goblin-camp";
 
         // Combat style IDs
         public const string BasicMeleeCombatStyleId = "basic-melee";
@@ -23,6 +24,9 @@ namespace ProjectGuild.Simulation.Automation
         public const string GatherLoopTemplateId = "builtin-gather-loop";
         public const string TravelAndWorkTemplateId = "builtin-travel-work";
         public const string ReturnAndDepositTemplateId = "builtin-return-deposit";
+
+        // Default combat micro
+        public const string DefaultCombatMicroId = "default-combat-micro";
 
         // Built-in rule template IDs
         public const string BasicGatherTemplateId = "builtin-basic-gather";
@@ -54,6 +58,38 @@ namespace ProjectGuild.Simulation.Automation
                 Label = "Gather any resource",
                 Conditions = { Condition.Always() },
                 Action = AutomationAction.GatherAny(),
+                Enabled = true,
+            });
+
+            return ruleset;
+        }
+
+        /// <summary>
+        /// Default combat micro ruleset: InventoryFull → FinishTask, Always → FightHere.
+        /// The "fight whatever's here" equivalent of Default Gather.
+        /// </summary>
+        public static Ruleset CreateDefaultCombatMicro()
+        {
+            var ruleset = new Ruleset
+            {
+                Id = DefaultCombatMicroId,
+                Name = "Default Fight",
+                Category = RulesetCategory.Combat,
+            };
+
+            ruleset.Rules.Add(new Rule
+            {
+                Label = "Deposit when full",
+                Conditions = { Condition.InventoryFull() },
+                Action = AutomationAction.FinishTask(),
+                Enabled = true,
+            });
+
+            ruleset.Rules.Add(new Rule
+            {
+                Label = "Fight here",
+                Conditions = { Condition.Always() },
+                Action = AutomationAction.FightHere(),
                 Enabled = true,
             });
 
@@ -104,6 +140,28 @@ namespace ProjectGuild.Simulation.Automation
         }
 
         /// <summary>
+        /// Pre-created example sequence: standard fight loop at the first combat node.
+        /// Gives new players a working example for combat loops.
+        /// </summary>
+        public static TaskSequence CreateDefaultFightSequence(string hubNodeId, string targetNodeId, string targetNodeName)
+        {
+            return new TaskSequence
+            {
+                Id = DefaultFightSequenceId,
+                Name = $"Fight at {targetNodeName}",
+                TargetNodeId = targetNodeId,
+                Loop = true,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo, targetNodeId),
+                    new TaskStep(TaskStepType.Work, microRulesetId: DefaultCombatMicroId),
+                    new TaskStep(TaskStepType.TravelTo, hubNodeId),
+                    new TaskStep(TaskStepType.Deposit),
+                },
+            };
+        }
+
+        /// <summary>
         /// Ensure the default micro ruleset and ReturnToHub sequence exist in the library.
         /// Called during StartNewGame and LoadState. Idempotent — skips if already present.
         /// Macro rulesets have no default — runners start with null (no auto-switching)
@@ -116,6 +174,13 @@ namespace ProjectGuild.Simulation.Automation
                 if (r.Id == DefaultMicroId) { hasMicro = true; break; }
 
             if (!hasMicro) state.MicroRulesetLibrary.Add(CreateDefaultMicro());
+
+            // Ensure default combat micro exists
+            bool hasCombatMicro = false;
+            foreach (var r in state.MicroRulesetLibrary)
+                if (r.Id == DefaultCombatMicroId) { hasCombatMicro = true; break; }
+
+            if (!hasCombatMicro) state.MicroRulesetLibrary.Add(CreateDefaultCombatMicro());
 
             // Ensure ReturnToHub sequence exists in library
             string hubId = state.Map?.HubNodeId ?? "hub";
@@ -139,6 +204,24 @@ namespace ProjectGuild.Simulation.Automation
                     {
                         state.TaskSequenceLibrary.Add(
                             CreateDefaultGatherSequence(hubId, node.Id, node.Name ?? node.Id));
+                        break;
+                    }
+                }
+            }
+
+            // Ensure default fight sequence exists — targets the first combat node
+            bool hasFight = false;
+            foreach (var s in state.TaskSequenceLibrary)
+                if (s.Id == DefaultFightSequenceId) { hasFight = true; break; }
+
+            if (!hasFight && state.Map?.Nodes != null)
+            {
+                foreach (var node in state.Map.Nodes)
+                {
+                    if (node.Id != hubId && node.EnemySpawns.Length > 0 && node.Gatherables.Length == 0)
+                    {
+                        state.TaskSequenceLibrary.Add(
+                            CreateDefaultFightSequence(hubId, node.Id, node.Name ?? node.Id));
                         break;
                     }
                 }
@@ -236,6 +319,9 @@ namespace ProjectGuild.Simulation.Automation
         /// </summary>
         public static CombatStyle CreateBasicHealerCombatStyle()
         {
+            var allyHurt = CombatCondition.LowestAllyHpPercent(
+                Automation.ComparisonOperator.LessThan, 80f);
+
             return new CombatStyle
             {
                 Id = BasicHealerCombatStyleId,
@@ -245,8 +331,15 @@ namespace ProjectGuild.Simulation.Automation
                     new TargetingRule
                     {
                         Label = "Heal weakest ally",
-                        Conditions = { CombatCondition.Always() },
+                        Conditions = { allyHurt.DeepCopy() },
                         Selection = TargetSelection.LowestHpAlly,
+                        Enabled = true,
+                    },
+                    new TargetingRule
+                    {
+                        Label = "Attack nearest",
+                        Conditions = { CombatCondition.Always() },
+                        Selection = TargetSelection.NearestEnemy,
                         Enabled = true,
                     },
                 },
@@ -255,8 +348,15 @@ namespace ProjectGuild.Simulation.Automation
                     new AbilityRule
                     {
                         Label = "Heal",
-                        Conditions = { CombatCondition.Always() },
+                        Conditions = { allyHurt.DeepCopy() },
                         AbilityId = "heal",
+                        Enabled = true,
+                    },
+                    new AbilityRule
+                    {
+                        Label = "Basic Attack",
+                        Conditions = { CombatCondition.Always() },
+                        AbilityId = "basic_attack",
                         Enabled = true,
                     },
                 },

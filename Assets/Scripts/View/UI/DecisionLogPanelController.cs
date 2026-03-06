@@ -15,9 +15,9 @@ namespace ProjectGuild.View.UI
 
     /// <summary>
     /// Controls the Decision Log content panel.
-    /// Reads from MacroDecisionLog and MicroDecisionLog and displays automation
-    /// decision entries with scope filtering (node/runner/all) and layer filtering
-    /// (all/macro/micro). Collapse/expand is owned by the parent LogPanelContainerController.
+    /// Reads from MacroDecisionLog, MicroDecisionLog, and CombatDecisionLog.
+    /// Displays decision entries with scope filtering (node/runner/all) and layer filtering
+    /// (all/macro/micro/combat). Collapse/expand is owned by the parent LogPanelContainerController.
     /// Plain C# class (not MonoBehaviour).
     /// </summary>
     public class DecisionLogPanelController
@@ -32,6 +32,8 @@ namespace ProjectGuild.View.UI
         private readonly Button _layerAllBtn;
         private readonly Button _layerMacroBtn;
         private readonly Button _layerMicroBtn;
+        private readonly Button _layerCombatBtn;
+        private readonly TextField _searchField;
         private readonly ScrollView _scrollView;
         private readonly VisualElement _entriesContainer;
         private readonly Label _newEntriesIndicator;
@@ -39,9 +41,11 @@ namespace ProjectGuild.View.UI
         // ─── State ───────────────────────────────────────
         private DecisionLogScopeFilter _activeScopeFilter = DecisionLogScopeFilter.SelectedRunner;
         private DecisionLayer? _activeLayerFilter; // null = all
+        private string _searchText = "";
         private bool _userScrolledUp;
         private int _lastMacroGeneration;
         private int _lastMicroGeneration;
+        private int _lastCombatGeneration;
         private string _lastFilterTarget;
 
         private const int MaxDisplayedEntries = 100;
@@ -70,10 +74,20 @@ namespace ProjectGuild.View.UI
             _layerAllBtn = root.Q<Button>("layer-all");
             _layerMacroBtn = root.Q<Button>("layer-macro");
             _layerMicroBtn = root.Q<Button>("layer-micro");
+            _layerCombatBtn = root.Q<Button>("layer-combat");
 
             _layerAllBtn.clicked += () => SetLayerFilter(null);
             _layerMacroBtn.clicked += () => SetLayerFilter(DecisionLayer.Macro);
             _layerMicroBtn.clicked += () => SetLayerFilter(DecisionLayer.Micro);
+            _layerCombatBtn.clicked += () => SetLayerFilter(DecisionLayer.Combat);
+
+            // Search bar
+            _searchField = root.Q<TextField>("decision-log-search");
+            _searchField.RegisterValueChangedCallback(evt =>
+            {
+                _searchText = evt.newValue ?? "";
+                ForceRefreshOnNextTick();
+            });
 
             // Scroll area
             _scrollView = root.Q<ScrollView>("decision-log-scroll");
@@ -132,6 +146,7 @@ namespace ProjectGuild.View.UI
             SetFilterActive(_layerAllBtn, layer == null);
             SetFilterActive(_layerMacroBtn, layer == DecisionLayer.Macro);
             SetFilterActive(_layerMicroBtn, layer == DecisionLayer.Micro);
+            SetFilterActive(_layerCombatBtn, layer == DecisionLayer.Combat);
             ForceRefreshOnNextTick();
         }
 
@@ -139,6 +154,7 @@ namespace ProjectGuild.View.UI
         {
             _lastMacroGeneration = -1;
             _lastMicroGeneration = -1;
+            _lastCombatGeneration = -1;
             Refresh(); // also refresh immediately so filter changes work while paused
         }
 
@@ -185,15 +201,20 @@ namespace ProjectGuild.View.UI
             // Check generation counters — detects changes even when buffer is full
             var macroLog = sim.CurrentGameState.MacroDecisionLog;
             var microLog = sim.CurrentGameState.MicroDecisionLog;
+            var combatLog = sim.CurrentGameState.CombatDecisionLog;
             int macroGen = macroLog.GenerationCounter;
             int microGen = microLog.GenerationCounter;
+            int combatGen = combatLog.GenerationCounter;
 
-            if (macroGen == _lastMacroGeneration && microGen == _lastMicroGeneration)
+            if (macroGen == _lastMacroGeneration && microGen == _lastMicroGeneration
+                && combatGen == _lastCombatGeneration)
                 return;
 
-            bool hadNewEntries = _lastMacroGeneration >= 0 || _lastMicroGeneration >= 0;
+            bool hadNewEntries = _lastMacroGeneration >= 0 || _lastMicroGeneration >= 0
+                || _lastCombatGeneration >= 0;
             _lastMacroGeneration = macroGen;
             _lastMicroGeneration = microGen;
+            _lastCombatGeneration = combatGen;
 
             var entries = GetFilteredEntries(sim);
             int limit = System.Math.Min(entries.Count, MaxDisplayedEntries);
@@ -220,7 +241,8 @@ namespace ProjectGuild.View.UI
             var sim = _uiManager.Simulation;
             if (sim == null) return 0;
             return sim.CurrentGameState.MacroDecisionLog.Entries.Count
-                 + sim.CurrentGameState.MicroDecisionLog.Entries.Count;
+                 + sim.CurrentGameState.MicroDecisionLog.Entries.Count
+                 + sim.CurrentGameState.CombatDecisionLog.Entries.Count;
         }
 
         private string GetFilterTarget(GameSimulation sim)
@@ -246,17 +268,37 @@ namespace ProjectGuild.View.UI
             string selectedRunnerId = _uiManager.SelectedRunnerId;
             var macroLog = sim.CurrentGameState.MacroDecisionLog;
             var microLog = sim.CurrentGameState.MicroDecisionLog;
+            var combatLog = sim.CurrentGameState.CombatDecisionLog;
 
             // If filtering to a specific layer, only query that log
             if (_activeLayerFilter == DecisionLayer.Macro)
-                return GetFilteredFromLog(macroLog, selectedRunnerId, sim);
+                return ApplySearchFilter(GetFilteredFromLog(macroLog, selectedRunnerId, sim));
             if (_activeLayerFilter == DecisionLayer.Micro)
-                return GetFilteredFromLog(microLog, selectedRunnerId, sim);
+                return ApplySearchFilter(GetFilteredFromLog(microLog, selectedRunnerId, sim));
+            if (_activeLayerFilter == DecisionLayer.Combat)
+                return ApplySearchFilter(GetFilteredFromLog(combatLog, selectedRunnerId, sim));
 
-            // All layers — merge both logs
+            // All layers — merge all three logs
             var macroEntries = GetFilteredFromLog(macroLog, selectedRunnerId, sim);
             var microEntries = GetFilteredFromLog(microLog, selectedRunnerId, sim);
-            return MergeMostRecentFirst(macroEntries, microEntries);
+            var combatEntries = GetFilteredFromLog(combatLog, selectedRunnerId, sim);
+            var merged = MergeMostRecentFirst(
+                MergeMostRecentFirst(macroEntries, microEntries), combatEntries);
+            return ApplySearchFilter(merged);
+        }
+
+        private List<DecisionLogEntry> ApplySearchFilter(List<DecisionLogEntry> entries)
+        {
+            if (string.IsNullOrEmpty(_searchText)) return entries;
+            string search = _searchText.ToLowerInvariant();
+            var result = new List<DecisionLogEntry>();
+            foreach (var e in entries)
+            {
+                string text = $"{e.RunnerName}: {e.ConditionSnapshot} {e.ActionDetail}";
+                if (text.ToLowerInvariant().Contains(search))
+                    result.Add(e);
+            }
+            return result;
         }
 
         private List<DecisionLogEntry> GetFilteredFromLog(
@@ -335,7 +377,13 @@ namespace ProjectGuild.View.UI
 
                 // Format: "[timestamp] [LAYER] RunnerName: Condition -> Action"
                 string timestamp = TimeFormatHelper.FormatElapsedTime(entry.GameTime);
-                string layerTag = entry.Layer == DecisionLayer.Macro ? "MACRO" : "MICRO";
+                string layerTag;
+                switch (entry.Layer)
+                {
+                    case DecisionLayer.Macro: layerTag = "MACRO"; break;
+                    case DecisionLayer.Combat: layerTag = "COMBAT"; break;
+                    default: layerTag = "MICRO"; break;
+                }
                 string deferred = entry.WasDeferred ? " (deferred)" : "";
                 string interrupted = entry.WasInterrupted ? " [INTERRUPT]" : "";
                 textLabel.text = $"[{timestamp}] [{layerTag}] {entry.RunnerName}: {entry.ConditionSnapshot} \u2192 {entry.ActionDetail}{deferred}{interrupted}";
@@ -343,12 +391,15 @@ namespace ProjectGuild.View.UI
                 // Update layer class
                 row.RemoveFromClassList("entry-macro");
                 row.RemoveFromClassList("entry-micro");
+                row.RemoveFromClassList("entry-combat");
                 row.RemoveFromClassList("entry-interrupted");
 
-                if (entry.Layer == DecisionLayer.Macro)
-                    row.AddToClassList("entry-macro");
-                else
-                    row.AddToClassList("entry-micro");
+                switch (entry.Layer)
+                {
+                    case DecisionLayer.Macro: row.AddToClassList("entry-macro"); break;
+                    case DecisionLayer.Combat: row.AddToClassList("entry-combat"); break;
+                    default: row.AddToClassList("entry-micro"); break;
+                }
 
                 if (entry.WasInterrupted)
                     row.AddToClassList("entry-interrupted");

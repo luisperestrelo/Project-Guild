@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Automation;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Core;
 
 namespace ProjectGuild.View.UI
@@ -80,6 +81,28 @@ namespace ProjectGuild.View.UI
         private Button _btnMicroForkWithOverrides;
         private Button _btnMicroClearAllOverrides;
 
+        // ─── Combat sub-tab (persistent UXML elements) ──────
+        private readonly Button _subTabCombat;
+        private readonly ScrollView _contentCombat;
+        private readonly Label _combatNameLabel;
+        private readonly Label _combatUsageLabel;
+        private readonly VisualElement _combatRulesContainer;
+        private readonly Button _btnEditCombat;
+        private readonly Button _btnChangeCombat;
+        private readonly Button _btnNewCombat;
+        private readonly Button _btnCopyCombat;
+        private readonly Button _btnClearCombat;
+
+        // ─── Combat cached rule rows ──────
+        private string _cachedCombatShapeKey;
+        private readonly List<(VisualElement row, Label text)> _combatRuleRowCache = new();
+
+        // ─── Ability Browser ──────
+        private readonly Button _btnToggleAbilityBrowser;
+        private readonly VisualElement _abilityBrowserContent;
+        private bool _abilityBrowserExpanded;
+        private string _cachedAbilityBrowserKey;
+
         private string _currentRunnerId;
 
         // ─── Copy Setup / Copy From buttons ──────
@@ -96,14 +119,18 @@ namespace ProjectGuild.View.UI
             _subTabMacro = root.Q<Button>("sub-tab-macro");
             _subTabMicro = root.Q<Button>("sub-tab-micro");
 
+            _subTabCombat = root.Q<Button>("sub-tab-combat");
+
             _subTabTaskSeq.clicked += () => SwitchSubTab("taskseq");
             _subTabMacro.clicked += () => SwitchSubTab("macro");
             _subTabMicro.clicked += () => SwitchSubTab("micro");
+            _subTabCombat.clicked += () => SwitchSubTab("combat");
 
             // Sub-tab content
             _contentTaskSeq = root.Q<ScrollView>("sub-content-taskseq");
             _contentMacro = root.Q<ScrollView>("sub-content-macro");
             _contentMicro = root.Q<ScrollView>("sub-content-micro");
+            _contentCombat = root.Q<ScrollView>("sub-content-combat");
 
             // Task Sequence elements
             _taskSeqNameLabel = root.Q<Label>("taskseq-name-label");
@@ -188,6 +215,39 @@ namespace ProjectGuild.View.UI
 
             _contentMicro.Add(_microOverrideRow);
 
+            // Combat elements
+            _combatNameLabel = root.Q<Label>("combat-name-label");
+            _combatUsageLabel = root.Q<Label>("combat-usage-label");
+            _combatRulesContainer = root.Q("combat-rules-container");
+
+            // Combat action buttons
+            _btnEditCombat = root.Q<Button>("btn-edit-combat");
+            _btnChangeCombat = root.Q<Button>("btn-change-combat");
+            _btnNewCombat = root.Q<Button>("btn-new-combat");
+            _btnCopyCombat = root.Q<Button>("btn-copy-combat");
+            _btnClearCombat = root.Q<Button>("btn-clear-combat");
+
+            _btnEditCombat.clicked += OnEditCombatClicked;
+            _btnChangeCombat.clicked += OnChangeCombatClicked;
+            _btnNewCombat.clicked += OnNewCombatClicked;
+            _btnCopyCombat.clicked += OnCopyCombatClicked;
+            _btnClearCombat.clicked += OnClearCombatClicked;
+
+            // Ability Browser (collapsible section in Combat sub-tab)
+            _btnToggleAbilityBrowser = root.Q<Button>("btn-toggle-ability-browser");
+            _abilityBrowserContent = root.Q("ability-browser-content");
+            _abilityBrowserContent.style.display = DisplayStyle.None;
+            _btnToggleAbilityBrowser.clicked += () =>
+            {
+                _abilityBrowserExpanded = !_abilityBrowserExpanded;
+                _abilityBrowserContent.style.display = _abilityBrowserExpanded
+                    ? DisplayStyle.Flex : DisplayStyle.None;
+                _btnToggleAbilityBrowser.text = _abilityBrowserExpanded
+                    ? "Abilities \u25B2" : "Abilities \u25BC";
+                if (_abilityBrowserExpanded)
+                    _cachedAbilityBrowserKey = null; // force rebuild on next refresh
+            };
+
             // Copy Setup / Copy from... buttons (below sub-tab bar)
             var copyRow = new VisualElement();
             copyRow.AddToClassList("auto-copy-row");
@@ -214,6 +274,7 @@ namespace ProjectGuild.View.UI
             _cachedTaskSeqShapeKey = null;
             _cachedMacroShapeKey = null;
             _cachedMicroShapeKey = null;
+            _cachedCombatShapeKey = null;
             Refresh();
         }
 
@@ -224,10 +285,12 @@ namespace ProjectGuild.View.UI
             SetSubTabActive(_subTabTaskSeq, tabName == "taskseq");
             SetSubTabActive(_subTabMacro, tabName == "macro");
             SetSubTabActive(_subTabMicro, tabName == "micro");
+            SetSubTabActive(_subTabCombat, tabName == "combat");
 
             _contentTaskSeq.style.display = tabName == "taskseq" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentMacro.style.display = tabName == "macro" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentMicro.style.display = tabName == "micro" ? DisplayStyle.Flex : DisplayStyle.None;
+            _contentCombat.style.display = tabName == "combat" ? DisplayStyle.Flex : DisplayStyle.None;
 
             Refresh();
         }
@@ -249,7 +312,7 @@ namespace ProjectGuild.View.UI
             if (runner == null) return;
 
             // Copy Setup visible only when runner has something to copy
-            bool hasSetup = !string.IsNullOrEmpty(runner.TaskSequenceId) || !string.IsNullOrEmpty(runner.MacroRulesetId);
+            bool hasSetup = !string.IsNullOrEmpty(runner.TaskSequenceId) || !string.IsNullOrEmpty(runner.MacroRulesetId) || !string.IsNullOrEmpty(runner.CombatStyleId);
             _btnCopySetup.SetEnabled(hasSetup);
 
             // Config warning on Macro sub-tab button (reads stored state, not computed per-tick)
@@ -267,6 +330,9 @@ namespace ProjectGuild.View.UI
                     break;
                 case "micro":
                     RefreshMicroTab(runner, sim);
+                    break;
+                case "combat":
+                    RefreshCombatTab(runner, sim);
                     break;
             }
         }
@@ -1005,6 +1071,493 @@ namespace ProjectGuild.View.UI
             _uiManager.OpenAutomationPanelToItemForNewAssignment("macro", id, _currentRunnerId);
         }
 
+        // ─── Combat Style Sub-Tab ────────────────────────
+
+        private void RefreshCombatTab(Runner runner, GameSimulation sim)
+        {
+            var style = sim.FindCombatStyleInLibrary(runner.CombatStyleId);
+            bool hasStyle = style != null;
+
+            if (!hasStyle)
+            {
+                _combatNameLabel.text = "No combat style";
+                _combatUsageLabel.text = "";
+
+                if (_combatRuleRowCache.Count > 0)
+                {
+                    _combatRulesContainer.Clear();
+                    _combatRuleRowCache.Clear();
+                }
+                _cachedCombatShapeKey = null;
+            }
+
+            // Button visibility
+            _btnEditCombat.style.display = hasStyle ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnCopyCombat.style.display = hasStyle ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnClearCombat.style.display = hasStyle ? DisplayStyle.Flex : DisplayStyle.None;
+            _btnChangeCombat.style.display = DisplayStyle.Flex;
+            _btnNewCombat.style.display = DisplayStyle.Flex;
+
+            if (!hasStyle)
+            {
+                // Still show ability browser even without a combat style
+                if (_abilityBrowserExpanded)
+                    RefreshAbilityBrowser(runner, sim);
+                return;
+            }
+
+            // Header
+            _combatNameLabel.text = style.Name ?? style.Id ?? "Combat Style";
+            int usageCount = CountRunnersUsingCombatStyle(sim, style.Id);
+            _combatUsageLabel.text = usageCount > 1
+                ? $"Used by {usageCount} runners"
+                : "Used by this runner only";
+
+            // Rules summary (shape-keyed)
+            int tCount = style.TargetingRules.Count;
+            int aCount = style.AbilityRules.Count;
+            string shapeKey = $"{style.Id}|t{tCount}|a{aCount}";
+
+            if (shapeKey != _cachedCombatShapeKey)
+            {
+                _combatRulesContainer.Clear();
+                _combatRuleRowCache.Clear();
+                _cachedCombatShapeKey = shapeKey;
+
+                if (tCount == 0 && aCount == 0)
+                {
+                    var emptyLabel = new Label("No rules (runner will idle in combat)");
+                    emptyLabel.AddToClassList("auto-info-value");
+                    _combatRulesContainer.Add(emptyLabel);
+                }
+                else
+                {
+                    // Targeting rules summary
+                    if (tCount > 0)
+                    {
+                        var tHeader = new Label("Targeting:");
+                        tHeader.AddToClassList("auto-rule-section-header");
+                        _combatRulesContainer.Add(tHeader);
+
+                        for (int i = 0; i < tCount; i++)
+                        {
+                            var row = new VisualElement();
+                            row.AddToClassList("auto-rule-row");
+
+                            var textLabel = new Label();
+                            textLabel.AddToClassList("auto-rule-text");
+                            textLabel.pickingMode = PickingMode.Ignore;
+                            row.Add(textLabel);
+
+                            _combatRulesContainer.Add(row);
+                            _combatRuleRowCache.Add((row, textLabel));
+                        }
+                    }
+
+                    // Ability rules summary
+                    if (aCount > 0)
+                    {
+                        var aHeader = new Label("Abilities:");
+                        aHeader.AddToClassList("auto-rule-section-header");
+                        _combatRulesContainer.Add(aHeader);
+
+                        for (int i = 0; i < aCount; i++)
+                        {
+                            var row = new VisualElement();
+                            row.AddToClassList("auto-rule-row");
+
+                            var textLabel = new Label();
+                            textLabel.AddToClassList("auto-rule-text");
+                            textLabel.pickingMode = PickingMode.Ignore;
+                            row.Add(textLabel);
+
+                            _combatRulesContainer.Add(row);
+                            _combatRuleRowCache.Add((row, textLabel));
+                        }
+                    }
+                }
+            }
+
+            // Update text in-place
+            int rowIdx = 0;
+            for (int i = 0; i < tCount && rowIdx < _combatRuleRowCache.Count; i++, rowIdx++)
+            {
+                var rule = style.TargetingRules[i];
+                string enabled = rule.Enabled ? "\u2713" : "\u2717";
+                string condText = rule.Conditions.Count == 0
+                    ? "Always"
+                    : $"{rule.Conditions.Count} condition{(rule.Conditions.Count != 1 ? "s" : "")}";
+                _combatRuleRowCache[rowIdx].text.text = $"{enabled} {condText} \u2192 {FormatTargetSelection(rule.Selection)}";
+
+                if (rule.Enabled)
+                    _combatRuleRowCache[rowIdx].row.RemoveFromClassList("auto-rule-disabled");
+                else
+                    _combatRuleRowCache[rowIdx].row.AddToClassList("auto-rule-disabled");
+            }
+            for (int i = 0; i < aCount && rowIdx < _combatRuleRowCache.Count; i++, rowIdx++)
+            {
+                var rule = style.AbilityRules[i];
+                string enabled = rule.Enabled ? "\u2713" : "\u2717";
+                string abilityName = ResolveAbilityName(sim, rule.AbilityId);
+                string condText = rule.Conditions.Count == 0
+                    ? "Always"
+                    : $"{rule.Conditions.Count} condition{(rule.Conditions.Count != 1 ? "s" : "")}";
+                string interrupt = rule.CanInterrupt ? " [Interrupt]" : "";
+
+                // Check if runner can use this ability (level check only, not cooldown/mana)
+                var ability = ResolveAbilityConfig(sim, rule.AbilityId);
+                bool levelLocked = false;
+                string lockReason = null;
+                if (ability != null && ability.UnlockLevel > 0 && runner != null)
+                {
+                    float inherentLevel = runner.GetEffectiveLevel(ability.SkillType, sim.Config);
+                    if (inherentLevel < ability.UnlockLevel)
+                    {
+                        levelLocked = true;
+                        int runnerLevel = runner.GetSkill(ability.SkillType).Level;
+                        lockReason = $"Requires {ability.SkillType} {ability.UnlockLevel} (runner: {ability.SkillType} {runnerLevel})";
+                    }
+                }
+
+                string lockSuffix = levelLocked ? " [Locked]" : "";
+                _combatRuleRowCache[rowIdx].text.text = $"{enabled} {condText} \u2192 {abilityName}{interrupt}{lockSuffix}";
+
+                var row = _combatRuleRowCache[rowIdx].row;
+                if (rule.Enabled)
+                    row.RemoveFromClassList("auto-rule-disabled");
+                else
+                    row.AddToClassList("auto-rule-disabled");
+
+                if (levelLocked)
+                {
+                    row.AddToClassList("auto-rule-locked");
+                    _uiManager.RegisterTooltip(row, () => lockReason);
+                }
+                else
+                {
+                    row.RemoveFromClassList("auto-rule-locked");
+                }
+            }
+
+            // Ability browser (only rebuild when expanded and runner/abilities change)
+            if (_abilityBrowserExpanded)
+                RefreshAbilityBrowser(runner, sim);
+        }
+
+        // ─── Ability Browser ───────────────────────────────
+
+        private void RefreshAbilityBrowser(Runner runner, GameSimulation sim)
+        {
+            var abilities = sim.Config.AbilityDefinitions;
+            if (abilities == null || abilities.Length == 0)
+            {
+                _abilityBrowserContent.Clear();
+                _cachedAbilityBrowserKey = "empty";
+                var emptyLabel = new Label("No abilities defined.");
+                emptyLabel.AddToClassList("auto-info-value");
+                _abilityBrowserContent.Add(emptyLabel);
+                return;
+            }
+
+            // Shape key: runner level signature + ability count
+            string levelSig = "";
+            if (runner != null)
+            {
+                foreach (var skill in runner.Skills)
+                    levelSig += $"{skill.Level},";
+            }
+            string browserKey = $"{runner?.Id}|{levelSig}|{abilities.Length}";
+            if (browserKey == _cachedAbilityBrowserKey) return;
+            _cachedAbilityBrowserKey = browserKey;
+
+            _abilityBrowserContent.Clear();
+
+            // Group abilities by skill type
+            var bySkill = new Dictionary<SkillType, List<AbilityConfig>>();
+            foreach (var ability in abilities)
+            {
+                if (!bySkill.ContainsKey(ability.SkillType))
+                    bySkill[ability.SkillType] = new List<AbilityConfig>();
+                bySkill[ability.SkillType].Add(ability);
+            }
+
+            // Sort skills in enum order, only show combat skills with abilities
+            var skillOrder = new[] { SkillType.Melee, SkillType.Magic, SkillType.Restoration,
+                SkillType.Ranged, SkillType.Defence, SkillType.Execution };
+
+            foreach (var skillType in skillOrder)
+            {
+                if (!bySkill.TryGetValue(skillType, out var skillAbilities)) continue;
+
+                // Sort by unlock level
+                skillAbilities.Sort((a, b) => a.UnlockLevel.CompareTo(b.UnlockLevel));
+
+                // Skill header
+                int runnerLevel = runner?.GetSkill(skillType).Level ?? 0;
+                var header = new Label($"{skillType} (Lv {runnerLevel})");
+                header.AddToClassList("ability-browser-skill-header");
+                _abilityBrowserContent.Add(header);
+
+                foreach (var ability in skillAbilities)
+                {
+                    float inherentLevel = runner?.GetEffectiveLevel(ability.SkillType, sim.Config) ?? 0;
+                    bool unlocked = ability.UnlockLevel <= 0 || inherentLevel >= ability.UnlockLevel;
+
+                    var row = new VisualElement();
+                    row.AddToClassList("ability-browser-row");
+
+                    var nameLabel = new Label(ability.Name ?? ability.Id);
+                    nameLabel.AddToClassList("ability-browser-name");
+
+                    var infoLabel = new Label();
+                    infoLabel.AddToClassList("ability-browser-info");
+
+                    if (unlocked)
+                    {
+                        row.AddToClassList("ability-browser-available");
+                        string mana = ability.ManaCost > 0 ? $" | {ability.ManaCost} mana" : "";
+                        string cd = ability.CooldownTicks > 0
+                            ? $" | {ability.CooldownTicks / 10f:0.#}s CD" : "";
+                        infoLabel.text = $"{ability.ActionTimeTicks / 10f:0.#}s{mana}{cd}";
+                    }
+                    else
+                    {
+                        row.AddToClassList("ability-browser-locked");
+                        nameLabel.text = $"{ability.Name ?? ability.Id} [Lv {ability.UnlockLevel}]";
+                        infoLabel.text = $"Unlocks at {ability.SkillType} {ability.UnlockLevel}";
+                    }
+
+                    row.Add(nameLabel);
+                    row.Add(infoLabel);
+                    _abilityBrowserContent.Add(row);
+
+                    // Tooltip with computed description (re-evaluated on hover for live values)
+                    var capturedAbility = ability;
+                    int capturedRunnerLevel = runnerLevel;
+                    _uiManager.RegisterTooltip(row, () =>
+                        BuildAbilityTooltip(capturedAbility, runner, sim, capturedRunnerLevel, unlocked));
+                }
+            }
+        }
+
+        // Rich text color constants for ability tooltips
+        private const string DmgColor = "#E05555";
+        private const string HealColor = "#55CC55";
+        private const string ManaColor = "#6CA0DC";
+        private const string TimeColor = "#CCAA55";
+        private const string CooldownColor = "#CC8844";
+        private const string LockColor = "#CC4444";
+        private const string ThemeColor = "#AAAACC";
+
+        private static string BuildAbilityTooltip(AbilityConfig ability, Runner runner,
+            GameSimulation sim, int runnerSkillLevel, bool unlocked)
+        {
+            string name = ability.Name ?? ability.Id;
+            float level = runner?.GetEffectiveLevel(ability.SkillType, sim.Config) ?? 1f;
+            var parts = new System.Collections.Generic.List<string>();
+
+            // Title + thematic description
+            string desc = ability.Description;
+            if (!string.IsNullOrEmpty(desc))
+                parts.Add($"<b>{name}</b>\n<color={ThemeColor}>{desc}</color>");
+            else
+                parts.Add($"<b>{name}</b>");
+
+            // Build effect descriptions with computed values
+            foreach (var effect in ability.Effects)
+            {
+                bool isDamage = effect.Type == EffectType.Damage || effect.Type == EffectType.DamageAoe;
+                bool isHeal = effect.Type == EffectType.Heal || effect.Type == EffectType.HealSelf
+                    || effect.Type == EffectType.HealAoe;
+                bool isTaunt = effect.Type == EffectType.Taunt || effect.Type == EffectType.TauntAoe
+                    || effect.Type == EffectType.TauntAll;
+
+                if (isDamage)
+                {
+                    float dmg = CombatFormulas.CalculateDamage(effect, level, 0f, sim.Config);
+                    string aoe = (effect.Type == EffectType.DamageAoe)
+                        ? $" to up to <b>{(effect.MaxTargets < 0 ? "all" : effect.MaxTargets.ToString())}</b> enemies" : "";
+                    string condPrefix = "";
+                    if (effect.Condition != null)
+                    {
+                        condPrefix = effect.Condition.Type switch
+                        {
+                            AbilityEffectConditionType.TargetHpBelowPercent =>
+                                $"Against targets below <b><color={DmgColor}>{effect.Condition.Threshold:F0}%</color></b>: ",
+                            AbilityEffectConditionType.TargetHpAbovePercent =>
+                                $"Against targets above <b><color={DmgColor}>{effect.Condition.Threshold:F0}%</color></b>: ",
+                            AbilityEffectConditionType.IsKillingBlow => "On killing blow: ",
+                            _ => "",
+                        };
+                    }
+                    parts.Add($"{condPrefix}Deals <b><color={DmgColor}>{dmg:F1}</color></b> damage{aoe}.");
+                }
+                else if (isHeal)
+                {
+                    float heal = CombatFormulas.CalculateHeal(effect, level, sim.Config);
+                    string target = effect.Type switch
+                    {
+                        EffectType.Heal => " on lowest HP ally",
+                        EffectType.HealSelf => " to self",
+                        EffectType.HealAoe => " to all allies",
+                        _ => "",
+                    };
+                    string condPrefix = "";
+                    if (effect.Condition != null)
+                    {
+                        condPrefix = effect.Condition.Type switch
+                        {
+                            AbilityEffectConditionType.IsKillingBlow => "On killing blow: ",
+                            _ => "",
+                        };
+                    }
+                    parts.Add($"{condPrefix}Heals <b><color={HealColor}>{heal:F1}</color></b>{target}.");
+                }
+                else if (isTaunt)
+                {
+                    string scope = effect.Type switch
+                    {
+                        EffectType.Taunt => "Forces target to attack you.",
+                        EffectType.TauntAoe => $"Forces up to <b>{(effect.MaxTargets < 0 ? "all" : effect.MaxTargets.ToString())}</b> enemies to attack you.",
+                        EffectType.TauntAll => "Forces all enemies to attack you.",
+                        _ => "Taunts.",
+                    };
+                    parts.Add(scope);
+                }
+            }
+
+            // Action time, cooldown, mana
+            string actionTime = $"<b><color={TimeColor}>{ability.ActionTimeTicks / 10f:0.#}s</color></b>";
+            string cd = ability.CooldownTicks > 0
+                ? $"  <b><color={CooldownColor}>{ability.CooldownTicks / 10f:0.#}s</color></b> cooldown" : "";
+            string mana = ability.ManaCost > 0
+                ? $"  <b><color={ManaColor}>{ability.ManaCost}</color></b> mana" : "";
+            parts.Add($"{actionTime} action{cd}{mana}");
+
+            // Unlock
+            if (!unlocked)
+                parts.Add($"<color={LockColor}>Requires {ability.SkillType} {ability.UnlockLevel} (runner: {ability.SkillType} {runnerSkillLevel})</color>");
+            else if (ability.UnlockLevel > 0)
+                parts.Add($"Requires {ability.SkillType} {ability.UnlockLevel}");
+
+            return string.Join("\n", parts);
+        }
+
+        private static string FormatTargetSelection(TargetSelection selection)
+        {
+            return selection switch
+            {
+                TargetSelection.NearestEnemy => "Nearest Enemy",
+                TargetSelection.LowestHpEnemy => "Lowest HP Enemy",
+                TargetSelection.HighestHpEnemy => "Highest HP Enemy",
+                TargetSelection.NearestAlly => "Nearest Ally",
+                TargetSelection.LowestHpAlly => "Lowest HP Ally",
+                TargetSelection.NotTauntedBySelfEnemy => "Not Taunted By Self",
+                TargetSelection.UntauntedEnemy => "Untaunted Enemy",
+                TargetSelection.EnemyTargetingAlly => "Enemy Targeting Ally",
+                _ => selection.ToString(),
+            };
+        }
+
+        private static string ResolveAbilityName(GameSimulation sim, string abilityId)
+        {
+            if (string.IsNullOrEmpty(abilityId)) return "(none)";
+            var abilities = sim.Config.AbilityDefinitions;
+            if (abilities != null)
+            {
+                foreach (var a in abilities)
+                {
+                    if (a.Id == abilityId)
+                        return a.Name ?? abilityId;
+                }
+            }
+            return abilityId;
+        }
+
+        private static AbilityConfig ResolveAbilityConfig(GameSimulation sim, string abilityId)
+        {
+            if (string.IsNullOrEmpty(abilityId)) return null;
+            var abilities = sim.Config.AbilityDefinitions;
+            if (abilities != null)
+            {
+                foreach (var a in abilities)
+                {
+                    if (a.Id == abilityId)
+                        return a;
+                }
+            }
+            return null;
+        }
+
+        private static int CountRunnersUsingCombatStyle(GameSimulation sim, string styleId)
+        {
+            int count = 0;
+            foreach (var runner in sim.CurrentGameState.Runners)
+            {
+                if (runner.CombatStyleId == styleId)
+                    count++;
+            }
+            return count;
+        }
+
+        // ─── Combat Button Handlers ──────────────────────
+
+        private void OnEditCombatClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            var runner = sim?.FindRunner(_currentRunnerId);
+            if (runner == null) return;
+            var style = sim.FindCombatStyleInLibrary(runner.CombatStyleId);
+            if (style?.Id == null) return;
+
+            _uiManager.OpenAutomationPanelToItemFromRunner("combat", style.Id, _currentRunnerId);
+        }
+
+        private void OnChangeCombatClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            var runner = sim?.CurrentGameState.Runners.Find(r => r.Id == _currentRunnerId);
+            if (runner != null && !string.IsNullOrEmpty(runner.CombatStyleId))
+            {
+                _uiManager.OpenAutomationPanelToItemFromRunner("combat", runner.CombatStyleId, _currentRunnerId);
+            }
+            else
+            {
+                _uiManager.OpenAutomationPanelForChangeAssignment("combat", _currentRunnerId);
+            }
+        }
+
+        private void OnNewCombatClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            if (sim == null) return;
+
+            string id = sim.CommandCreateCombatStyle();
+            _uiManager.OpenAutomationPanelToItemForNewAssignment("combat", id, _currentRunnerId);
+        }
+
+        private void OnCopyCombatClicked()
+        {
+            if (_currentRunnerId == null) return;
+            var sim = _uiManager.Simulation;
+            var runner = sim?.FindRunner(_currentRunnerId);
+            if (runner == null || string.IsNullOrEmpty(runner.CombatStyleId)) return;
+
+            string cloneId = sim.CommandCloneCombatStyle(runner.CombatStyleId);
+            if (cloneId == null) return;
+
+            _uiManager.OpenAutomationPanelToItemForNewAssignment("combat", cloneId, _currentRunnerId);
+        }
+
+        private void OnClearCombatClicked()
+        {
+            if (_currentRunnerId == null) return;
+            _uiManager.Simulation?.CommandAssignCombatStyleToRunner(_currentRunnerId, null);
+        }
+
         // ─── Copy Setup / Copy From ─────────────────────
 
         private void OnCopySetupClicked()
@@ -1016,7 +1569,8 @@ namespace ProjectGuild.View.UI
             if (sourceRunner == null) return;
 
             // Need something to copy
-            if (string.IsNullOrEmpty(sourceRunner.TaskSequenceId) && string.IsNullOrEmpty(sourceRunner.MacroRulesetId))
+            if (string.IsNullOrEmpty(sourceRunner.TaskSequenceId) && string.IsNullOrEmpty(sourceRunner.MacroRulesetId)
+                && string.IsNullOrEmpty(sourceRunner.CombatStyleId))
                 return;
 
             ShowRunnerPicker(_btnCopySetup, $"Copy {sourceRunner.Name}'s setup to:", runner =>
@@ -1025,6 +1579,8 @@ namespace ProjectGuild.View.UI
                     sim.CommandAssignTaskSequenceToRunner(runner.Id, sourceRunner.TaskSequenceId);
                 if (!string.IsNullOrEmpty(sourceRunner.MacroRulesetId))
                     sim.CommandAssignMacroRulesetToRunner(runner.Id, sourceRunner.MacroRulesetId);
+                if (!string.IsNullOrEmpty(sourceRunner.CombatStyleId))
+                    sim.CommandAssignCombatStyleToRunner(runner.Id, sourceRunner.CombatStyleId);
             }, excludeRunnerId: _currentRunnerId);
         }
 
@@ -1040,6 +1596,8 @@ namespace ProjectGuild.View.UI
                     sim.CommandAssignTaskSequenceToRunner(_currentRunnerId, runner.TaskSequenceId);
                 if (!string.IsNullOrEmpty(runner.MacroRulesetId))
                     sim.CommandAssignMacroRulesetToRunner(_currentRunnerId, runner.MacroRulesetId);
+                if (!string.IsNullOrEmpty(runner.CombatStyleId))
+                    sim.CommandAssignCombatStyleToRunner(_currentRunnerId, runner.CombatStyleId);
             }, excludeRunnerId: _currentRunnerId);
         }
 

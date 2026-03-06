@@ -982,7 +982,7 @@ namespace ProjectGuild.Tests
 
             // Should have a combat decision log entry
             bool found = false;
-            foreach (var entry in _sim.CurrentGameState.MicroDecisionLog.Entries)
+            foreach (var entry in _sim.CurrentGameState.CombatDecisionLog.Entries)
             {
                 if (entry.RunnerId == _runner.Id && entry.TriggerReason == "CombatStyle")
                 {

@@ -106,8 +106,11 @@ namespace ProjectGuild.Data
         [Tooltip("Maximum entries in the macro decision log ring buffer. Macro decisions are rare/high-value.")]
         public int MacroDecisionLogMaxEntries = 2000;
 
-        [Tooltip("Maximum entries in the micro decision log ring buffer. Micro decisions fire every tick per gathering runner.")]
+        [Tooltip("Maximum entries in the micro decision log ring buffer. Micro decisions fire at action completion boundaries.")]
         public int MicroDecisionLogMaxEntries = 1000;
+
+        [Tooltip("Maximum entries in the combat decision log ring buffer. Combat decisions fire per ability selection.")]
+        public int CombatDecisionLogMaxEntries = 1000;
 
         [Tooltip("Maximum entries in the Chronicle (player-facing event log) ring buffer.")]
         public int ChronicleMaxEntries = 1000;
@@ -136,8 +139,8 @@ namespace ProjectGuild.Data
         [Tooltip("Additional mana per Restoration skill level beyond 1.")]
         public float ManaPerRestorationLevel = 3f;
 
-        [Tooltip("Flat mana regenerated every tick. At 10 ticks/sec, 0.5 = 5 mana/sec.")]
-        public float BaseManaRegenPerTick = 0.5f;
+        [Tooltip("Flat mana regenerated every tick. At 10 ticks/sec, 0.15 = 1.5 mana/sec.")]
+        public float BaseManaRegenPerTick = 0.15f;
 
         [Tooltip("Base disengage time in ticks before Athletics reduction. Enemies still attack during disengage.")]
         public int BaseDisengageTimeTicks = 20;
@@ -150,6 +153,9 @@ namespace ProjectGuild.Data
 
         [Tooltip("XP per tick of action time on ability completion. 10-tick ability = 10 * this value.")]
         public float CombatXpPerActionTimeTick = 1.0f;
+
+        [Tooltip("Multiplier on combat XP for Restoration abilities. Healers cast less frequently, so need higher XP/action.")]
+        public float RestorationXpMultiplier = 2.0f;
 
         [Tooltip("Percentage damage reduction per Defence level. Lv50 = 25%, Lv99 = 49.5%.")]
         public float DefenceReductionPerLevel = 0.5f;
@@ -222,6 +228,7 @@ namespace ProjectGuild.Data
                 AutomationPeriodicCheckInterval = AutomationPeriodicCheckInterval,
                 MacroDecisionLogMaxEntries = MacroDecisionLogMaxEntries,
                 MicroDecisionLogMaxEntries = MicroDecisionLogMaxEntries,
+                CombatDecisionLogMaxEntries = CombatDecisionLogMaxEntries,
                 ChronicleMaxEntries = ChronicleMaxEntries,
                 EventLogMaxEntries = EventLogMaxEntries,
                 DeathRespawnBaseTime = DeathRespawnBaseTime,
@@ -235,6 +242,7 @@ namespace ProjectGuild.Data
                 MinDisengageTimeTicks = MinDisengageTimeTicks,
                 DisengageReductionPerAthleticsLevel = DisengageReductionPerAthleticsLevel,
                 CombatXpPerActionTimeTick = CombatXpPerActionTimeTick,
+                RestorationXpMultiplier = RestorationXpMultiplier,
                 DefenceReductionPerLevel = DefenceReductionPerLevel,
                 MaxDefenceReductionPercent = MaxDefenceReductionPercent,
                 CombatDamageScalingPerLevel = CombatDamageScalingPerLevel,

@@ -16,6 +16,7 @@
             <ui:Button name="panel-tab-taskseq" class="panel-tab-button panel-tab-active" text="Task Sequences" />
             <ui:Button name="panel-tab-macro" class="panel-tab-button" text="Macro Rulesets" />
             <ui:Button name="panel-tab-micro" class="panel-tab-button" text="Micro Rulesets" />
+            <ui:Button name="panel-tab-combat" class="panel-tab-button" text="Combat Styles" />
         </ui:VisualElement>
 
         <!-- Master-detail body -->
@@ -94,6 +95,21 @@
                 <ui:ScrollView name="micro-editor-pane" class="editor-pane">
                     <ui:Label name="micro-editor-empty" class="editor-empty-label" text="Select a micro ruleset" />
                     <ui:VisualElement name="micro-editor-content" class="editor-content" style="display: none;" />
+                </ui:ScrollView>
+            </ui:VisualElement>
+
+            <!-- ─── Combat Styles Tab ──────────────────── -->
+            <ui:VisualElement name="panel-content-combat" class="panel-content panel-content-hidden">
+                <ui:VisualElement name="combat-list-pane" class="list-pane">
+                    <ui:VisualElement class="list-toolbar">
+                        <ui:Button name="btn-new-combat" class="list-toolbar-button" text="+ New" />
+                        <ui:TextField name="combat-search-field" class="list-search-field" />
+                    </ui:VisualElement>
+                    <ui:ScrollView name="combat-list-scroll" class="list-scroll" />
+                </ui:VisualElement>
+                <ui:ScrollView name="combat-editor-pane" class="editor-pane">
+                    <ui:Label name="combat-editor-empty" class="editor-empty-label" text="Select a combat style" />
+                    <ui:VisualElement name="combat-editor-content" class="editor-content" style="display: none;" />
                 </ui:ScrollView>
             </ui:VisualElement>
 

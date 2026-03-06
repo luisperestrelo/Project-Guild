@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 using ProjectGuild.Simulation.Automation;
+using ProjectGuild.Simulation.Combat;
 
 namespace ProjectGuild.View.UI
 {
@@ -28,11 +29,13 @@ namespace ProjectGuild.View.UI
         private readonly Button _tabTaskSeq;
         private readonly Button _tabMacro;
         private readonly Button _tabMicro;
+        private readonly Button _tabCombat;
 
         // Tab content containers
         private readonly VisualElement _contentTaskSeq;
         private readonly VisualElement _contentMacro;
         private readonly VisualElement _contentMicro;
+        private readonly VisualElement _contentCombat;
 
         private string _activeTab = "taskseq";
 
@@ -40,6 +43,7 @@ namespace ProjectGuild.View.UI
         private TaskSequenceEditorController _taskSeqEditor;
         private MacroRulesetEditorController _macroEditor;
         private MicroRulesetEditorController _microEditor;
+        private CombatStyleEditorController _combatEditor;
 
         public bool IsOpen { get; private set; }
 
@@ -99,20 +103,24 @@ namespace ProjectGuild.View.UI
             _tabTaskSeq = root.Q<Button>("panel-tab-taskseq");
             _tabMacro = root.Q<Button>("panel-tab-macro");
             _tabMicro = root.Q<Button>("panel-tab-micro");
+            _tabCombat = root.Q<Button>("panel-tab-combat");
 
             _tabTaskSeq.clicked += () => SwitchTab("taskseq");
             _tabMacro.clicked += () => SwitchTab("macro");
             _tabMicro.clicked += () => SwitchTab("micro");
+            _tabCombat.clicked += () => SwitchTab("combat");
 
             // Content containers
             _contentTaskSeq = root.Q("panel-content-taskseq");
             _contentMacro = root.Q("panel-content-macro");
             _contentMicro = root.Q("panel-content-micro");
+            _contentCombat = root.Q("panel-content-combat");
 
             // Initialize sub-controllers
             _taskSeqEditor = new TaskSequenceEditorController(_contentTaskSeq, uiManager);
             _macroEditor = new MacroRulesetEditorController(_contentMacro, uiManager);
             _microEditor = new MicroRulesetEditorController(_contentMicro, uiManager);
+            _combatEditor = new CombatStyleEditorController(_contentCombat, uiManager);
 
             // Wire navigation callbacks from editors
             _macroEditor.OnRequestNavigateToNewSequence = (newId, wireAction) =>
@@ -231,6 +239,7 @@ namespace ProjectGuild.View.UI
                 case "taskseq": _taskSeqEditor.SelectItem(itemId); break;
                 case "macro": _macroEditor.SelectItem(itemId); break;
                 case "micro": _microEditor.SelectItem(itemId); break;
+                case "combat": _combatEditor.SelectItem(itemId); break;
             }
         }
 
@@ -241,6 +250,7 @@ namespace ProjectGuild.View.UI
                 case "taskseq": _taskSeqEditor.SelectNewItem(itemId); break;
                 case "macro": _macroEditor.SelectNewItem(itemId); break;
                 case "micro": _microEditor.SelectNewItem(itemId); break;
+                case "combat": _combatEditor.SelectNewItem(itemId); break;
             }
         }
 
@@ -300,10 +310,7 @@ namespace ProjectGuild.View.UI
         /// </summary>
         public void NavigateToExistingItem(string targetTab, string targetItemId, Action<string> wireAction)
         {
-            string currentSelectedId = null;
-            if (_activeTab == "taskseq") currentSelectedId = _taskSeqEditor.SelectedId;
-            else if (_activeTab == "macro") currentSelectedId = _macroEditor.SelectedId;
-            else if (_activeTab == "micro") currentSelectedId = _microEditor.SelectedId;
+            string currentSelectedId = GetSelectedIdForTab(_activeTab);
 
             var entry = new NavigationEntry
             {
@@ -330,10 +337,7 @@ namespace ProjectGuild.View.UI
         public void PushNavigationAndSwitchTo(string targetTab, string targetItemId, Action<string> wireAction)
         {
             // Save current state
-            string currentSelectedId = null;
-            if (_activeTab == "taskseq") currentSelectedId = _taskSeqEditor.SelectedId;
-            else if (_activeTab == "macro") currentSelectedId = _macroEditor.SelectedId;
-            else if (_activeTab == "micro") currentSelectedId = _microEditor.SelectedId;
+            string currentSelectedId = GetSelectedIdForTab(_activeTab);
 
             // Look up the name of the newly created item for the unmodified check later
             string originalName = null;
@@ -401,23 +405,32 @@ namespace ProjectGuild.View.UI
 
             // Restore previous tab and selection
             SwitchTab(entry.TabName);
-            switch (entry.TabName)
+            RefreshAndSelectOnTab(entry.TabName, entry.SelectedItemId);
+
+            UpdateNavHeaderVisibility();
+        }
+
+        private void RefreshAndSelectOnTab(string tabName, string itemId)
+        {
+            switch (tabName)
             {
                 case "taskseq":
                     _taskSeqEditor.RefreshList();
-                    _taskSeqEditor.SelectItem(entry.SelectedItemId);
+                    _taskSeqEditor.SelectItem(itemId);
                     break;
                 case "macro":
                     _macroEditor.RefreshList();
-                    _macroEditor.SelectItem(entry.SelectedItemId);
+                    _macroEditor.SelectItem(itemId);
                     break;
                 case "micro":
                     _microEditor.RefreshList();
-                    _microEditor.SelectItem(entry.SelectedItemId);
+                    _microEditor.SelectItem(itemId);
+                    break;
+                case "combat":
+                    _combatEditor.RefreshList();
+                    _combatEditor.SelectItem(itemId);
                     break;
             }
-
-            UpdateNavHeaderVisibility();
         }
 
         private string GetSelectedIdForTab(string tabName)
@@ -427,6 +440,7 @@ namespace ProjectGuild.View.UI
                 "taskseq" => _taskSeqEditor.SelectedId,
                 "macro" => _macroEditor.SelectedId,
                 "micro" => _microEditor.SelectedId,
+                "combat" => _combatEditor.SelectedId,
                 _ => null,
             };
         }
@@ -513,21 +527,7 @@ namespace ProjectGuild.View.UI
 
             // Restore previous tab and selection
             SwitchTab(entry.TabName);
-            switch (entry.TabName)
-            {
-                case "taskseq":
-                    _taskSeqEditor.RefreshList();
-                    _taskSeqEditor.SelectItem(entry.SelectedItemId);
-                    break;
-                case "macro":
-                    _macroEditor.RefreshList();
-                    _macroEditor.SelectItem(entry.SelectedItemId);
-                    break;
-                case "micro":
-                    _microEditor.RefreshList();
-                    _microEditor.SelectItem(entry.SelectedItemId);
-                    break;
-            }
+            RefreshAndSelectOnTab(entry.TabName, entry.SelectedItemId);
 
             UpdateNavHeaderVisibility();
         }
@@ -622,6 +622,7 @@ namespace ProjectGuild.View.UI
                 RestoreFooterButtons(_contentTaskSeq);
                 RestoreFooterButtons(_contentMacro);
                 RestoreFooterButtons(_contentMicro);
+                RestoreFooterButtons(_contentCombat);
             }
         }
 
@@ -639,6 +640,7 @@ namespace ProjectGuild.View.UI
                 "taskseq" => _contentTaskSeq,
                 "macro" => _contentMacro,
                 "micro" => _contentMicro,
+                "combat" => _contentCombat,
                 _ => null,
             };
         }
@@ -668,6 +670,7 @@ namespace ProjectGuild.View.UI
                 "taskseq" => "Task Sequences",
                 "macro" => "Macro Rulesets",
                 "micro" => "Micro Rulesets",
+                "combat" => "Combat Styles",
                 _ => tabName,
             };
         }
@@ -687,13 +690,8 @@ namespace ProjectGuild.View.UI
             var runner = sim?.FindRunner(_pendingAssignRunnerId);
             if (runner == null) return;
 
-            VisualElement footerButtons = null;
-            if (_activeTab == "taskseq")
-                footerButtons = _contentTaskSeq.Q(className: "editor-footer-buttons");
-            else if (_activeTab == "macro")
-                footerButtons = _contentMacro.Q(className: "editor-footer-buttons");
-            else if (_activeTab == "micro")
-                footerButtons = _contentMicro.Q(className: "editor-footer-buttons");
+            var activeContent = GetActiveTabContent();
+            VisualElement footerButtons = activeContent?.Q(className: "editor-footer-buttons");
 
             if (footerButtons == null) return;
 
@@ -712,7 +710,7 @@ namespace ProjectGuild.View.UI
             }
             else
             {
-                // Task seq / macro: show "Assign to [Runner]"
+                // Task seq / macro / combat: show "Assign to [Runner]"
                 var assignBtn = new Button(() => CompletePendingAssignment());
                 assignBtn.name = "btn-pending-assign";
                 assignBtn.text = $"Assign to {runner.Name}";
@@ -730,6 +728,7 @@ namespace ProjectGuild.View.UI
             _contentTaskSeq.Q("btn-pending-assign")?.RemoveFromHierarchy();
             _contentMacro.Q("btn-pending-assign")?.RemoveFromHierarchy();
             _contentMicro.Q("btn-done-editing")?.RemoveFromHierarchy();
+            _contentCombat.Q("btn-pending-assign")?.RemoveFromHierarchy();
         }
 
         private void CompletePendingAssignment()
@@ -738,18 +737,21 @@ namespace ProjectGuild.View.UI
             if (sim == null || string.IsNullOrEmpty(_pendingAssignRunnerId)) return;
 
             // Use whatever is currently selected on the active tab
-            string itemId = null;
-            if (_activeTab == "taskseq")
-                itemId = _taskSeqEditor.SelectedId;
-            else if (_activeTab == "macro")
-                itemId = _macroEditor.SelectedId;
-
+            string itemId = GetSelectedIdForTab(_activeTab);
             if (string.IsNullOrEmpty(itemId)) return;
 
-            if (_activeTab == "taskseq")
-                sim.CommandAssignTaskSequenceToRunner(_pendingAssignRunnerId, itemId);
-            else if (_activeTab == "macro")
-                sim.CommandAssignMacroRulesetToRunner(_pendingAssignRunnerId, itemId);
+            switch (_activeTab)
+            {
+                case "taskseq":
+                    sim.CommandAssignTaskSequenceToRunner(_pendingAssignRunnerId, itemId);
+                    break;
+                case "macro":
+                    sim.CommandAssignMacroRulesetToRunner(_pendingAssignRunnerId, itemId);
+                    break;
+                case "combat":
+                    sim.CommandAssignCombatStyleToRunner(_pendingAssignRunnerId, itemId);
+                    break;
+            }
 
             ClearPendingAssignment();
             Close();
@@ -770,10 +772,12 @@ namespace ProjectGuild.View.UI
             SetTabActive(_tabTaskSeq, tabName == "taskseq");
             SetTabActive(_tabMacro, tabName == "macro");
             SetTabActive(_tabMicro, tabName == "micro");
+            SetTabActive(_tabCombat, tabName == "combat");
 
             _contentTaskSeq.style.display = tabName == "taskseq" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentMacro.style.display = tabName == "macro" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentMicro.style.display = tabName == "micro" ? DisplayStyle.Flex : DisplayStyle.None;
+            _contentCombat.style.display = tabName == "combat" ? DisplayStyle.Flex : DisplayStyle.None;
 
             RefreshActiveTab();
 
@@ -797,6 +801,10 @@ namespace ProjectGuild.View.UI
                 case "micro":
                     _microEditor.RefreshList();
                     _microEditor.RefreshEditor();
+                    break;
+                case "combat":
+                    _combatEditor.RefreshList();
+                    _combatEditor.RefreshEditor();
                     break;
             }
         }

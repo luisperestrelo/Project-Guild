@@ -7,6 +7,7 @@
             <ui:Button name="sub-tab-taskseq" class="sub-tab-button sub-tab-active" text="Task Seq" />
             <ui:Button name="sub-tab-macro" class="sub-tab-button" text="Macro" />
             <ui:Button name="sub-tab-micro" class="sub-tab-button" text="Micro" />
+            <ui:Button name="sub-tab-combat" class="sub-tab-button" text="Combat" />
         </ui:VisualElement>
 
         <!-- Task Sequence sub-tab content -->
@@ -56,6 +57,30 @@
         <ui:ScrollView name="sub-content-micro" class="sub-content sub-content-hidden">
             <ui:Label name="micro-no-task-label" class="auto-info-value" text="No active task sequence" />
             <ui:VisualElement name="micro-steps-container" class="auto-list-container" />
+        </ui:ScrollView>
+
+        <!-- Combat Style sub-tab content -->
+        <ui:ScrollView name="sub-content-combat" class="sub-content sub-content-hidden">
+            <ui:VisualElement name="combat-header" class="auto-section">
+                <ui:Label name="combat-name-label" class="auto-name-label" text="No combat style" />
+                <ui:Button name="btn-change-combat" class="auto-action-button auto-change-button" text="Change" />
+                <ui:Label name="combat-usage-label" class="auto-usage-label" text="" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="combat-rules-container" class="auto-list-container" />
+
+            <ui:VisualElement name="combat-actions" class="auto-actions-row">
+                <ui:Button name="btn-edit-combat" class="auto-action-button auto-edit-button" text="Edit" />
+                <ui:Button name="btn-new-combat" class="auto-action-button auto-new-button" text="+ New" />
+                <ui:Button name="btn-copy-combat" class="auto-action-button auto-duplicate-button" text="+ Duplicate" />
+                <ui:Button name="btn-clear-combat" class="auto-action-button auto-danger-button" text="Clear" />
+            </ui:VisualElement>
+
+            <!-- Ability Browser (OSRS-style progression) -->
+            <ui:VisualElement name="ability-browser-section" class="ability-browser-section">
+                <ui:Button name="btn-toggle-ability-browser" class="ability-browser-toggle" text="Abilities \u25BC" />
+                <ui:VisualElement name="ability-browser-content" class="ability-browser-content" />
+            </ui:VisualElement>
         </ui:ScrollView>
 
     </ui:VisualElement>

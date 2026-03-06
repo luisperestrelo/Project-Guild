@@ -3,7 +3,8 @@
     "rootNamespace": "ProjectGuild.View",
     "references": [
         "ProjectGuild.View",
-        "ProjectGuild.Data"
+        "ProjectGuild.Data",
+        "ProjectGuild.Simulation"
     ],
     "includePlatforms": [
         "Editor"

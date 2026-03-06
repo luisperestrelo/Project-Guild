@@ -198,6 +198,12 @@
     opacity: 0.45;
 }
 
+.auto-rule-locked {
+    opacity: 0.5;
+    border-left-width: 2px;
+    border-left-color: rgba(200, 80, 80, 0.6);
+}
+
 .auto-rule-index {
     font-size: 12px;
     color: rgb(120, 120, 140);
@@ -524,4 +530,81 @@
 .auto-override-row > .auto-action-button {
     margin-right: 6px;
     font-size: 11px;
+}
+
+/* ─── Ability Browser ─────────────────── */
+
+.ability-browser-section {
+    margin-top: 8px;
+    border-top-width: 1px;
+    border-top-color: rgba(100, 100, 120, 0.3);
+    padding-top: 4px;
+}
+
+.ability-browser-toggle {
+    background-color: rgba(40, 40, 55, 0.6);
+    color: rgb(170, 170, 190);
+    border-width: 0;
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-size: 12px;
+    -unity-text-align: middle-left;
+    margin-bottom: 4px;
+}
+
+.ability-browser-toggle:hover {
+    background-color: rgba(50, 50, 70, 0.8);
+    color: rgb(200, 200, 220);
+}
+
+.ability-browser-content {
+    padding-left: 4px;
+}
+
+.ability-browser-skill-header {
+    font-size: 12px;
+    color: rgb(210, 195, 140);
+    margin-top: 6px;
+    margin-bottom: 2px;
+    -unity-font-style: bold;
+}
+
+.ability-browser-row {
+    flex-direction: row;
+    padding: 2px 4px;
+    margin-bottom: 1px;
+    border-radius: 2px;
+}
+
+.ability-browser-row:hover {
+    background-color: rgba(60, 60, 80, 0.4);
+}
+
+.ability-browser-name {
+    font-size: 11px;
+    color: rgb(200, 200, 215);
+    flex-grow: 1;
+}
+
+.ability-browser-info {
+    font-size: 10px;
+    color: rgb(140, 140, 160);
+    -unity-text-align: middle-right;
+}
+
+.ability-browser-available .ability-browser-name {
+    color: rgb(180, 220, 180);
+}
+
+.ability-browser-locked {
+    opacity: 0.55;
+}
+
+.ability-browser-locked .ability-browser-name {
+    color: rgb(160, 140, 140);
+}
+
+.ability-browser-locked .ability-browser-info {
+    color: rgb(180, 120, 120);
+    font-size: 10px;
 }

@@ -4,13 +4,21 @@
     <!-- Chronicle content (collapse/expand owned by LogPanelContainer) -->
     <ui:VisualElement name="chronicle-panel" class="chronicle-panel">
 
-        <!-- Header bar: filters only (collapse button moved to container) -->
+        <!-- Header bar: filters + search -->
         <ui:VisualElement name="chronicle-header" class="chronicle-header">
-            <ui:VisualElement class="chronicle-filters">
-                <ui:Button name="filter-node" class="filter-button filter-active" text="Node" />
-                <ui:Button name="filter-runner" class="filter-button" text="Runner" />
-                <ui:Button name="filter-all" class="filter-button" text="All" />
+            <ui:VisualElement class="chronicle-filter-rows">
+                <ui:VisualElement class="chronicle-filters">
+                    <ui:Button name="filter-node" class="filter-button filter-active" text="Node" />
+                    <ui:Button name="filter-runner" class="filter-button" text="Runner" />
+                    <ui:Button name="filter-all" class="filter-button" text="All" />
+                </ui:VisualElement>
+                <ui:VisualElement class="chronicle-filters">
+                    <ui:Button name="dir-everything" class="filter-button filter-active" text="Everything" />
+                    <ui:Button name="dir-incoming" class="filter-button" text="Incoming" />
+                    <ui:Button name="dir-outgoing" class="filter-button" text="Outgoing" />
+                </ui:VisualElement>
             </ui:VisualElement>
+            <ui:TextField name="chronicle-search" class="chronicle-search" />
         </ui:VisualElement>
 
         <!-- Log entries -->

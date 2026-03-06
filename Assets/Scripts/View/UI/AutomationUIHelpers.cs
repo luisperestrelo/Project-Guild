@@ -201,6 +201,10 @@ namespace ProjectGuild.View.UI
                 CombatConditionType.AbilityOffCooldown =>
                     $"{FormatAbilityName(condition.StringParam, config)} Off Cooldown",
                 CombatConditionType.EnemyIsCasting => "Enemy Is Casting",
+                CombatConditionType.AnyUntauntedEnemy => "Any Untaunted Enemy",
+                CombatConditionType.AlliesBelowHpPercent =>
+                    $"Allies Below {(int)condition.NumericValue}% HP >= {condition.StringParam ?? "1"}",
+                CombatConditionType.EnemyTargetingSelf => "Enemy Targeting Self",
                 _ => condition.Type.ToString(),
             };
         }
@@ -215,6 +219,9 @@ namespace ProjectGuild.View.UI
                 TargetSelection.HighestHpEnemy => "Highest HP Enemy",
                 TargetSelection.NearestAlly => "Nearest Ally",
                 TargetSelection.LowestHpAlly => "Lowest HP Ally",
+                TargetSelection.NotTauntedBySelfEnemy => "Not Taunted By Self",
+                TargetSelection.UntauntedEnemy => "Untaunted Enemy",
+                TargetSelection.EnemyTargetingAlly => "Enemy Targeting Ally",
                 _ => selection.ToString(),
             };
         }

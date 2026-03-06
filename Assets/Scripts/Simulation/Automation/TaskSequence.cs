@@ -101,12 +101,12 @@ namespace ProjectGuild.Simulation.Automation
         /// Standard work loop: Travel to node → Work → Travel to hub → Deposit → repeat.
         /// What happens during the Work step is determined by the runner's micro rules.
         /// </summary>
-        public static TaskSequence CreateLoop(string nodeId, string hubNodeId, string microRulesetId = null)
+        public static TaskSequence CreateLoop(string nodeId, string hubNodeId, string microRulesetId = null, string nodeName = null)
         {
             return new TaskSequence
             {
                 Id = $"work-loop-{nodeId}",
-                Name = $"Gather at {nodeId}",
+                Name = $"Gather at {nodeName ?? nodeId}",
                 AutoGenerateName = false, // WorkAt creates with a specific name
                 TargetNodeId = nodeId,
                 Loop = true,
@@ -114,6 +114,28 @@ namespace ProjectGuild.Simulation.Automation
                 {
                     new TaskStep(TaskStepType.TravelTo, nodeId),
                     new TaskStep(TaskStepType.Work, microRulesetId: microRulesetId ?? DefaultRulesets.DefaultMicroId),
+                    new TaskStep(TaskStepType.TravelTo, hubNodeId),
+                    new TaskStep(TaskStepType.Deposit),
+                },
+            };
+        }
+
+        /// <summary>
+        /// Standard combat loop: TravelTo(node) → Work(combat micro) → TravelTo(hub) → Deposit.
+        /// </summary>
+        public static TaskSequence CreateCombatLoop(string nodeId, string hubNodeId, string microRulesetId = null, string nodeName = null)
+        {
+            return new TaskSequence
+            {
+                Id = $"fight-loop-{nodeId}",
+                Name = $"Fight at {nodeName ?? nodeId}",
+                AutoGenerateName = false,
+                TargetNodeId = nodeId,
+                Loop = true,
+                Steps = new List<TaskStep>
+                {
+                    new TaskStep(TaskStepType.TravelTo, nodeId),
+                    new TaskStep(TaskStepType.Work, microRulesetId: microRulesetId ?? DefaultRulesets.DefaultCombatMicroId),
                     new TaskStep(TaskStepType.TravelTo, hubNodeId),
                     new TaskStep(TaskStepType.Deposit),
                 },
