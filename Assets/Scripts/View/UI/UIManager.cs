@@ -53,6 +53,7 @@ namespace ProjectGuild.View.UI
         private RunnerDetailsPanelController _detailsPanelController;
         private AutomationPanelController _automationPanelController;
         private BankPanelController _bankPanelController;
+        private CraftingPanelController _craftingPanelController;
         private OptionsPanelController _optionsPanelController;
         private ResourceBarController _resourceBarController;
         private LogPanelContainerController _logPanelContainerController;
@@ -125,6 +126,7 @@ namespace ProjectGuild.View.UI
             if (_isPointerOverLogbook) return true;
             if (_automationPanelController?.IsOpen == true) return true;
             if (_bankPanelController?.IsOpen == true) return true;
+            if (_craftingPanelController?.IsOpen == true) return true;
             if (_optionsPanelController?.IsOpen == true) return true;
             if (_strategicMapPanelController?.IsOpen == true) return true;
             if (_abilitiesPanelController?.IsOpen == true) return true;
@@ -242,6 +244,9 @@ namespace ProjectGuild.View.UI
                 _bankPanelController = new BankPanelController(bankInstance, this);
             }
 
+            // Crafting panel (overlay, built programmatically)
+            _craftingPanelController = new CraftingPanelController(root, this);
+
             // Options panel (overlay)
             if (_optionsPanelAsset != null)
             {
@@ -268,6 +273,15 @@ namespace ProjectGuild.View.UI
                 guildHallBtn.text = "Guild Hall";
                 guildHallBtn.AddToClassList("guildhall-toggle-button");
                 root.Add(guildHallBtn);
+            }
+
+            // Crafting button (top-left, next to Guild Hall)
+            {
+                var craftingBtn = new Button(() => ToggleCraftingPanel());
+                craftingBtn.text = "Crafting";
+                craftingBtn.AddToClassList("guildhall-toggle-button");
+                craftingBtn.style.left = 240;
+                root.Add(craftingBtn);
             }
 
             // Abilities panel (overlay)
@@ -502,6 +516,17 @@ namespace ProjectGuild.View.UI
         public void ToggleBankPanel() => _bankPanelController?.Toggle();
         public void OpenBankPanel() => _bankPanelController?.Open();
 
+        // ─── Crafting Panel ─────────────────────────────────
+
+        public void ToggleCraftingPanel() => _craftingPanelController?.Toggle();
+        public void OpenCraftingPanel() => _craftingPanelController?.Open();
+
+        public Runner GetSelectedRunner()
+        {
+            if (_selectedRunnerId == null) return null;
+            return Simulation?.FindRunner(_selectedRunnerId);
+        }
+
         // ─── Options Panel ──────────────────────────────────
 
         public void ToggleOptionsPanel() => _optionsPanelController?.Toggle();
@@ -622,6 +647,7 @@ namespace ProjectGuild.View.UI
             _detailsPanelController = null;
             _automationPanelController = null;
             _bankPanelController = null;
+            _craftingPanelController = null;
             _optionsPanelController = null;
             _resourceBarController = null;
             _logPanelContainerController = null;

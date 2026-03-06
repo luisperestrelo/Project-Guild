@@ -82,6 +82,11 @@ namespace ProjectGuild.Simulation.Items
             return 0;
         }
 
+        public void RemoveItem(string itemId, int quantity)
+        {
+            RemoveFromBank(itemId, quantity);
+        }
+
         private void RemoveFromBank(string itemId, int quantity)
         {
             for (int i = 0; i < Stacks.Count; i++)

@@ -130,6 +130,32 @@ namespace ProjectGuild.Simulation.Core
         public int RuleCount;
     }
 
+    // ─── Crafting Events ──────────────────────────────────────────
+
+    public struct CraftingStarted
+    {
+        public string RunnerId;
+        public string RecipeId;
+        public string NodeId;
+    }
+
+    public struct CraftingCompleted
+    {
+        public string RunnerId;
+        public string RecipeId;
+        public string ProducedItemId;
+        public string NodeId;
+    }
+
+    // ─── Equipment Events ─────────────────────────────────────────
+
+    public struct ItemEquipped
+    {
+        public string RunnerId;
+        public string ItemId;
+        public Items.EquipmentSlot Slot;
+    }
+
     // ─── Tutorial Events ──────────────────────────────────────────
 
     public struct TutorialMilestoneCompleted

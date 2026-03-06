@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ProjectGuild.Simulation.Automation;
 using ProjectGuild.Simulation.Combat;
+using ProjectGuild.Simulation.Crafting;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.Tutorial;
@@ -48,6 +49,9 @@ namespace ProjectGuild.Simulation.Core
 
         private readonly System.Random _random = new();
 
+        // Stash for the last CraftHere recipe ID from micro evaluation
+        private string _lastCraftRecipeId;
+
 
         /// <summary>
         /// Seconds per simulation tick. At 10 ticks/sec this is 0.1.
@@ -76,6 +80,13 @@ namespace ProjectGuild.Simulation.Core
         {
             CurrentGameState = state;
             CurrentGameState.Map?.Initialize();
+
+            // Re-populate item registry
+            ItemRegistry = new ItemRegistry();
+            foreach (var itemDef in Config.ItemDefinitions)
+                ItemRegistry.Register(itemDef);
+            RegisterCraftingItems();
+
             DefaultRulesets.EnsureInLibrary(CurrentGameState);
             DefaultRulesets.EnsureTemplatesInLibrary(CurrentGameState);
             RefreshMacroConfigWarnings();
@@ -95,6 +106,9 @@ namespace ProjectGuild.Simulation.Core
             ItemRegistry = new ItemRegistry();
             foreach (var itemDef in Config.ItemDefinitions)
                 ItemRegistry.Register(itemDef);
+
+            // Register crafting output items (demo: hardcoded here)
+            RegisterCraftingItems();
 
             // Initialize decision log max entries from config
             CurrentGameState.MacroDecisionLog.SetMaxEntries(Config.MacroDecisionLogMaxEntries);
@@ -204,7 +218,7 @@ namespace ProjectGuild.Simulation.Core
                 new RunnerFactory.RunnerDefinition()
                     .WithSkill(SkillType.Melee, 5, true)
                     .WithSkill(SkillType.Defence, 4, true)
-                    .WithSkill(SkillType.Hitpoints, 5)
+                    .WithSkill(SkillType.Hitpoints, 7)
                     .WithSkill(SkillType.Athletics, 3),
 
                 // Pawn 2: agile mage (passions: Magic, Athletics)
@@ -292,6 +306,10 @@ namespace ProjectGuild.Simulation.Core
 
                 case RunnerState.Waiting:
                     TickWaiting(runner);
+                    break;
+
+                case RunnerState.Crafting:
+                    TickCrafting(runner);
                     break;
             }
         }
@@ -1035,6 +1053,18 @@ namespace ProjectGuild.Simulation.Core
                 return false; // async wait started
             }
 
+            // CraftHere signal — micro says "craft at this station"
+            if (gatherableIndex == MicroResultCraftHere)
+            {
+                // Find the recipe from the last matched rule's action
+                string recipeId = GetLastMatchedCraftRecipeId(runner, node);
+                if (recipeId != null && StartCrafting(runner, recipeId))
+                    return false; // async crafting started
+                // Can't craft (missing materials etc) — stuck
+                runner.ActiveWarning = "Cannot craft: missing materials";
+                return false;
+            }
+
             // For gathering results, node must have gatherables
             if (node == null || node.Gatherables.Length == 0)
             {
@@ -1150,6 +1180,7 @@ namespace ProjectGuild.Simulation.Core
         private const int MicroResultNoEligibleGatherable = -3;
         private const int MicroResultFightHere = -4;
         private const int MicroResultWait = -5;
+        private const int MicroResultCraftHere = -6;
 
         /// <summary>
         /// Evaluate the micro ruleset for the current Work step to decide which resource to gather.
@@ -1251,6 +1282,17 @@ namespace ProjectGuild.Simulation.Core
                     LogDecision(runner, ruleIndex, rule, logSource,
                         "Wait", false, DecisionLayer.Micro);
                     return MicroResultWait;
+                }
+
+                if (action.Type == ActionType.CraftHere)
+                {
+                    _lastCraftRecipeId = action.StringParam;
+                    string recipeName = action.StringParam ?? "Unknown";
+                    var craftRecipe = CraftingRecipeRegistry.Get(action.StringParam);
+                    if (craftRecipe != null) recipeName = craftRecipe.Name;
+                    LogDecision(runner, ruleIndex, rule, logSource,
+                        $"Craft {recipeName}", false, DecisionLayer.Micro);
+                    return MicroResultCraftHere;
                 }
 
                 // Rule matched but action is invalid (wrong type, out-of-bounds index).
@@ -1551,6 +1593,143 @@ namespace ProjectGuild.Simulation.Core
             // ExecuteCurrentStep handles pending application at step 0
             // and macro evaluation before each step.
             ExecuteCurrentStep(runner);
+        }
+
+        private string GetLastMatchedCraftRecipeId(Runner runner, WorldNode node)
+        {
+            return _lastCraftRecipeId;
+        }
+
+        // ─── Crafting ───────────────────────────────────────────────
+
+        private void TickCrafting(Runner runner)
+        {
+            if (runner.CraftingProgress == null) return;
+
+            runner.CraftingProgress.TicksRemaining--;
+            if (runner.CraftingProgress.TicksRemaining > 0) return;
+
+            // Crafting complete
+            var recipe = CraftingRecipeRegistry.Get(runner.CraftingProgress.RecipeId);
+            if (recipe != null)
+            {
+                // Award XP
+                var skill = runner.GetSkill(recipe.RequiredSkill);
+                bool leveledUp = skill.AddXp(recipe.XpReward, Config);
+                if (leveledUp)
+                {
+                    Events.Publish(new RunnerSkillLeveledUp
+                    {
+                        RunnerId = runner.Id,
+                        Skill = recipe.RequiredSkill,
+                        NewLevel = skill.Level,
+                    });
+                }
+
+                // Produce item
+                if (recipe.EquipmentSlot.HasValue)
+                {
+                    // Equipment goes straight to bank as a named item
+                    CurrentGameState.Bank.Deposit(recipe.ProducedItemId, 1);
+                }
+                else
+                {
+                    // Regular item (potion etc)
+                    CurrentGameState.Bank.Deposit(recipe.ProducedItemId, 1);
+                }
+
+                Events.Publish(new CraftingCompleted
+                {
+                    RunnerId = runner.Id,
+                    RecipeId = recipe.Id,
+                    ProducedItemId = recipe.ProducedItemId,
+                    NodeId = runner.CraftingProgress.NodeId,
+                });
+            }
+
+            runner.State = RunnerState.Idle;
+            runner.CraftingProgress = null;
+
+            // Advance step
+            var seq = GetRunnerTaskSequence(runner);
+            if (seq != null)
+            {
+                if (AdvanceRunnerStepIndex(runner, seq))
+                {
+                    PublishStepAdvanced(runner, seq);
+                }
+                else
+                {
+                    HandleSequenceCompleted(runner);
+                    return;
+                }
+            }
+
+            ExecuteCurrentStep(runner);
+        }
+
+        private void RegisterCraftingItems()
+        {
+            CraftingRecipeRegistry.Initialize();
+
+            // Register items that are produced by crafting (if not already in registry)
+            void Reg(string id, string name, ItemCategory cat, bool stack = false, int maxStack = 1)
+            {
+                if (!ItemRegistry.Has(id))
+                    ItemRegistry.Register(new ItemDefinition(id, name, cat, stack, maxStack));
+            }
+
+            Reg("copper_sword", "Copper Sword", ItemCategory.Gear);
+            Reg("copper_shield", "Copper Shield", ItemCategory.Gear);
+            Reg("copper_helmet", "Copper Helmet", ItemCategory.Gear);
+            Reg("copper_body", "Copper Body Armour", ItemCategory.Gear);
+            Reg("wooden_staff", "Wooden Staff", ItemCategory.Gear);
+            Reg("wooden_wand", "Wooden Wand", ItemCategory.Gear);
+            Reg("health_potion", "Health Potion", ItemCategory.Consumable, true, 10);
+            Reg("mana_potion", "Mana Potion", ItemCategory.Consumable, true, 10);
+        }
+
+        /// <summary>
+        /// Start crafting a recipe. Called when micro rules produce CraftHere.
+        /// Consumes materials from bank, starts crafting timer.
+        /// </summary>
+        public bool StartCrafting(Runner runner, string recipeId)
+        {
+            CraftingRecipeRegistry.Initialize();
+            var recipe = CraftingRecipeRegistry.Get(recipeId);
+            if (recipe == null) return false;
+
+            // Check materials in bank
+            foreach (var ing in recipe.Ingredients)
+            {
+                if (CurrentGameState.Bank.CountItem(ing.ItemId) < ing.Quantity)
+                    return false;
+            }
+
+            // Consume materials
+            foreach (var ing in recipe.Ingredients)
+            {
+                for (int i = 0; i < ing.Quantity; i++)
+                    CurrentGameState.Bank.RemoveItem(ing.ItemId, 1);
+            }
+
+            runner.State = RunnerState.Crafting;
+            runner.CraftingProgress = new CraftingState
+            {
+                NodeId = runner.CurrentNodeId,
+                RecipeId = recipeId,
+                TicksRemaining = recipe.CraftTicks,
+                TicksTotal = recipe.CraftTicks,
+            };
+
+            Events.Publish(new CraftingStarted
+            {
+                RunnerId = runner.Id,
+                RecipeId = recipeId,
+                NodeId = runner.CurrentNodeId,
+            });
+
+            return true;
         }
 
         // ─── Combat ────────────────────────────────────────────────
@@ -2962,6 +3141,63 @@ namespace ProjectGuild.Simulation.Core
             var runner = FindRunner(runnerId);
             if (runner == null) return;
             runner.Name = newName?.Trim() ?? "";
+        }
+
+        // ─── Equipment Commands ──────────────────────────────────────
+
+        /// <summary>
+        /// Equip an item from the bank onto a runner. Creates the EquipmentItem from recipe data.
+        /// Returns displaced item to bank if any.
+        /// </summary>
+        public bool CommandEquipFromBank(string runnerId, string itemId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return false;
+
+            if (CurrentGameState.Bank.CountItem(itemId) <= 0) return false;
+
+            // Find recipe that produces this item to get equipment data
+            CraftingRecipeRegistry.Initialize();
+            CraftingRecipe recipe = null;
+            foreach (var r in CraftingRecipeRegistry.All)
+            {
+                if (r.ProducedItemId == itemId && r.EquipmentSlot.HasValue)
+                {
+                    recipe = r;
+                    break;
+                }
+            }
+
+            if (recipe == null || !recipe.EquipmentSlot.HasValue) return false;
+
+            // Remove from bank
+            CurrentGameState.Bank.RemoveItem(itemId, 1);
+
+            // Unequip existing item in that slot (return to bank)
+            var existing = runner.Equipment.GetSlot(recipe.EquipmentSlot.Value);
+            if (existing != null)
+            {
+                CurrentGameState.Bank.Deposit(existing.ItemId, 1);
+                runner.Equipment.Unequip(recipe.EquipmentSlot.Value);
+            }
+
+            // Create and equip new item
+            var equipItem = new EquipmentItem(itemId, recipe.Name, recipe.EquipmentSlot.Value);
+            if (recipe.EquipmentStats != null)
+            {
+                foreach (var kvp in recipe.EquipmentStats)
+                    equipItem.WithBonus(kvp.Key, kvp.Value);
+            }
+            runner.Equipment.Equip(equipItem);
+
+            Events.Publish(new ItemEquipped
+            {
+                RunnerId = runner.Id,
+                ItemId = itemId,
+                Slot = recipe.EquipmentSlot.Value,
+            });
+
+            return true;
         }
 
         // ─── Library CRUD Commands ──────────────────────────────────

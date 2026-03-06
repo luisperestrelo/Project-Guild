@@ -5,11 +5,7 @@ namespace ProjectGuild.Simulation.Tutorial
 {
     /// <summary>
     /// Monitors simulation events and advances tutorial milestones.
-    /// Follows the same pattern as ChronicleService: Func&lt;GameState&gt; for lazy access,
-    /// SubscribeAll/UnsubscribeAll for event wiring.
-    ///
-    /// Pure C# — no Unity dependency. The view layer's TutorialController subscribes
-    /// to the milestone/phase events this service publishes and shows appropriate UI.
+    /// Pure C# — no Unity dependency.
     /// </summary>
     public class TutorialService
     {
@@ -17,10 +13,6 @@ namespace ProjectGuild.Simulation.Tutorial
         private readonly EventBus _events;
         private readonly float _tickDeltaTime;
 
-        /// <summary>
-        /// Tick when Gathering_SentRunnerToNode was completed. Used to time the idle nudge.
-        /// -1 means not yet sent.
-        /// </summary>
         private long _sentRunnerTick = -1;
 
         public TutorialService(Func<GameState> getState, EventBus events, float tickDeltaTime)
@@ -37,6 +29,10 @@ namespace ProjectGuild.Simulation.Tutorial
             events.Subscribe<RunnerStartedTravel>(OnRunnerStartedTravel);
             events.Subscribe<RunnerDeposited>(OnRunnerDeposited);
             events.Subscribe<SimulationTickCompleted>(OnSimulationTickCompleted);
+            events.Subscribe<CraftingCompleted>(OnCraftingCompleted);
+            events.Subscribe<ItemEquipped>(OnItemEquipped);
+            events.Subscribe<EnemyDied>(OnEnemyDied);
+            events.Subscribe<RunnerSkillLeveledUp>(OnSkillLeveledUp);
         }
 
         public void UnsubscribeAll(EventBus events)
@@ -44,14 +40,14 @@ namespace ProjectGuild.Simulation.Tutorial
             events.Unsubscribe<RunnerStartedTravel>(OnRunnerStartedTravel);
             events.Unsubscribe<RunnerDeposited>(OnRunnerDeposited);
             events.Unsubscribe<SimulationTickCompleted>(OnSimulationTickCompleted);
+            events.Unsubscribe<CraftingCompleted>(OnCraftingCompleted);
+            events.Unsubscribe<ItemEquipped>(OnItemEquipped);
+            events.Unsubscribe<EnemyDied>(OnEnemyDied);
+            events.Unsubscribe<RunnerSkillLeveledUp>(OnSkillLeveledUp);
         }
 
         // ─── Initialization ───────────────────────────────────────
 
-        /// <summary>
-        /// Set up the initial discovered node list for a new game.
-        /// Hub + the four nearby gathering nodes are visible from the start.
-        /// </summary>
         public void InitializeDiscoveredNodes()
         {
             var state = _getState();
@@ -68,27 +64,16 @@ namespace ProjectGuild.Simulation.Tutorial
             tutorial.DiscoveredNodeIds.Add("herb_garden");
         }
 
-        /// <summary>
-        /// Complete the intro milestone at tick 0 of a new game.
-        /// Called by GameSimulation.StartNewGame after state is set up.
-        /// </summary>
         public void CompleteIntroMilestone()
         {
             CompleteMilestone(TutorialMilestones.Gathering_Intro);
         }
 
-        /// <summary>
-        /// Manually complete a milestone (for dev commands / testing).
-        /// </summary>
         public void ForceCompleteMilestone(string milestoneId)
         {
             CompleteMilestone(milestoneId);
         }
 
-        /// <summary>
-        /// Skip the tutorial entirely. Clears discovered nodes (shows all)
-        /// and marks tutorial as inactive.
-        /// </summary>
         public void SkipTutorial()
         {
             var state = _getState();
@@ -98,9 +83,6 @@ namespace ProjectGuild.Simulation.Tutorial
             state.Tutorial.DiscoveredNodeIds.Clear();
         }
 
-        /// <summary>
-        /// Reset tutorial to the beginning of the Gathering phase.
-        /// </summary>
         public void ResetTutorial()
         {
             var state = _getState();
@@ -114,9 +96,6 @@ namespace ProjectGuild.Simulation.Tutorial
             CompleteIntroMilestone();
         }
 
-        /// <summary>
-        /// Advance to the next phase. For dev commands.
-        /// </summary>
         public void AdvanceToNextPhase()
         {
             var state = _getState();
@@ -128,6 +107,8 @@ namespace ProjectGuild.Simulation.Tutorial
             var completed = tutorial.CurrentPhase;
             tutorial.CurrentPhase = completed + 1;
 
+            OnPhaseTransition(completed, tutorial.CurrentPhase);
+
             _events.Publish(new TutorialPhaseCompleted
             {
                 CompletedPhase = completed,
@@ -135,9 +116,6 @@ namespace ProjectGuild.Simulation.Tutorial
             });
         }
 
-        /// <summary>
-        /// Add a node to the discovered list (for dev commands).
-        /// </summary>
         public void UnlockNode(string nodeId)
         {
             var state = _getState();
@@ -152,56 +130,103 @@ namespace ProjectGuild.Simulation.Tutorial
         private void OnRunnerStartedTravel(RunnerStartedTravel e)
         {
             var state = _getState();
-            if (state == null) return;
-            if (!state.Tutorial.IsActive) return;
-            if (state.Tutorial.CurrentPhase != TutorialPhase.Gathering) return;
+            if (state == null || !state.Tutorial.IsActive) return;
 
-            // Complete "sent runner to node" if target is not hub
-            if (e.ToNodeId != state.Map.HubNodeId)
+            if (state.Tutorial.CurrentPhase == TutorialPhase.Gathering)
             {
-                if (CompleteMilestone(TutorialMilestones.Gathering_SentRunnerToNode))
-                    _sentRunnerTick = state.TickCount;
+                if (e.ToNodeId != state.Map.HubNodeId)
+                {
+                    if (CompleteMilestone(TutorialMilestones.Gathering_SentRunnerToNode))
+                        _sentRunnerTick = state.TickCount;
+                }
+            }
+
+            if (state.Tutorial.CurrentPhase == TutorialPhase.Combat)
+            {
+                if (e.ToNodeId == "goblin_camp")
+                    CompleteMilestone(TutorialMilestones.Combat_SentToGoblins);
             }
         }
 
         private void OnRunnerDeposited(RunnerDeposited e)
         {
             var state = _getState();
-            if (state == null) return;
-            if (!state.Tutorial.IsActive) return;
+            if (state == null || !state.Tutorial.IsActive) return;
             if (state.Tutorial.CurrentPhase != TutorialPhase.Gathering) return;
 
-            // Check if bank has >= 20 copper ore
             int copperCount = state.Bank.CountItem("copper_ore");
             if (copperCount >= 20)
             {
                 if (CompleteMilestone(TutorialMilestones.Gathering_CopperDeposited))
-                    CheckPhaseComplete();
+                    TransitionPhase(TutorialPhase.Gathering, TutorialPhase.Crafting);
             }
         }
 
         private void OnSimulationTickCompleted(SimulationTickCompleted e)
         {
             var state = _getState();
-            if (state == null) return;
-            if (!state.Tutorial.IsActive) return;
-            if (state.Tutorial.CurrentPhase != TutorialPhase.Gathering) return;
+            if (state == null || !state.Tutorial.IsActive) return;
 
-            CheckIdleNudge(state, e.TickNumber);
+            if (state.Tutorial.CurrentPhase == TutorialPhase.Gathering)
+                CheckIdleNudge(state, e.TickNumber);
+        }
+
+        private void OnCraftingCompleted(CraftingCompleted e)
+        {
+            var state = _getState();
+            if (state == null || !state.Tutorial.IsActive) return;
+            if (state.Tutorial.CurrentPhase != TutorialPhase.Crafting) return;
+
+            CompleteMilestone(TutorialMilestones.Crafting_FirstItemCrafted);
+        }
+
+        private void OnItemEquipped(ItemEquipped e)
+        {
+            var state = _getState();
+            if (state == null || !state.Tutorial.IsActive) return;
+            if (state.Tutorial.CurrentPhase != TutorialPhase.Crafting) return;
+
+            if (CompleteMilestone(TutorialMilestones.Crafting_ItemEquipped))
+                TransitionPhase(TutorialPhase.Crafting, TutorialPhase.Combat);
+        }
+
+        private void OnEnemyDied(EnemyDied e)
+        {
+            var state = _getState();
+            if (state == null || !state.Tutorial.IsActive) return;
+            if (state.Tutorial.CurrentPhase != TutorialPhase.Combat) return;
+
+            CompleteMilestone(TutorialMilestones.Combat_FirstKill);
+        }
+
+        private void OnSkillLeveledUp(RunnerSkillLeveledUp e)
+        {
+            var state = _getState();
+            if (state == null || !state.Tutorial.IsActive) return;
+
+            // Culling Frost unlock: Magic level 8 triggers Automation phase
+            if (e.Skill == SkillType.Magic && e.NewLevel >= 8)
+            {
+                if (state.Tutorial.CurrentPhase == TutorialPhase.Combat
+                    || state.Tutorial.CurrentPhase == TutorialPhase.Automation)
+                {
+                    // Complete combat phase if still in it
+                    if (state.Tutorial.CurrentPhase == TutorialPhase.Combat)
+                        TransitionPhase(TutorialPhase.Combat, TutorialPhase.Automation);
+                }
+            }
         }
 
         // ─── Internal ─────────────────────────────────────────────
 
         private void CheckIdleNudge(GameState state, long currentTick)
         {
-            // Only after a runner has been sent and 15+ seconds have passed
             if (_sentRunnerTick < 0) return;
             if (state.Tutorial.IsMilestoneCompleted(TutorialMilestones.Gathering_IdleNudgeShown)) return;
 
             float secondsSinceSent = (currentTick - _sentRunnerTick) * _tickDeltaTime;
             if (secondsSinceSent < 15f) return;
 
-            // Count runners idle at hub
             int idleAtHub = 0;
             string hubId = state.Map.HubNodeId;
             for (int i = 0; i < state.Runners.Count; i++)
@@ -215,15 +240,10 @@ namespace ProjectGuild.Simulation.Tutorial
                 CompleteMilestone(TutorialMilestones.Gathering_IdleNudgeShown);
         }
 
-        /// <summary>
-        /// Complete a milestone if the tutorial is active. Publishes TutorialMilestoneCompleted.
-        /// Returns true if newly completed.
-        /// </summary>
         private bool CompleteMilestone(string milestoneId)
         {
             var state = _getState();
-            if (state == null) return false;
-            if (!state.Tutorial.IsActive) return false;
+            if (state == null || !state.Tutorial.IsActive) return false;
 
             if (!state.Tutorial.CompleteMilestone(milestoneId))
                 return false;
@@ -237,24 +257,60 @@ namespace ProjectGuild.Simulation.Tutorial
             return true;
         }
 
-        private void CheckPhaseComplete()
+        private void TransitionPhase(TutorialPhase from, TutorialPhase to)
+        {
+            var state = _getState();
+            if (state == null) return;
+            if (state.Tutorial.CurrentPhase != from) return;
+
+            // Complete the "complete" milestone for the current phase
+            string completeMilestone = from switch
+            {
+                TutorialPhase.Gathering => TutorialMilestones.Gathering_Complete,
+                TutorialPhase.Crafting => TutorialMilestones.Crafting_Complete,
+                TutorialPhase.Combat => TutorialMilestones.Combat_Complete,
+                _ => null,
+            };
+            if (completeMilestone != null)
+                CompleteMilestone(completeMilestone);
+
+            state.Tutorial.CurrentPhase = to;
+            OnPhaseTransition(from, to);
+
+            _events.Publish(new TutorialPhaseCompleted
+            {
+                CompletedPhase = from,
+                NextPhase = to,
+            });
+
+            // Publish intro milestone for the new phase
+            string introMilestone = to switch
+            {
+                TutorialPhase.Crafting => TutorialMilestones.Crafting_Intro,
+                TutorialPhase.Combat => TutorialMilestones.Combat_Intro,
+                TutorialPhase.Automation => TutorialMilestones.Automation_Intro,
+                _ => null,
+            };
+            if (introMilestone != null)
+                CompleteMilestone(introMilestone);
+        }
+
+        private void OnPhaseTransition(TutorialPhase from, TutorialPhase to)
         {
             var state = _getState();
             if (state == null) return;
 
-            if (state.Tutorial.CurrentPhase == TutorialPhase.Gathering
-                && state.Tutorial.IsMilestoneCompleted(TutorialMilestones.Gathering_CopperDeposited))
+            // Unlock goblin camp when entering combat phase
+            if (to == TutorialPhase.Combat)
             {
-                CompleteMilestone(TutorialMilestones.Gathering_Complete);
+                if (!state.Tutorial.DiscoveredNodeIds.Contains("goblin_camp"))
+                    state.Tutorial.DiscoveredNodeIds.Add("goblin_camp");
+            }
 
-                var completed = state.Tutorial.CurrentPhase;
-                state.Tutorial.CurrentPhase = TutorialPhase.Crafting;
-
-                _events.Publish(new TutorialPhaseCompleted
-                {
-                    CompletedPhase = completed,
-                    NextPhase = TutorialPhase.Crafting,
-                });
+            // Unlock everything on automation phase (tutorial basically done for demo)
+            if (to == TutorialPhase.Automation || to == TutorialPhase.Complete)
+            {
+                state.Tutorial.DiscoveredNodeIds.Clear(); // empty = show all
             }
         }
     }

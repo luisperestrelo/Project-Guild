@@ -137,12 +137,45 @@ namespace ProjectGuild.View.UI
                 case TutorialMilestones.Gathering_CopperDeposited:
                     ShowMessage("Good. You have enough copper to start crafting. Head to the Guild Hall to forge some equipment.");
                     break;
+
+                // ─── Crafting Phase ─────────────────────────────────
+                case TutorialMilestones.Crafting_Intro:
+                    ShowMessage("Time to put those materials to use. Open the Crafting panel at the Guild Hall to forge equipment for your runners.\n\nCraft a weapon or piece of armor, then equip it on a runner.");
+                    break;
+
+                case TutorialMilestones.Crafting_FirstItemCrafted:
+                    ShowMessage("Your first piece of equipment! Now equip it on one of your runners. Open a runner's details and look for the Equipment tab.");
+                    break;
+
+                case TutorialMilestones.Crafting_ItemEquipped:
+                    ShowMessage("Well done. Your runner is now stronger. Time to put that equipment to the test.");
+                    break;
+
+                // ─── Combat Phase ───────────────────────────────────
+                case TutorialMilestones.Combat_Intro:
+                    ShowMessage("Goblins have set up camp nearby. Open the World map (M) and send your runners to the Goblin Camp.\n\nEquip everyone first. They'll need every advantage they can get.");
+                    HighlightWorldButton();
+                    break;
+
+                case TutorialMilestones.Combat_SentToGoblins:
+                    ShowMessage("Your runners are heading to the Goblin Camp. Watch them fight. They'll use their abilities automatically based on their combat style.");
+                    ClearAllHighlights();
+                    break;
+
+                case TutorialMilestones.Combat_FirstKill:
+                    ShowMessage("First blood! Your runners are fighting well. Keep watching. They'll continue farming experience and loot.");
+                    break;
+
+                // ─── Automation Phase (triggered by Culling Frost unlock) ─
+                case TutorialMilestones.Automation_Intro:
+                    ShowMessage("Your mage just learned Culling Frost! It deals massive damage to enemies below 35% HP, but is weak otherwise.\n\nOpen their Combat Style and add a rule: \"If enemy HP < 35%, use Culling Frost\" above the Fireball rule. Watch them switch spells mid-fight.");
+                    break;
             }
         }
 
         private void OnPhaseCompleted(TutorialPhaseCompleted e)
         {
-            // Future phases will show transition messages here
+            // Phase transitions are handled by the intro milestones above
         }
 
         // ─── Intro Check ──────────────────────────────────────────

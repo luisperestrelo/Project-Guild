@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ProjectGuild.Simulation.Automation;
+using ProjectGuild.Simulation.Crafting;
 using ProjectGuild.Simulation.Items;
 
 namespace ProjectGuild.Simulation.Core
@@ -58,6 +59,9 @@ namespace ProjectGuild.Simulation.Core
         // Inventory — initialized by RunnerFactory with MaxSlots from config
         public Inventory Inventory;
 
+        // Equipment — stat-boosting gear
+        public Equipment Equipment = new();
+
         // Travel state (populated when State == Traveling)
         public TravelState Travel;
 
@@ -84,6 +88,9 @@ namespace ProjectGuild.Simulation.Core
 
         // Waiting state (populated when State == Waiting)
         public WaitingState Waiting;
+
+        // Crafting state (populated when State == Crafting)
+        public CraftingState CraftingProgress;
 
         /// <summary>
         /// Current hitpoints. Starts at max and decreases from combat damage.
@@ -205,11 +212,15 @@ namespace ProjectGuild.Simulation.Core
         public Skill GetSkill(SkillType type) => Skills[(int)type];
 
         /// <summary>
-        /// Get the effective level of a skill (including passion bonus).
+        /// Get the effective level of a skill (including passion bonus + equipment).
         /// This is the value used in all gameplay calculations.
         /// </summary>
-        public float GetEffectiveLevel(SkillType type, SimulationConfig config) =>
-            Skills[(int)type].GetEffectiveLevel(config);
+        public float GetEffectiveLevel(SkillType type, SimulationConfig config)
+        {
+            float baseLevel = Skills[(int)type].GetEffectiveLevel(config);
+            int equipBonus = Equipment?.GetTotalBonus(type) ?? 0;
+            return baseLevel + equipBonus;
+        }
     }
 
     /// <summary>
