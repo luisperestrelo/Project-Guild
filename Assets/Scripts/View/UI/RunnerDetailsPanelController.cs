@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Automation;
@@ -33,6 +34,15 @@ namespace ProjectGuild.View.UI
         private AutomationTabController _automationTabController;
         private readonly VisualTreeAsset _automationTabAsset;
         private string _activeTab = "overview";
+
+        // ─── Vitals (HP/Mana bars in overview) ────────────
+        private VisualElement _vitalsContainer;
+        private VisualElement _overviewHpRow;
+        private VisualElement _overviewHpFill;
+        private Label _overviewHpValue;
+        private VisualElement _overviewManaRow;
+        private VisualElement _overviewManaFill;
+        private Label _overviewManaValue;
 
         // ─── Overview elements ──────────────────────────
         private readonly Label _nameLabel;
@@ -136,6 +146,7 @@ namespace ProjectGuild.View.UI
             _progressLabel = root.Q<Label>("travel-progress-label");
             _travelProgressBar = root.Q<ProgressBar>("travel-progress-bar");
             _warningLabel = root.Q<Label>("overview-warning-label");
+            BuildVitalsSection();
             _liveStatsContainer = root.Q("live-stats-container");
             BuildLiveStatRows();
             _skillsSummaryLabel = root.Q<Label>("skills-summary-label");
@@ -324,6 +335,9 @@ namespace ProjectGuild.View.UI
             if (hasWarning)
                 _warningLabel.text = runner.ActiveWarning;
 
+            // Vitals (HP / Mana bars)
+            RefreshVitals(runner, sim);
+
             // Task info
             var taskSeq = sim.GetRunnerTaskSequence(runner);
             if (taskSeq != null)
@@ -392,6 +406,129 @@ namespace ProjectGuild.View.UI
 
             // Skills summary
             _skillsSummaryLabel.text = FormatSkillsSummary(runner);
+        }
+
+        // ─── Vitals (HP / Mana) ──────────────────────────
+
+        private void BuildVitalsSection()
+        {
+            _vitalsContainer = new VisualElement();
+            _vitalsContainer.style.marginBottom = 4;
+
+            // HP row
+            _overviewHpRow = new VisualElement();
+            _overviewHpRow.AddToClassList("overview-bar-row");
+
+            var hpLabel = new Label("HP");
+            hpLabel.AddToClassList("overview-bar-label");
+            hpLabel.pickingMode = PickingMode.Ignore;
+            _overviewHpRow.Add(hpLabel);
+
+            var hpBarContainer = new VisualElement();
+            hpBarContainer.AddToClassList("overview-bar-container");
+            _overviewHpFill = new VisualElement();
+            _overviewHpFill.AddToClassList("overview-bar-fill");
+            _overviewHpFill.AddToClassList("overview-bar-fill-green");
+            hpBarContainer.Add(_overviewHpFill);
+            _overviewHpRow.Add(hpBarContainer);
+
+            _overviewHpValue = new Label("0 / 0");
+            _overviewHpValue.AddToClassList("overview-bar-value");
+            _overviewHpValue.pickingMode = PickingMode.Ignore;
+            _overviewHpRow.Add(_overviewHpValue);
+
+            _vitalsContainer.Add(_overviewHpRow);
+
+            // Mana row
+            _overviewManaRow = new VisualElement();
+            _overviewManaRow.AddToClassList("overview-bar-row");
+
+            var manaLabel = new Label("Mana");
+            manaLabel.AddToClassList("overview-bar-label");
+            manaLabel.pickingMode = PickingMode.Ignore;
+            _overviewManaRow.Add(manaLabel);
+
+            var manaBarContainer = new VisualElement();
+            manaBarContainer.AddToClassList("overview-bar-container");
+            _overviewManaFill = new VisualElement();
+            _overviewManaFill.AddToClassList("overview-bar-fill");
+            _overviewManaFill.AddToClassList("overview-bar-fill-mana");
+            manaBarContainer.Add(_overviewManaFill);
+            _overviewManaRow.Add(manaBarContainer);
+
+            _overviewManaValue = new Label("0 / 0");
+            _overviewManaValue.AddToClassList("overview-bar-value");
+            _overviewManaValue.pickingMode = PickingMode.Ignore;
+            _overviewManaRow.Add(_overviewManaValue);
+
+            _vitalsContainer.Add(_overviewManaRow);
+
+            // Insert after warning label (which is after header, before task section)
+            var taskSection = _root.Q("task-section");
+            _contentOverview.Insert(_contentOverview.IndexOf(taskSection), _vitalsContainer);
+        }
+
+        private void RefreshVitals(Runner runner, GameSimulation sim)
+        {
+            var config = sim.Config;
+            var prefs = _uiManager.Preferences;
+
+            // HP bar: always show, uninitialized = 100%
+            float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                runner.GetEffectiveLevel(SkillType.Hitpoints, config), config);
+
+            float hpPercent;
+            float currentHp;
+            if (runner.State == RunnerState.Dead)
+            {
+                hpPercent = 0f;
+                currentHp = 0f;
+            }
+            else if (runner.CurrentHitpoints < 0f)
+            {
+                hpPercent = 1f;
+                currentHp = maxHp;
+            }
+            else
+            {
+                hpPercent = maxHp > 0f ? Mathf.Clamp01(runner.CurrentHitpoints / maxHp) : 0f;
+                currentHp = runner.CurrentHitpoints;
+            }
+
+            _overviewHpFill.style.width = Length.Percent(hpPercent * 100f);
+            _overviewHpValue.text = $"{Mathf.CeilToInt(currentHp)} / {Mathf.CeilToInt(maxHp)}";
+
+            _overviewHpFill.RemoveFromClassList("overview-bar-fill-green");
+            _overviewHpFill.RemoveFromClassList("overview-bar-fill-yellow");
+            _overviewHpFill.RemoveFromClassList("overview-bar-fill-red");
+
+            if (hpPercent > 0.5f)
+                _overviewHpFill.AddToClassList("overview-bar-fill-green");
+            else if (hpPercent > 0.25f)
+                _overviewHpFill.AddToClassList("overview-bar-fill-yellow");
+            else
+                _overviewHpFill.AddToClassList("overview-bar-fill-red");
+
+            // Mana bar: same visibility logic as portrait
+            float maxMana = CombatFormulas.CalculateMaxMana(
+                runner.GetEffectiveLevel(SkillType.Restoration, config), config);
+            string manaPref = prefs.PortraitManaDisplay;
+            long tickCount = sim.CurrentGameState.TickCount;
+
+            bool showMana = manaPref != "Never"
+                && runner.CurrentMana >= 0f
+                && (manaPref == "Always"
+                    || (runner.LastManaSpentTick >= 0 && tickCount - runner.LastManaSpentTick < 100)
+                    || runner.CurrentMana < maxMana);
+
+            _overviewManaRow.style.display = showMana ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (showMana)
+            {
+                float manaPercent = maxMana > 0f ? Mathf.Clamp01(runner.CurrentMana / maxMana) : 0f;
+                _overviewManaFill.style.width = Length.Percent(manaPercent * 100f);
+                _overviewManaValue.text = $"{Mathf.CeilToInt(runner.CurrentMana)} / {Mathf.CeilToInt(maxMana)}";
+            }
         }
 
         // ─── Live Stats ───────────────────────────────────

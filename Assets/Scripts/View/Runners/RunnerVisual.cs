@@ -1,5 +1,8 @@
 using TMPro;
 using UnityEngine;
+using ProjectGuild.Bridge;
+using ProjectGuild.Simulation.Combat;
+using ProjectGuild.Simulation.Core;
 
 namespace ProjectGuild.View.Runners
 {
@@ -54,6 +57,26 @@ namespace ProjectGuild.View.Runners
         private const float NameLabelHeightPrefab = 2.5f;
         private const float NameLabelHeightCapsule = 2.2f;
 
+        // Nameplate HP/Mana bars
+        private const float BarGroupOffsetFromLabel = -0.2f;
+        private const float HpBarWidth = 1.2f;
+        private const float HpBarHeight = 0.08f;
+        private const float ManaBarHeight = 0.06f;
+        private const float ManaBarGap = 0.02f;
+
+        private GameObject _barGroup;
+        private SpriteRenderer _hpFillRenderer;
+        private Transform _hpFillTransform;
+        private GameObject _manaBarGroup;
+        private SpriteRenderer _manaFillRenderer;
+        private Transform _manaFillTransform;
+
+        // Sim data set by VisualSyncSystem each frame
+        public Runner SimRunner { get; set; }
+        public SimulationConfig SimConfig { get; set; }
+        public long CurrentTick { get; set; }
+        public PlayerPreferences DisplayPrefs { get; set; }
+
         public void Initialize(string runnerId, string runnerName, Vector3 startPosition)
         {
             RunnerId = runnerId;
@@ -90,6 +113,10 @@ namespace ProjectGuild.View.Runners
             _nameLabel.alignment = TextAlignmentOptions.Center;
             _nameLabel.color = Color.white;
             _nameLabel.rectTransform.sizeDelta = new Vector2(6f, 2f);
+
+            // Create HP/Mana bar group below the name label
+            float barGroupY = labelHeight + BarGroupOffsetFromLabel;
+            CreateNameplateBars(barGroupY);
         }
 
         /// <summary>
@@ -222,13 +249,163 @@ namespace ProjectGuild.View.Runners
             }
             _lastFramePosition = transform.position;
 
-            // Billboard name label — Y-axis only so it stays upright from any angle
-            if (_nameLabel != null && Camera.main != null)
+            // Billboard name label and bars — Y-axis only so they stay upright from any angle
+            if (Camera.main != null)
             {
                 var camForward = Camera.main.transform.forward;
                 camForward.y = 0f;
                 if (camForward.sqrMagnitude > 0.001f)
-                    _nameLabel.transform.rotation = Quaternion.LookRotation(camForward);
+                {
+                    var rot = Quaternion.LookRotation(camForward);
+                    if (_nameLabel != null)
+                        _nameLabel.transform.rotation = rot;
+                    if (_barGroup != null)
+                        _barGroup.transform.rotation = rot;
+                }
+            }
+
+            // Update nameplate bar visuals
+            UpdateNameplateBars();
+        }
+
+        // ─── Nameplate Bars ──────────────────────────────
+
+        private void CreateNameplateBars(float groupY)
+        {
+            _barGroup = new GameObject("BarGroup");
+            _barGroup.transform.SetParent(transform);
+            _barGroup.transform.localPosition = new Vector3(0f, groupY, 0f);
+
+            // HP background
+            var hpBg = CreateBarSprite("HpBackground", _barGroup.transform,
+                Vector3.zero, HpBarWidth, HpBarHeight,
+                new Color(0f, 0f, 0f, 0.5f), sortOrder: 0);
+
+            // HP fill (anchored left)
+            var hpFillObj = CreateBarSprite("HpFill", _barGroup.transform,
+                Vector3.zero, HpBarWidth, HpBarHeight,
+                new Color(0.31f, 0.78f, 0.31f), sortOrder: 1);
+            _hpFillRenderer = hpFillObj.GetComponent<SpriteRenderer>();
+            _hpFillTransform = hpFillObj.transform;
+
+            // Mana background (below HP)
+            float manaY = -(HpBarHeight + ManaBarGap);
+            var manaBg = CreateBarSprite("ManaBackground", _barGroup.transform,
+                new Vector3(0f, manaY, 0f), HpBarWidth, ManaBarHeight,
+                new Color(0f, 0f, 0f, 0.5f), sortOrder: 0);
+
+            // Mana fill
+            var manaFillObj = CreateBarSprite("ManaFill", _barGroup.transform,
+                new Vector3(0f, manaY, 0f), HpBarWidth, ManaBarHeight,
+                new Color(0.27f, 0.51f, 0.86f), sortOrder: 1);
+            _manaFillRenderer = manaFillObj.GetComponent<SpriteRenderer>();
+            _manaFillTransform = manaFillObj.transform;
+
+            _manaBarGroup = manaBg.transform.parent.gameObject;
+            // Group mana bg + fill under one parent for easy show/hide
+            var manaGroupObj = new GameObject("ManaGroup");
+            manaGroupObj.transform.SetParent(_barGroup.transform);
+            manaGroupObj.transform.localPosition = Vector3.zero;
+            manaBg.transform.SetParent(manaGroupObj.transform, true);
+            manaFillObj.transform.SetParent(manaGroupObj.transform, true);
+            _manaBarGroup = manaGroupObj;
+        }
+
+        private static GameObject CreateBarSprite(string name, Transform parent,
+            Vector3 localPos, float width, float height, Color color, int sortOrder)
+        {
+            var obj = new GameObject(name);
+            obj.transform.SetParent(parent);
+            obj.transform.localPosition = localPos;
+            obj.transform.localScale = new Vector3(width, height, 1f);
+
+            var sr = obj.AddComponent<SpriteRenderer>();
+            sr.sprite = CreateWhiteSprite();
+            sr.color = color;
+            sr.sortingOrder = sortOrder;
+
+            return obj;
+        }
+
+        private static Sprite _cachedWhiteSprite;
+
+        private static Sprite CreateWhiteSprite()
+        {
+            if (_cachedWhiteSprite != null) return _cachedWhiteSprite;
+
+            var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            tex.SetPixel(0, 0, Color.white);
+            tex.Apply();
+            _cachedWhiteSprite = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
+            return _cachedWhiteSprite;
+        }
+
+        private void UpdateNameplateBars()
+        {
+            if (_barGroup == null || SimRunner == null || SimConfig == null) return;
+
+            var prefs = DisplayPrefs;
+            bool showNameplates = prefs == null || prefs.ShowRunnerNameplates;
+
+            // Name label visibility
+            if (_nameLabel != null)
+                _nameLabel.gameObject.SetActive(showNameplates);
+
+            bool showBars = showNameplates && (prefs == null || prefs.ShowNameplateHealthBars);
+            _barGroup.SetActive(showBars);
+
+            if (!showBars) return;
+
+            // HP fill: 0 when dead, 100% when uninitialized, actual value otherwise
+            float hpPercent;
+            if (SimRunner.State == RunnerState.Dead)
+            {
+                hpPercent = 0f;
+            }
+            else if (SimRunner.CurrentHitpoints < 0f)
+            {
+                hpPercent = 1f;
+            }
+            else
+            {
+                float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                    SimRunner.GetEffectiveLevel(SkillType.Hitpoints, SimConfig), SimConfig);
+                hpPercent = maxHp > 0f ? Mathf.Clamp01(SimRunner.CurrentHitpoints / maxHp) : 0f;
+            }
+
+            // Scale X from left: adjust localScale.x and shift position so left edge stays anchored
+            float hpWidth = hpPercent * HpBarWidth;
+            _hpFillTransform.localScale = new Vector3(hpWidth, HpBarHeight, 1f);
+            _hpFillTransform.localPosition = new Vector3((hpWidth - HpBarWidth) * 0.5f, 0f, 0f);
+
+            // HP color
+            if (hpPercent > 0.5f)
+                _hpFillRenderer.color = new Color(0.31f, 0.78f, 0.31f); // green
+            else if (hpPercent > 0.25f)
+                _hpFillRenderer.color = new Color(0.86f, 0.71f, 0.20f); // yellow
+            else
+                _hpFillRenderer.color = new Color(0.78f, 0.24f, 0.24f); // red
+
+            // Mana visibility
+            string manaPref = prefs != null ? prefs.NameplateManaDisplay : "WhenUsed";
+            float maxMana = CombatFormulas.CalculateMaxMana(
+                SimRunner.GetEffectiveLevel(SkillType.Restoration, SimConfig), SimConfig);
+
+            bool showMana = manaPref != "Never"
+                && SimRunner.CurrentMana >= 0f
+                && (manaPref == "Always"
+                    || (SimRunner.LastManaSpentTick >= 0 && CurrentTick - SimRunner.LastManaSpentTick < 100)
+                    || SimRunner.CurrentMana < maxMana);
+
+            _manaBarGroup.SetActive(showMana);
+
+            if (showMana)
+            {
+                float manaPercent = maxMana > 0f ? Mathf.Clamp01(SimRunner.CurrentMana / maxMana) : 0f;
+                float manaWidth = manaPercent * HpBarWidth;
+                float manaY = -(HpBarHeight + ManaBarGap);
+                _manaFillTransform.localScale = new Vector3(manaWidth, ManaBarHeight, 1f);
+                _manaFillTransform.localPosition = new Vector3((manaWidth - HpBarWidth) * 0.5f, manaY, 0f);
             }
         }
 

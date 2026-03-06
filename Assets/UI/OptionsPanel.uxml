@@ -103,6 +103,45 @@
             <!-- Divider -->
             <ui:VisualElement class="options-divider" />
 
+            <!-- Display section -->
+            <ui:VisualElement class="options-section">
+                <ui:Label text="Display" class="options-subsection-header" />
+
+                <ui:VisualElement class="options-dropdown-row">
+                    <ui:Label text="Health on portraits" class="options-dropdown-label" />
+                    <ui:DropdownField name="dropdown-portrait-health" class="options-dropdown" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-dropdown-row">
+                    <ui:Label text="Mana on portraits" class="options-dropdown-label" />
+                    <ui:DropdownField name="dropdown-portrait-mana" class="options-dropdown" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-runner-nameplates" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Show runner nameplates" class="options-toggle-label" />
+                        <ui:Label text="Display names and bars above runners in the 3D world" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-toggle-row">
+                    <ui:Toggle name="toggle-nameplate-health-bars" class="options-toggle" />
+                    <ui:VisualElement class="options-toggle-text">
+                        <ui:Label text="Show health bars on nameplates" class="options-toggle-label" />
+                        <ui:Label text="Display HP bars on world-space nameplates (requires nameplates enabled)" class="options-toggle-desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="options-dropdown-row">
+                    <ui:Label text="Mana on nameplates" class="options-dropdown-label" />
+                    <ui:DropdownField name="dropdown-nameplate-mana" class="options-dropdown" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Divider -->
+            <ui:VisualElement class="options-divider" />
+
             <!-- Tutorial section -->
             <ui:VisualElement class="options-section">
                 <ui:Label text="Tutorial" class="options-subsection-header" />

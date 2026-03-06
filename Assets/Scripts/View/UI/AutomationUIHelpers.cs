@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using System.Text.RegularExpressions;
 using ProjectGuild.Simulation.Automation;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.World;
 using UnityEngine.UIElements;
@@ -94,7 +95,16 @@ namespace ProjectGuild.View.UI
                     return $"At {ResolveNodeName(condition.StringParam, state)}";
 
                 case ConditionType.SelfHP:
-                    return $"HP {FormatOperator(condition.Operator)} {(int)condition.NumericValue}%";
+                    return $"Self HP {FormatOperator(condition.Operator)} {(int)condition.NumericValue}%";
+
+                case ConditionType.EnemyCountAtNode:
+                    return $"Enemy Count {FormatOperator(condition.Operator)} {(int)condition.NumericValue}";
+
+                case ConditionType.AllyCountAtNode:
+                    return $"Ally Count {FormatOperator(condition.Operator)} {(int)condition.NumericValue}";
+
+                case ConditionType.AlliesInCombatAtNode:
+                    return $"Allies In Combat {FormatOperator(condition.Operator)} {(int)condition.NumericValue}";
 
                 default:
                     return condition.Type.ToString();
@@ -152,12 +162,76 @@ namespace ProjectGuild.View.UI
                 case ActionType.FinishTask:
                     return "Finish Task";
 
+                case ActionType.FightHere:
+                    return "Fight Here";
+
+                case ActionType.Wait:
+                    return "Wait";
+
                 case ActionType.GatherBestAvailable:
                     return $"Gather Best Available [{FormatSkillName((SkillType)action.IntParam)}]";
 
                 default:
                     return action.Type.ToString();
             }
+        }
+
+        // ─── Combat Formatting ────────────────────────────────────────
+
+        /// <summary>Format a CombatCondition as readable text for combat style rule displays.</summary>
+        public static string FormatCombatCondition(CombatCondition condition, SimulationConfig config)
+        {
+            if (condition == null) return "";
+
+            return condition.Type switch
+            {
+                CombatConditionType.Always => "Always",
+                CombatConditionType.SelfHpPercent =>
+                    $"Self HP {FormatOperator(condition.Operator)} {(int)condition.NumericValue}%",
+                CombatConditionType.SelfManaPercent =>
+                    $"Self Mana {FormatOperator(condition.Operator)} {(int)condition.NumericValue}%",
+                CombatConditionType.TargetHpPercent =>
+                    $"Target HP {FormatOperator(condition.Operator)} {(int)condition.NumericValue}%",
+                CombatConditionType.EnemyCountAtNode =>
+                    $"Enemy Count {FormatOperator(condition.Operator)} {(int)condition.NumericValue}",
+                CombatConditionType.AllyCountAtNode =>
+                    $"Ally Count {FormatOperator(condition.Operator)} {(int)condition.NumericValue}",
+                CombatConditionType.AlliesInCombatAtNode =>
+                    $"Allies In Combat {FormatOperator(condition.Operator)} {(int)condition.NumericValue}",
+                CombatConditionType.AbilityOffCooldown =>
+                    $"{FormatAbilityName(condition.StringParam, config)} Off Cooldown",
+                CombatConditionType.EnemyIsCasting => "Enemy Is Casting",
+                _ => condition.Type.ToString(),
+            };
+        }
+
+        /// <summary>Format a TargetSelection enum as readable text.</summary>
+        public static string FormatTargetSelection(TargetSelection selection)
+        {
+            return selection switch
+            {
+                TargetSelection.NearestEnemy => "Nearest Enemy",
+                TargetSelection.LowestHpEnemy => "Lowest HP Enemy",
+                TargetSelection.HighestHpEnemy => "Highest HP Enemy",
+                TargetSelection.NearestAlly => "Nearest Ally",
+                TargetSelection.LowestHpAlly => "Lowest HP Ally",
+                _ => selection.ToString(),
+            };
+        }
+
+        /// <summary>Resolve an ability ID to its display name from SimulationConfig.</summary>
+        public static string FormatAbilityName(string abilityId, SimulationConfig config)
+        {
+            if (string.IsNullOrEmpty(abilityId)) return "Unknown";
+            if (config?.AbilityDefinitions != null)
+            {
+                foreach (var ability in config.AbilityDefinitions)
+                {
+                    if (ability.Id == abilityId)
+                        return ability.Name ?? HumanizeId(abilityId);
+                }
+            }
+            return HumanizeId(abilityId);
         }
 
         // ─── Step Formatting ─────────────────────────────────────────

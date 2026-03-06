@@ -8,6 +8,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Automation;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.Tutorial;
@@ -921,6 +922,50 @@ namespace ProjectGuild.View
             // Gathering state
             if (runner.State == RunnerState.Gathering && runner.Gathering != null)
                 Print($"  Gathering: node={runner.Gathering.NodeId} index={runner.Gathering.GatherableIndex} progress={runner.Gathering.TickAccumulator:F1}/{runner.Gathering.TicksRequired:F1}");
+
+            // Combat vitals (always show)
+            {
+                float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                    runner.GetEffectiveLevel(SkillType.Hitpoints, Sim.Config), Sim.Config);
+                float maxMana = CombatFormulas.CalculateMaxMana(
+                    runner.GetEffectiveLevel(SkillType.Restoration, Sim.Config), Sim.Config);
+                float currentHp = runner.CurrentHitpoints >= 0f ? runner.CurrentHitpoints : maxHp;
+                float currentMana = runner.CurrentMana >= 0f ? runner.CurrentMana : maxMana;
+                float hpPct = maxHp > 0f ? (currentHp / maxHp) * 100f : 0f;
+                float manaPct = maxMana > 0f ? (currentMana / maxMana) * 100f : 0f;
+                string hpColor = hpPct > 50f ? "#7CCD7C" : hpPct > 25f ? "#DCB43C" : "#CC4444";
+                string hpNote = runner.CurrentHitpoints < 0f ? " <color=#999999>(not yet in combat)</color>" : "";
+                float defenceLevel = runner.GetEffectiveLevel(SkillType.Defence, Sim.Config);
+                float defence = CombatFormulas.CalculateRunnerDefence(defenceLevel, Sim.Config);
+                Print($"  HP: <color={hpColor}>{currentHp:F0}/{maxHp:F0}</color> ({hpPct:F0}%)  Mana: <color=#6CA0DC>{currentMana:F0}/{maxMana:F0}</color> ({manaPct:F0}%){hpNote}");
+                Print($"  Defence: {defence:F1}% reduction (Lv {defenceLevel:F0}, cap {Sim.Config.MaxDefenceReductionPercent:F0}%)");
+            }
+
+            // Fighting state
+            if (runner.State == RunnerState.Fighting && runner.Fighting != null)
+            {
+                string fightInfo = $"  Fighting at: {runner.Fighting.NodeId}";
+                if (runner.Fighting.IsDisengaging)
+                    fightInfo += $" <color=#DCB43C>(disengaging, {runner.Fighting.DisengageTicksRemaining} ticks left)</color>";
+                else if (runner.Fighting.IsActing)
+                    fightInfo += $" | Using: {runner.Fighting.CurrentAbilityId} ({runner.Fighting.ActionTicksRemaining}/{runner.Fighting.ActionTicksTotal} ticks)";
+                Print(fightInfo);
+
+                if (runner.Fighting.CurrentTargetEnemyId != null)
+                    Print($"  Target: {runner.Fighting.CurrentTargetEnemyId}");
+
+                if (runner.Fighting.CooldownTrackers.Count > 0)
+                {
+                    var cdParts = new List<string>();
+                    foreach (var kvp in runner.Fighting.CooldownTrackers)
+                        cdParts.Add($"{kvp.Key}:{kvp.Value}t");
+                    Print($"  Cooldowns: {string.Join(", ", cdParts)}");
+                }
+            }
+
+            // Death state
+            if (runner.State == RunnerState.Dead && runner.Death != null)
+                Print($"  <color=#CC4444>Dead: respawn in {runner.Death.RespawnTicksRemaining} ticks (died at {runner.Death.DeathNodeId})</color>");
 
             // Inventory
             var inv = runner.Inventory;

@@ -18,7 +18,7 @@ namespace ProjectGuild.Data
         [Tooltip("Player-facing display name.")]
         public string Name;
 
-        [Tooltip("Enemy level. Affects damage dealt and damage reduction.")]
+        [Tooltip("Enemy level. Visual aid only: no mechanical effect. Helps players gauge difficulty.")]
         public int Level = 1;
 
         [Tooltip("Maximum hitpoints for this enemy type.")]
@@ -33,17 +33,11 @@ namespace ProjectGuild.Data
         [Tooltip("Ticks between enemy auto-attacks. At 10 ticks/sec: 15 = 1.5 seconds.")]
         public int AttackSpeedTicks = 15;
 
-        [Tooltip("Abilities this enemy can use (by ID). Evaluated in order; first available is used.")]
-        public List<string> AbilityIds = new();
-
         [Tooltip("Loot table entries. Each entry rolls independently on enemy death.")]
         public LootTableEntryData[] LootTable = new LootTableEntryData[0];
 
         [Tooltip("How this enemy picks targets.")]
         public EnemyAiBehavior AiBehavior = EnemyAiBehavior.Aggressive;
-
-        [Tooltip("XP awarded to the killing runner on death.")]
-        public float XpOnDeath = 50f;
 
         public EnemyConfig ToEnemyConfig()
         {
@@ -56,17 +50,15 @@ namespace ProjectGuild.Data
                 BaseDamage = BaseDamage,
                 BaseDefence = BaseDefence,
                 AttackSpeedTicks = AttackSpeedTicks,
-                AbilityIds = new List<string>(AbilityIds),
                 AiBehavior = AiBehavior,
-                XpOnDeath = XpOnDeath,
             };
 
             foreach (var entry in LootTable)
             {
-                if (entry != null)
+                if (entry?.Item != null)
                 {
                     config.LootTable.Add(new LootTableEntry(
-                        entry.ItemId, entry.DropChance, entry.MinQuantity, entry.MaxQuantity));
+                        entry.Item.Id, entry.DropChance, entry.MinQuantity, entry.MaxQuantity));
                 }
             }
 
@@ -76,14 +68,13 @@ namespace ProjectGuild.Data
 
     /// <summary>
     /// Serializable loot table entry for the inspector.
-    /// Unity can't serialize generic Lists of classes inside arrays cleanly,
-    /// so this is a flat struct-like class for the inspector.
+    /// Uses ItemDefinitionAsset SO reference (drag-and-drop) instead of raw string ID.
     /// </summary>
     [System.Serializable]
     public class LootTableEntryData
     {
-        [Tooltip("Item ID to drop (e.g. 'goblin_tooth').")]
-        public string ItemId;
+        [Tooltip("Item to drop. Drag an ItemDefinitionAsset here.")]
+        public ItemDefinitionAsset Item;
 
         [Tooltip("Chance to drop (0.0 to 1.0). 1.0 = guaranteed.")]
         [Range(0f, 1f)]

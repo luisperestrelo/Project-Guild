@@ -81,6 +81,9 @@ namespace ProjectGuild.Simulation.Combat
         public static CombatCondition AllyCountAtNode(Automation.ComparisonOperator op, int count)
             => new CombatCondition { Type = CombatConditionType.AllyCountAtNode, Operator = op, NumericValue = count };
 
+        public static CombatCondition AlliesInCombatAtNode(Automation.ComparisonOperator op, int count)
+            => new CombatCondition { Type = CombatConditionType.AlliesInCombatAtNode, Operator = op, NumericValue = count };
+
         public static CombatCondition AbilityOffCooldown(string abilityId)
             => new CombatCondition { Type = CombatConditionType.AbilityOffCooldown, StringParam = abilityId };
     }

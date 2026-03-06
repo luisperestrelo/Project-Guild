@@ -328,6 +328,15 @@ namespace ProjectGuild.View.UI
                 container.Add(dotsRow);
             }
 
+            // Enemy indicator (combat node)
+            if (node.EnemySpawns != null && node.EnemySpawns.Length > 0)
+            {
+                var combatDot = new VisualElement();
+                combatDot.AddToClassList("strategic-map-combat-indicator");
+                combatDot.pickingMode = PickingMode.Ignore;
+                container.Add(combatDot);
+            }
+
             // Runner indicator row (populated on refresh)
             var runnerRow = new VisualElement();
             runnerRow.AddToClassList("strategic-map-runner-indicators");
@@ -395,6 +404,18 @@ namespace ProjectGuild.View.UI
                         string itemName = ResolveItemName(sim, g.ProducedItemId);
                         string levelReq = g.MinLevel > 0 ? $", Lv{g.MinLevel}" : "";
                         lines.Add($"  {itemName} ({g.RequiredSkill}{levelReq})");
+                    }
+                }
+
+                // Enemies
+                if (node.EnemySpawns != null && node.EnemySpawns.Length > 0)
+                {
+                    foreach (var spawn in node.EnemySpawns)
+                    {
+                        string enemyName = ResolveEnemyName(sim, spawn.EnemyConfigId);
+                        int enemyLevel = ResolveEnemyLevel(sim, spawn.EnemyConfigId);
+                        string levelStr = enemyLevel > 0 ? $" (Lv{enemyLevel})" : "";
+                        lines.Add($"  <color=#CC6666>{enemyName}{levelStr} x{spawn.InitialCount}</color>");
                     }
                 }
 
@@ -1249,6 +1270,32 @@ namespace ProjectGuild.View.UI
             if (secs == 0)
                 return $"{minutes}m";
             return $"{minutes}m {secs}s";
+        }
+
+        private static string ResolveEnemyName(GameSimulation sim, string enemyConfigId)
+        {
+            if (string.IsNullOrEmpty(enemyConfigId)) return "Unknown";
+            if (sim.Config?.EnemyDefinitions != null)
+            {
+                foreach (var def in sim.Config.EnemyDefinitions)
+                {
+                    if (def.Id == enemyConfigId)
+                        return def.Name ?? AutomationUIHelpers.HumanizeId(enemyConfigId);
+                }
+            }
+            return AutomationUIHelpers.HumanizeId(enemyConfigId);
+        }
+
+        private static int ResolveEnemyLevel(GameSimulation sim, string enemyConfigId)
+        {
+            if (string.IsNullOrEmpty(enemyConfigId) || sim.Config?.EnemyDefinitions == null)
+                return 0;
+            foreach (var def in sim.Config.EnemyDefinitions)
+            {
+                if (def.Id == enemyConfigId)
+                    return def.Level;
+            }
+            return 0;
         }
     }
 }

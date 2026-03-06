@@ -5,6 +5,7 @@ using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.World;
 using ProjectGuild.View.Runners;
+using ProjectGuild.View.UI;
 
 namespace ProjectGuild.View
 {
@@ -39,6 +40,9 @@ namespace ProjectGuild.View
         [Header("Scene Transitions")]
         [SerializeField] private CameraController _cameraController;
         [SerializeField] private SceneTransitionOverlay _sceneTransitionOverlay;
+
+        [Header("UI")]
+        [SerializeField] private UIManager _uiManager;
 
         // Runtime tracking
         private readonly Dictionary<string, RunnerVisual> _runnerVisuals = new();
@@ -102,6 +106,8 @@ namespace ProjectGuild.View
                 _cameraController = FindAnyObjectByType<CameraController>();
             if (_sceneTransitionOverlay == null)
                 _sceneTransitionOverlay = FindAnyObjectByType<SceneTransitionOverlay>();
+            if (_uiManager == null)
+                _uiManager = FindAnyObjectByType<UIManager>();
         }
 
         /// <summary>
@@ -200,11 +206,21 @@ namespace ProjectGuild.View
         {
             if (!_worldBuilt || Sim == null) return;
 
+            var config = Sim.Config;
+            long tickCount = Sim.CurrentGameState.TickCount;
+            var prefs = _uiManager != null ? _uiManager.Preferences : null;
+
             // Update all runner visual positions with context-aware movement
             foreach (var runner in Sim.CurrentGameState.Runners)
             {
                 if (!_runnerVisuals.TryGetValue(runner.Id, out var visual)) continue;
                 if (visual == null) continue;
+
+                // Pass sim data for nameplate bars
+                visual.SimRunner = runner;
+                visual.SimConfig = config;
+                visual.CurrentTick = tickCount;
+                visual.DisplayPrefs = prefs;
 
                 UpdateRunnerVisualPosition(runner, visual);
             }

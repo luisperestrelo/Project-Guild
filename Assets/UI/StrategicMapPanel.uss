@@ -154,6 +154,17 @@
     background-color: rgb(140, 180, 60);
 }
 
+/* ─── Combat Indicator ───────────────────────────── */
+
+.strategic-map-combat-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background-color: rgb(200, 70, 70);
+    margin-top: 2px;
+    align-self: center;
+}
+
 /* ─── Runner Indicators on Nodes ─────────────────── */
 
 .strategic-map-runner-indicators {

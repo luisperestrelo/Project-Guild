@@ -31,6 +31,13 @@ namespace ProjectGuild.View.UI
         private readonly Toggle _toggleMapCloseOnAssignment;
         private readonly Toggle _toggleTutorialEnabled;
 
+        // ─── Display controls ─────────────────────────────
+        private readonly DropdownField _portraitHealthDropdown;
+        private readonly DropdownField _portraitManaDropdown;
+        private readonly Toggle _toggleRunnerNameplates;
+        private readonly Toggle _toggleNameplateHealthBars;
+        private readonly DropdownField _nameplateManaDropdown;
+
         // ─── Save/Load controls ──────────────────────────
         private readonly Label _saveStatusLabel;
         private readonly Button _loadButton;
@@ -67,6 +74,16 @@ namespace ProjectGuild.View.UI
         private static readonly List<string> DecisionLogFilterValues = new()
             { "CurrentNode", "SelectedRunner", "All" };
 
+        private static readonly List<string> HealthDisplayChoices = new()
+            { "Always", "In Combat", "Never" };
+        private static readonly List<string> HealthDisplayValues = new()
+            { "Always", "InCombat", "Never" };
+
+        private static readonly List<string> ManaDisplayChoices = new()
+            { "Always", "When Used", "Never" };
+        private static readonly List<string> ManaDisplayValues = new()
+            { "Always", "WhenUsed", "Never" };
+
         public bool IsOpen { get; private set; }
 
         public OptionsPanelController(VisualElement root, UIManager uiManager)
@@ -99,6 +116,16 @@ namespace ProjectGuild.View.UI
             _toggleMapCloseOnAssignment = root.Q<Toggle>("toggle-map-close-on-assignment");
             _toggleTutorialEnabled = root.Q<Toggle>("toggle-tutorial-enabled");
 
+            // Display
+            _portraitHealthDropdown = root.Q<DropdownField>("dropdown-portrait-health");
+            _portraitHealthDropdown.choices = HealthDisplayChoices;
+            _portraitManaDropdown = root.Q<DropdownField>("dropdown-portrait-mana");
+            _portraitManaDropdown.choices = ManaDisplayChoices;
+            _toggleRunnerNameplates = root.Q<Toggle>("toggle-runner-nameplates");
+            _toggleNameplateHealthBars = root.Q<Toggle>("toggle-nameplate-health-bars");
+            _nameplateManaDropdown = root.Q<DropdownField>("dropdown-nameplate-mana");
+            _nameplateManaDropdown.choices = ManaDisplayChoices;
+
             // Save/Load
             _saveStatusLabel = root.Q<Label>("save-status-label");
             _loadButton = root.Q<Button>("btn-load-game");
@@ -126,8 +153,13 @@ namespace ProjectGuild.View.UI
             _toggleMapCenterOnRunner.RegisterValueChangedCallback(OnToggleChanged);
             _toggleMapCloseOnAssignment.RegisterValueChangedCallback(OnToggleChanged);
             _toggleTutorialEnabled.RegisterValueChangedCallback(OnToggleChanged);
+            _toggleRunnerNameplates.RegisterValueChangedCallback(OnToggleChanged);
+            _toggleNameplateHealthBars.RegisterValueChangedCallback(OnToggleChanged);
             _chronicleScopeDropdown.RegisterValueChangedCallback(OnDropdownChanged);
             _decisionLogScopeDropdown.RegisterValueChangedCallback(OnDropdownChanged);
+            _portraitHealthDropdown.RegisterValueChangedCallback(OnDropdownChanged);
+            _portraitManaDropdown.RegisterValueChangedCallback(OnDropdownChanged);
+            _nameplateManaDropdown.RegisterValueChangedCallback(OnDropdownChanged);
 
             // Build hotkey rebinding section
             BuildHotkeySection(root);
@@ -189,6 +221,22 @@ namespace ProjectGuild.View.UI
             _toggleMapCloseOnAssignment.SetValueWithoutNotify(prefs.MapCloseOnAssignment);
             _toggleTutorialEnabled.SetValueWithoutNotify(prefs.TutorialEnabledForNewGames);
 
+            // Display
+            int portraitHealthIdx = HealthDisplayValues.IndexOf(prefs.PortraitHealthDisplay);
+            if (portraitHealthIdx < 0) portraitHealthIdx = 0; // default "Always"
+            _portraitHealthDropdown.SetValueWithoutNotify(HealthDisplayChoices[portraitHealthIdx]);
+
+            _toggleRunnerNameplates.SetValueWithoutNotify(prefs.ShowRunnerNameplates);
+            _toggleNameplateHealthBars.SetValueWithoutNotify(prefs.ShowNameplateHealthBars);
+
+            int portraitManaIdx = ManaDisplayValues.IndexOf(prefs.PortraitManaDisplay);
+            if (portraitManaIdx < 0) portraitManaIdx = 1; // default "WhenUsed"
+            _portraitManaDropdown.SetValueWithoutNotify(ManaDisplayChoices[portraitManaIdx]);
+
+            int nameplateManaIdx = ManaDisplayValues.IndexOf(prefs.NameplateManaDisplay);
+            if (nameplateManaIdx < 0) nameplateManaIdx = 1;
+            _nameplateManaDropdown.SetValueWithoutNotify(ManaDisplayChoices[nameplateManaIdx]);
+
             // Chronicle scope
             int chronicleIdx = ChronicleFilterValues.IndexOf(prefs.ChronicleDefaultScopeFilter);
             if (chronicleIdx < 0) chronicleIdx = 0;
@@ -219,6 +267,22 @@ namespace ProjectGuild.View.UI
             prefs.MapCenterOnRunner = _toggleMapCenterOnRunner.value;
             prefs.MapCloseOnAssignment = _toggleMapCloseOnAssignment.value;
             prefs.TutorialEnabledForNewGames = _toggleTutorialEnabled.value;
+
+            // Display
+            int portraitHealthIdx = HealthDisplayChoices.IndexOf(_portraitHealthDropdown.value);
+            if (portraitHealthIdx >= 0 && portraitHealthIdx < HealthDisplayValues.Count)
+                prefs.PortraitHealthDisplay = HealthDisplayValues[portraitHealthIdx];
+
+            prefs.ShowRunnerNameplates = _toggleRunnerNameplates.value;
+            prefs.ShowNameplateHealthBars = _toggleNameplateHealthBars.value;
+
+            int portraitManaIdx = ManaDisplayChoices.IndexOf(_portraitManaDropdown.value);
+            if (portraitManaIdx >= 0 && portraitManaIdx < ManaDisplayValues.Count)
+                prefs.PortraitManaDisplay = ManaDisplayValues[portraitManaIdx];
+
+            int nameplateManaIdx = ManaDisplayChoices.IndexOf(_nameplateManaDropdown.value);
+            if (nameplateManaIdx >= 0 && nameplateManaIdx < ManaDisplayValues.Count)
+                prefs.NameplateManaDisplay = ManaDisplayValues[nameplateManaIdx];
 
             // Chronicle scope
             int chronicleIdx = ChronicleFilterChoices.IndexOf(_chronicleScopeDropdown.value);

@@ -11,5 +11,8 @@ namespace ProjectGuild.Simulation.Automation
         RunnerStateIs,      // IntParam (RunnerState cast)
         AtNode,             // StringParam (nodeId)
         SelfHP,             // Operator + NumericValue (percentage 0-100)
+        EnemyCountAtNode,   // Operator + NumericValue (alive enemies at runner's node)
+        AllyCountAtNode,    // Operator + NumericValue (other runners at runner's node)
+        AlliesInCombatAtNode, // Operator + NumericValue (runners in Fighting state at runner's node)
     }
 }

@@ -139,13 +139,19 @@ namespace ProjectGuild.Data
         [Tooltip("Flat mana regenerated every tick. At 10 ticks/sec, 0.5 = 5 mana/sec.")]
         public float BaseManaRegenPerTick = 0.5f;
 
-        [Tooltip("Minimum time in ticks before a disengaging runner can exit. Enemies still attack during disengage.")]
-        public int MinDisengageTimeTicks = 20;
+        [Tooltip("Base disengage time in ticks before Athletics reduction. Enemies still attack during disengage.")]
+        public int BaseDisengageTimeTicks = 20;
+
+        [Tooltip("Floor disengage time in ticks. Even max Athletics takes at least this long (guarantees 1+ hit).")]
+        public int MinDisengageTimeTicks = 3;
+
+        [Tooltip("Ticks of disengage reduction per Athletics level. Higher Athletics = faster flee.")]
+        public float DisengageReductionPerAthleticsLevel = 0.3f;
 
         [Tooltip("XP per tick of action time on ability completion. 10-tick ability = 10 * this value.")]
         public float CombatXpPerActionTimeTick = 1.0f;
 
-        [Tooltip("Flat damage reduction per Defence skill level.")]
+        [Tooltip("Percentage damage reduction per Defence level. Lv50 = 25%, Lv99 = 49.5%.")]
         public float DefenceReductionPerLevel = 0.5f;
 
         [Tooltip("Maximum percentage of incoming damage that defence can reduce (cap). Prevents invulnerability.")]
@@ -153,6 +159,12 @@ namespace ProjectGuild.Data
 
         [Tooltip("Per-level scaling factor for combat damage/heal. Damage = base * scaling * (1 + level * this).")]
         public float CombatDamageScalingPerLevel = 0.1f;
+
+        [Tooltip("Hitpoints XP per point of pre-mitigation damage taken. Harder enemies award more XP.")]
+        public float HitpointsXpPerDamage = 0.5f;
+
+        [Tooltip("Defence XP per point of pre-mitigation damage taken. Harder enemies award more XP.")]
+        public float DefenceXpPerDamage = 0.5f;
 
         [Header("Combat Definitions")]
         [Tooltip("All ability definitions in the game. Each ability is its own ScriptableObject asset.")]
@@ -219,11 +231,15 @@ namespace ProjectGuild.Data
                 BaseMana = BaseMana,
                 ManaPerRestorationLevel = ManaPerRestorationLevel,
                 BaseManaRegenPerTick = BaseManaRegenPerTick,
+                BaseDisengageTimeTicks = BaseDisengageTimeTicks,
                 MinDisengageTimeTicks = MinDisengageTimeTicks,
+                DisengageReductionPerAthleticsLevel = DisengageReductionPerAthleticsLevel,
                 CombatXpPerActionTimeTick = CombatXpPerActionTimeTick,
                 DefenceReductionPerLevel = DefenceReductionPerLevel,
                 MaxDefenceReductionPercent = MaxDefenceReductionPercent,
                 CombatDamageScalingPerLevel = CombatDamageScalingPerLevel,
+                HitpointsXpPerDamage = HitpointsXpPerDamage,
+                DefenceXpPerDamage = DefenceXpPerDamage,
                 AbilityDefinitions = abilityDefs,
                 EnemyDefinitions = enemyDefs,
             };

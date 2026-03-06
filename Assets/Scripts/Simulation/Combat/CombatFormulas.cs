@@ -12,7 +12,7 @@ namespace ProjectGuild.Simulation.Combat
         /// <summary>
         /// Calculate damage dealt by an ability effect.
         /// Formula: baseValue * scalingFactor * (1 + attackerLevel * scalingPerLevel)
-        /// Defence reduces by flat amount capped at MaxDefenceReductionPercent.
+        /// Defence is a % reduction capped at MaxDefenceReductionPercent.
         /// </summary>
         public static float CalculateDamage(AbilityEffect effect, float attackerEffectiveLevel,
             float defenderDefence, SimulationConfig config)
@@ -20,10 +20,8 @@ namespace ProjectGuild.Simulation.Combat
             float raw = effect.BaseValue * effect.ScalingFactor
                 * (1f + attackerEffectiveLevel * config.CombatDamageScalingPerLevel);
 
-            float reduction = Math.Min(defenderDefence,
-                raw * config.MaxDefenceReductionPercent / 100f);
-
-            return Math.Max(raw - reduction, 1f); // always deal at least 1 damage
+            float reductionPercent = Math.Min(defenderDefence, config.MaxDefenceReductionPercent);
+            return raw * (1f - reductionPercent / 100f);
         }
 
         /// <summary>
@@ -62,12 +60,14 @@ namespace ProjectGuild.Simulation.Combat
         }
 
         /// <summary>
-        /// Calculate defence reduction from a runner's Defence skill level.
-        /// Returns a flat reduction amount applied to incoming damage.
+        /// Calculate defence as a percentage damage reduction from Defence skill level.
+        /// Higher levels give more %, capped at MaxDefenceReductionPercent.
+        /// Effective level can exceed 99 via Passion, Equipment, and Buffs.
         /// </summary>
         public static float CalculateRunnerDefence(float defenceLevel, SimulationConfig config)
         {
-            return defenceLevel * config.DefenceReductionPerLevel;
+            return Math.Min(defenceLevel * config.DefenceReductionPerLevel,
+                config.MaxDefenceReductionPercent);
         }
 
         /// <summary>
@@ -77,6 +77,17 @@ namespace ProjectGuild.Simulation.Combat
         public static float CalculateCombatXp(int actionTimeTicks, SimulationConfig config)
         {
             return actionTimeTicks * config.CombatXpPerActionTimeTick;
+        }
+
+        /// <summary>
+        /// Calculate disengage time in ticks for a runner based on Athletics level.
+        /// Higher Athletics = shorter disengage = fewer hits taken while fleeing.
+        /// </summary>
+        public static int CalculateDisengageTicks(float athleticsLevel, SimulationConfig config)
+        {
+            int baseTicks = config.BaseDisengageTimeTicks;
+            float reduction = athleticsLevel * config.DisengageReductionPerAthleticsLevel;
+            return Math.Max(config.MinDisengageTimeTicks, (int)(baseTicks - reduction));
         }
 
         /// <summary>

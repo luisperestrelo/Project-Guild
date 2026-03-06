@@ -113,6 +113,57 @@
     display: none;
 }
 
+/* ─── Vitals (HP / Mana bars in Overview) ────────── */
+
+.overview-bar-row {
+    flex-direction: row;
+    align-items: center;
+    height: 20px;
+    margin-bottom: 4px;
+}
+
+.overview-bar-label {
+    width: 40px;
+    font-size: 11px;
+    color: rgb(160, 160, 180);
+}
+
+.overview-bar-container {
+    flex-grow: 1;
+    height: 12px;
+    background-color: rgba(20, 20, 35, 0.8);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.overview-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+}
+
+.overview-bar-fill-green {
+    background-color: rgb(80, 200, 80);
+}
+
+.overview-bar-fill-yellow {
+    background-color: rgb(220, 180, 50);
+}
+
+.overview-bar-fill-red {
+    background-color: rgb(200, 60, 60);
+}
+
+.overview-bar-fill-mana {
+    background-color: rgb(70, 130, 220);
+}
+
+.overview-bar-value {
+    width: 70px;
+    font-size: 11px;
+    color: rgb(160, 160, 180);
+    -unity-text-align: middle-right;
+}
+
 /* ─── Task / Travel ───────────────────────────────── */
 
 .info-label {

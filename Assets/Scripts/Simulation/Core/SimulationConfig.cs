@@ -256,10 +256,22 @@ namespace ProjectGuild.Simulation.Core
         public float BaseManaRegenPerTick = 0.5f;
 
         /// <summary>
-        /// Minimum time in ticks before a disengaging runner can exit combat.
-        /// Enemies still attack during disengage. Prevents instant flee.
+        /// Base disengage time in ticks before Athletics reduction.
+        /// At 10 ticks/sec: 20 = 2 seconds of enemies still hitting.
         /// </summary>
-        public int MinDisengageTimeTicks = 20;
+        public int BaseDisengageTimeTicks = 20;
+
+        /// <summary>
+        /// Minimum disengage time in ticks (floor). Even max Athletics runners take at least this long.
+        /// Ensures at least 1 enemy hit during disengage. Design target: 2-3 ticks.
+        /// </summary>
+        public int MinDisengageTimeTicks = 3;
+
+        /// <summary>
+        /// Ticks of disengage time reduced per Athletics level.
+        /// Higher Athletics = shorter disengage = fewer hits taken while fleeing.
+        /// </summary>
+        public float DisengageReductionPerAthleticsLevel = 0.3f;
 
         /// <summary>
         /// XP awarded per tick of action time on ability completion.
@@ -268,7 +280,8 @@ namespace ProjectGuild.Simulation.Core
         public float CombatXpPerActionTimeTick = 1.0f;
 
         /// <summary>
-        /// Flat damage reduction per Defence skill level.
+        /// Percentage damage reduction per Defence skill level.
+        /// Lv1 = 0.5%, Lv50 = 25%, Lv99 = 49.5%. Can exceed 99 via Passion/Equipment/Buffs.
         /// </summary>
         public float DefenceReductionPerLevel = 0.5f;
 
@@ -283,6 +296,18 @@ namespace ProjectGuild.Simulation.Core
         /// Damage = baseValue * scalingFactor * (1 + attackerLevel * this).
         /// </summary>
         public float CombatDamageScalingPerLevel = 0.1f;
+
+        /// <summary>
+        /// Hitpoints XP per point of pre-mitigation damage taken.
+        /// Harder-hitting enemies award more XP. Leveling Hitpoints increases max HP.
+        /// </summary>
+        public float HitpointsXpPerDamage = 0.5f;
+
+        /// <summary>
+        /// Defence XP per point of pre-mitigation damage taken.
+        /// Harder-hitting enemies award more XP. Leveling Defence reduces incoming damage.
+        /// </summary>
+        public float DefenceXpPerDamage = 0.5f;
 
         // ─── Combat: Ability Definitions ──────────────────────────────
 

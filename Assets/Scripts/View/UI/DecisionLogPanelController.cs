@@ -337,16 +337,21 @@ namespace ProjectGuild.View.UI
                 string timestamp = TimeFormatHelper.FormatElapsedTime(entry.GameTime);
                 string layerTag = entry.Layer == DecisionLayer.Macro ? "MACRO" : "MICRO";
                 string deferred = entry.WasDeferred ? " (deferred)" : "";
-                textLabel.text = $"[{timestamp}] [{layerTag}] {entry.RunnerName}: {entry.ConditionSnapshot} \u2192 {entry.ActionDetail}{deferred}";
+                string interrupted = entry.WasInterrupted ? " [INTERRUPT]" : "";
+                textLabel.text = $"[{timestamp}] [{layerTag}] {entry.RunnerName}: {entry.ConditionSnapshot} \u2192 {entry.ActionDetail}{deferred}{interrupted}";
 
                 // Update layer class
                 row.RemoveFromClassList("entry-macro");
                 row.RemoveFromClassList("entry-micro");
+                row.RemoveFromClassList("entry-interrupted");
 
                 if (entry.Layer == DecisionLayer.Macro)
                     row.AddToClassList("entry-macro");
                 else
                     row.AddToClassList("entry-micro");
+
+                if (entry.WasInterrupted)
+                    row.AddToClassList("entry-interrupted");
 
                 _entriesContainer.Add(row);
             }

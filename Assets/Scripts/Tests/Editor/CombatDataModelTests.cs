@@ -151,14 +151,14 @@ namespace ProjectGuild.Tests
             // 10 * 1.0 * (1 + 5 * 0.1) = 10 * 1.5 = 15
             Assert.AreEqual(15f, damage, 0.01f);
 
-            // Attacker level 5, 5 defence
+            // Attacker level 5, 5% defence reduction
             float reducedDamage = CombatFormulas.CalculateDamage(effect, 5f, 5f, config);
-            // Raw = 15, reduction = min(5, 15 * 0.75) = 5, result = 10
-            Assert.AreEqual(10f, reducedDamage, 0.01f);
+            // Raw = 15, reduction = 5%, result = 15 * 0.95 = 14.25
+            Assert.AreEqual(14.25f, reducedDamage, 0.01f);
         }
 
         [Test]
-        public void DamageNeverBelowOne()
+        public void HighDefenceReducesDamageSignificantly()
         {
             var config = new SimulationConfig
             {
@@ -166,11 +166,12 @@ namespace ProjectGuild.Tests
                 MaxDefenceReductionPercent = 75f,
             };
 
-            var effect = new AbilityEffect(EffectType.Damage, 1f, SkillType.Melee, 0.1f);
+            var effect = new AbilityEffect(EffectType.Damage, 10f, SkillType.Melee, 1.0f);
 
-            // Very weak attack, high defence
+            // Attacker level 1, defence capped at 75%
             float damage = CombatFormulas.CalculateDamage(effect, 1f, 1000f, config);
-            Assert.AreEqual(1f, damage, 0.01f, "Damage should never be below 1");
+            // Raw = 10 * 1.0 * (1 + 1 * 0.1) = 11, 75% reduction = 11 * 0.25 = 2.75
+            Assert.AreEqual(2.75f, damage, 0.01f);
         }
 
         [Test]
@@ -184,11 +185,10 @@ namespace ProjectGuild.Tests
 
             var effect = new AbilityEffect(EffectType.Damage, 10f, SkillType.Melee, 1.0f);
 
-            // Attacker level 1, enormous defence
+            // Attacker level 1, enormous defence (capped at 75%)
             float damage = CombatFormulas.CalculateDamage(effect, 1f, 10000f, config);
             // Raw = 10 * 1.0 * (1 + 1 * 0.1) = 11
-            // Reduction capped at 75% of 11 = 8.25
-            // Result = 11 - 8.25 = 2.75
+            // Reduction capped at 75%, result = 11 * 0.25 = 2.75
             Assert.AreEqual(2.75f, damage, 0.01f);
         }
 

@@ -33,6 +33,13 @@ namespace ProjectGuild.Bridge
         // ─── Tutorial ────────────────────────────────────
         public bool TutorialEnabledForNewGames = true;
 
+        // ─── Display ──────────────────────────────────────
+        public string PortraitHealthDisplay = "Always"; // "Always", "InCombat", "Never"
+        public string PortraitManaDisplay = "WhenUsed"; // "Always", "WhenUsed", "Never"
+        public bool ShowRunnerNameplates = true;
+        public bool ShowNameplateHealthBars = true;
+        public string NameplateManaDisplay = "WhenUsed"; // "Always", "WhenUsed", "Never"
+
         // ─── Strategic Map ──────────────────────────────
         // true = center on selected runner's node, false = always center on Guild Hall
         public bool MapCenterOnRunner = true;

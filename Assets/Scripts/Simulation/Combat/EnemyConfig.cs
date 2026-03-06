@@ -5,16 +5,14 @@ namespace ProjectGuild.Simulation.Combat
 {
     /// <summary>
     /// AI behavior pattern for enemies. Determines targeting priority.
+    /// Taunt permanently overrides targeting for all behaviors.
     /// </summary>
     public enum EnemyAiBehavior
     {
-        /// <summary>Attack nearest runner. Switch to taunter if taunted.</summary>
+        /// <summary>Attack nearest runner. Most common behavior for overworld mobs.</summary>
         Aggressive,
 
-        /// <summary>Attack the runner dealing the most damage (threat table). Switch to taunter if taunted.</summary>
-        ThreatBased,
-
-        /// <summary>Attack lowest HP runner (healer-killer). Switch to taunter if taunted.</summary>
+        /// <summary>Attack lowest HP runner (healer-killer).</summary>
         Opportunistic,
     }
 
@@ -36,7 +34,8 @@ namespace ProjectGuild.Simulation.Combat
         public string Name;
 
         /// <summary>
-        /// Enemy level. Affects damage dealt and damage reduction from Defence.
+        /// Enemy level. Visual aid for the player only: no mechanical effect.
+        /// Displayed on tooltips and nameplates to help players gauge difficulty.
         /// </summary>
         public int Level = 1;
 
@@ -61,12 +60,6 @@ namespace ProjectGuild.Simulation.Combat
         public int AttackSpeedTicks = 15;
 
         /// <summary>
-        /// Abilities this enemy can use (by ID). Evaluated in order; first available is used.
-        /// Empty = basic auto-attack only.
-        /// </summary>
-        public List<string> AbilityIds = new();
-
-        /// <summary>
         /// What drops when this enemy dies.
         /// </summary>
         public List<LootTableEntry> LootTable = new();
@@ -75,11 +68,6 @@ namespace ProjectGuild.Simulation.Combat
         /// How this enemy picks targets.
         /// </summary>
         public EnemyAiBehavior AiBehavior = EnemyAiBehavior.Aggressive;
-
-        /// <summary>
-        /// XP awarded to the killing runner on death. Split across relevant combat skills.
-        /// </summary>
-        public float XpOnDeath = 50f;
 
         public EnemyConfig() { }
     }

@@ -26,6 +26,10 @@ namespace ProjectGuild.Simulation.Core
             return $"No micro rule matched at {nodeName} ({rulesEvaluated} rules evaluated)";
         }
 
+        // ─── Combat ──────────────────────────────────────
+        public const string NoEnemiesAtNode = "No enemies at this node";
+        public const string NoCombatStyle = "No combat style assigned";
+
         // ─── Skill ──────────────────────────────────────
         public static string SkillTooLow(SkillType skill, int currentLevel, int requiredLevel)
         {

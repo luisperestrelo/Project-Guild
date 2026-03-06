@@ -27,6 +27,7 @@ namespace ProjectGuild.Simulation.Core
         Crafting,
         Fighting,
         Dead,
+        Waiting,
     }
 
     /// <summary>
@@ -81,6 +82,9 @@ namespace ProjectGuild.Simulation.Core
         // Death state (populated when State == Dead)
         public DeathState Death;
 
+        // Waiting state (populated when State == Waiting)
+        public WaitingState Waiting;
+
         /// <summary>
         /// Current hitpoints. Starts at max and decreases from combat damage.
         /// Restored to max on respawn. -1 means uninitialized (set on first combat entry).
@@ -92,6 +96,13 @@ namespace ProjectGuild.Simulation.Core
         /// Regenerates at a flat rate per tick. -1 means uninitialized.
         /// </summary>
         public float CurrentMana = -1f;
+
+        /// <summary>
+        /// Tick count when mana was last spent (ability with ManaCost > 0).
+        /// -1 means mana has never been spent. Used by UI to show/hide mana bars
+        /// ("recently used" = within 100 ticks or mana not at max).
+        /// </summary>
+        public long LastManaSpentTick = -1;
 
         /// <summary>
         /// ID reference into CombatStyleLibrary. Null means no combat style assigned.
@@ -407,6 +418,19 @@ namespace ProjectGuild.Simulation.Core
         public float ActionProgress => ActionTicksTotal > 0
             ? 1f - (float)ActionTicksRemaining / ActionTicksTotal
             : 1f;
+    }
+
+    /// <summary>
+    /// State tracked while a runner is waiting at a node for conditions to change.
+    /// Used for group coordination (e.g. "wait until 3 allies arrive").
+    /// </summary>
+    [Serializable]
+    public class WaitingState
+    {
+        /// <summary>
+        /// Node where the runner is waiting.
+        /// </summary>
+        public string NodeId;
     }
 
     /// <summary>

@@ -101,6 +101,44 @@ namespace ProjectGuild.Simulation.Automation
                     return Compare(hpPercent, condition.Operator, condition.NumericValue);
                 }
 
+                case ConditionType.EnemyCountAtNode:
+                {
+                    string nodeId = ctx.Runner.CurrentNodeId;
+                    int count = 0;
+                    if (ctx.GameState.EncounterStates.TryGetValue(nodeId, out var encounter))
+                    {
+                        foreach (var enemy in encounter.Enemies)
+                            if (enemy.IsAlive) count++;
+                    }
+                    return Compare(count, condition.Operator, condition.NumericValue);
+                }
+
+                case ConditionType.AllyCountAtNode:
+                {
+                    string nodeId = ctx.Runner.CurrentNodeId;
+                    int count = 0;
+                    foreach (var r in ctx.GameState.Runners)
+                    {
+                        if (r.CurrentNodeId == nodeId && r.Id != ctx.Runner.Id)
+                            count++;
+                    }
+                    return Compare(count, condition.Operator, condition.NumericValue);
+                }
+
+                case ConditionType.AlliesInCombatAtNode:
+                {
+                    string nodeId = ctx.Runner.CurrentNodeId;
+                    int count = 0;
+                    foreach (var r in ctx.GameState.Runners)
+                    {
+                        if (r.Id != ctx.Runner.Id
+                            && r.State == RunnerState.Fighting
+                            && r.Fighting?.NodeId == nodeId)
+                            count++;
+                    }
+                    return Compare(count, condition.Operator, condition.NumericValue);
+                }
+
                 default:
                     return false;
             }

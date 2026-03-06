@@ -47,5 +47,14 @@ namespace ProjectGuild.Simulation.Automation
 
         public static Condition SelfHP(ComparisonOperator op, float percentValue)
             => new Condition { Type = ConditionType.SelfHP, Operator = op, NumericValue = percentValue };
+
+        public static Condition EnemyCountAtNode(ComparisonOperator op, int count)
+            => new Condition { Type = ConditionType.EnemyCountAtNode, Operator = op, NumericValue = count };
+
+        public static Condition AllyCountAtNode(ComparisonOperator op, int count)
+            => new Condition { Type = ConditionType.AllyCountAtNode, Operator = op, NumericValue = count };
+
+        public static Condition AlliesInCombatAtNode(ComparisonOperator op, int count)
+            => new Condition { Type = ConditionType.AlliesInCombatAtNode, Operator = op, NumericValue = count };
     }
 }

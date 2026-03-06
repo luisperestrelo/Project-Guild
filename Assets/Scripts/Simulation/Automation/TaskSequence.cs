@@ -24,13 +24,22 @@ namespace ProjectGuild.Simulation.Automation
         /// </summary>
         public string MicroRulesetId;
 
+        /// <summary>
+        /// For Work steps: optional per-step combat style override.
+        /// When set, the runner uses this combat style instead of their runner-level CombatStyleId.
+        /// Null = use runner's default combat style. Same pattern as MicroRulesetId.
+        /// </summary>
+        public string CombatStyleOverrideId;
+
         public TaskStep() { }
 
-        public TaskStep(TaskStepType type, string targetNodeId = null, string microRulesetId = null)
+        public TaskStep(TaskStepType type, string targetNodeId = null, string microRulesetId = null,
+            string combatStyleOverrideId = null)
         {
             Type = type;
             TargetNodeId = targetNodeId;
             MicroRulesetId = microRulesetId;
+            CombatStyleOverrideId = combatStyleOverrideId;
         }
     }
 
@@ -59,7 +68,8 @@ namespace ProjectGuild.Simulation.Automation
             if (Steps != null)
             {
                 foreach (var step in Steps)
-                    copy.Steps.Add(new TaskStep(step.Type, step.TargetNodeId, step.MicroRulesetId));
+                    copy.Steps.Add(new TaskStep(step.Type, step.TargetNodeId, step.MicroRulesetId,
+                        step.CombatStyleOverrideId));
             }
             return copy;
         }

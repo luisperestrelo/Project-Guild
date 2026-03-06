@@ -15,6 +15,16 @@ namespace ProjectGuild.Simulation.Combat
         TauntAll,
         DamageAoe,
         HealAoe,
+        TauntAoe,
+    }
+
+    /// <summary>
+    /// Where AoE targeting originates from. Used for future positional combat.
+    /// </summary>
+    public enum AoeOrigin
+    {
+        Caster,
+        Target,
     }
 
     /// <summary>
@@ -36,6 +46,23 @@ namespace ProjectGuild.Simulation.Combat
         /// Used by Culling Frost: "2.5x if target below 35% HP".
         /// </summary>
         public AbilityEffectCondition Condition;
+
+        /// <summary>
+        /// Maximum number of targets for AoE effects. -1 = unlimited (hit all).
+        /// Only used by DamageAoe, HealAoe, TauntAoe effect types.
+        /// </summary>
+        public int MaxTargets = -1;
+
+        /// <summary>
+        /// Radius of the AoE in meters. 0 = entire encounter (no distance check).
+        /// Reserved for future positional combat.
+        /// </summary>
+        public float AoeRadius;
+
+        /// <summary>
+        /// Where AoE targeting originates. Reserved for future positional combat.
+        /// </summary>
+        public AoeOrigin Origin;
 
         public AbilityEffect() { }
 

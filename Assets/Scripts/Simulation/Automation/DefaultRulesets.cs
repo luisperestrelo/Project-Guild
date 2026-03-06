@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Core;
 
 namespace ProjectGuild.Simulation.Automation
@@ -12,6 +13,11 @@ namespace ProjectGuild.Simulation.Automation
         public const string DefaultMicroId = "default-micro";
         public const string ReturnToHubSequenceId = "return-to-hub";
         public const string DefaultGatherSequenceId = "default-gather-copper";
+
+        // Combat style IDs
+        public const string BasicMeleeCombatStyleId = "basic-melee";
+        public const string BasicMageCombatStyleId = "basic-mage";
+        public const string BasicHealerCombatStyleId = "basic-healer";
 
         // Built-in step template IDs
         public const string GatherLoopTemplateId = "builtin-gather-loop";
@@ -137,6 +143,124 @@ namespace ProjectGuild.Simulation.Automation
                     }
                 }
             }
+
+            // Ensure default combat styles exist
+            EnsureCombatStyle(state, CreateBasicMeleeCombatStyle());
+            EnsureCombatStyle(state, CreateBasicMageCombatStyle());
+            EnsureCombatStyle(state, CreateBasicHealerCombatStyle());
+        }
+
+        private static void EnsureCombatStyle(GameState state, CombatStyle style)
+        {
+            foreach (var s in state.CombatStyleLibrary)
+                if (s.Id == style.Id) return;
+            state.CombatStyleLibrary.Add(style);
+        }
+
+        // ─── Combat Styles ──────────────────────────────────────
+
+        /// <summary>
+        /// Basic Melee combat style: always target nearest enemy, always use Basic Attack.
+        /// Simple and universal. Players add to this, not replace it.
+        /// </summary>
+        public static CombatStyle CreateBasicMeleeCombatStyle()
+        {
+            return new CombatStyle
+            {
+                Id = BasicMeleeCombatStyleId,
+                Name = "Basic Melee",
+                TargetingRules =
+                {
+                    new TargetingRule
+                    {
+                        Label = "Attack nearest",
+                        Conditions = { CombatCondition.Always() },
+                        Selection = TargetSelection.NearestEnemy,
+                        Enabled = true,
+                    },
+                },
+                AbilityRules =
+                {
+                    new AbilityRule
+                    {
+                        Label = "Basic Attack",
+                        Conditions = { CombatCondition.Always() },
+                        AbilityId = "basic_attack",
+                        Enabled = true,
+                    },
+                },
+            };
+        }
+
+        /// <summary>
+        /// Basic Mage combat style: target nearest enemy, prefer Fireball, fall back to Basic Attack.
+        /// </summary>
+        public static CombatStyle CreateBasicMageCombatStyle()
+        {
+            return new CombatStyle
+            {
+                Id = BasicMageCombatStyleId,
+                Name = "Basic Mage",
+                TargetingRules =
+                {
+                    new TargetingRule
+                    {
+                        Label = "Attack nearest",
+                        Conditions = { CombatCondition.Always() },
+                        Selection = TargetSelection.NearestEnemy,
+                        Enabled = true,
+                    },
+                },
+                AbilityRules =
+                {
+                    new AbilityRule
+                    {
+                        Label = "Fireball",
+                        Conditions = { CombatCondition.Always() },
+                        AbilityId = "fireball",
+                        Enabled = true,
+                    },
+                    new AbilityRule
+                    {
+                        Label = "Basic Attack",
+                        Conditions = { CombatCondition.Always() },
+                        AbilityId = "basic_attack",
+                        Enabled = true,
+                    },
+                },
+            };
+        }
+
+        /// <summary>
+        /// Basic Healer combat style: target lowest HP ally, use Heal.
+        /// </summary>
+        public static CombatStyle CreateBasicHealerCombatStyle()
+        {
+            return new CombatStyle
+            {
+                Id = BasicHealerCombatStyleId,
+                Name = "Basic Healer",
+                TargetingRules =
+                {
+                    new TargetingRule
+                    {
+                        Label = "Heal weakest ally",
+                        Conditions = { CombatCondition.Always() },
+                        Selection = TargetSelection.LowestHpAlly,
+                        Enabled = true,
+                    },
+                },
+                AbilityRules =
+                {
+                    new AbilityRule
+                    {
+                        Label = "Heal",
+                        Conditions = { CombatCondition.Always() },
+                        AbilityId = "heal",
+                        Enabled = true,
+                    },
+                },
+            };
         }
 
         // ─── Built-in Templates ─────────────────────────────────

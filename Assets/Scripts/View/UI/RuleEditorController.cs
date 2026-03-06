@@ -250,13 +250,16 @@ namespace ProjectGuild.View.UI
             {
                 "Always", "Inventory Full", "Free Slots",
                 "Inventory Contains", "Bank Contains",
-                "Skill Level", "At Node", "Runner State"
+                "Skill Level", "At Node", "Runner State",
+                "Self HP %", "Enemy Count At Node", "Ally Count At Node", "Allies In Combat At Node"
             };
             var typeValues = new List<ConditionType>
             {
                 ConditionType.Always, ConditionType.InventoryFull, ConditionType.InventorySlots,
                 ConditionType.InventoryContains, ConditionType.BankContains,
-                ConditionType.SkillLevel, ConditionType.AtNode, ConditionType.RunnerStateIs
+                ConditionType.SkillLevel, ConditionType.AtNode, ConditionType.RunnerStateIs,
+                ConditionType.SelfHP, ConditionType.EnemyCountAtNode,
+                ConditionType.AllyCountAtNode, ConditionType.AlliesInCombatAtNode
             };
 
             int currentTypeIndex = typeValues.IndexOf(condition.Type);
@@ -301,6 +304,13 @@ namespace ProjectGuild.View.UI
 
                     case ConditionType.RunnerStateIs:
                         AddStatePicker(paramContainer, cond, onValueUpdate);
+                        break;
+
+                    case ConditionType.SelfHP:
+                    case ConditionType.EnemyCountAtNode:
+                    case ConditionType.AllyCountAtNode:
+                    case ConditionType.AlliesInCombatAtNode:
+                        AddOperatorAndNumber(paramContainer, cond, onValueUpdate);
                         break;
                 }
             }
@@ -519,11 +529,12 @@ namespace ProjectGuild.View.UI
         private static void AddStatePicker(VisualElement parent,
             Condition condition, Action<Condition> onValueUpdate)
         {
-            var choices = new List<string> { "Idle", "Traveling", "Gathering", "Depositing" };
+            var choices = new List<string> { "Idle", "Traveling", "Gathering", "Depositing", "Fighting", "Dead", "Waiting" };
             var values = new List<int>
             {
                 (int)RunnerState.Idle, (int)RunnerState.Traveling,
-                (int)RunnerState.Gathering, (int)RunnerState.Depositing
+                (int)RunnerState.Gathering, (int)RunnerState.Depositing,
+                (int)RunnerState.Fighting, (int)RunnerState.Dead, (int)RunnerState.Waiting
             };
 
             int currentIndex = values.IndexOf(condition.IntParam);
@@ -629,9 +640,9 @@ namespace ProjectGuild.View.UI
             }
             else
             {
-                // Micro actions: Gather [Resource], Finish Task
-                var typeChoices = new List<string> { "Gather Here", "Gather Best Available", "Finish Task" };
-                var typeValues = new List<ActionType> { ActionType.GatherHere, ActionType.GatherBestAvailable, ActionType.FinishTask };
+                // Micro actions: Gather [Resource], Gather Best Available, Fight Here, Finish Task
+                var typeChoices = new List<string> { "Gather Here", "Gather Best Available", "Fight Here", "Wait", "Finish Task" };
+                var typeValues = new List<ActionType> { ActionType.GatherHere, ActionType.GatherBestAvailable, ActionType.FightHere, ActionType.Wait, ActionType.FinishTask };
 
                 int currentIndex = typeValues.IndexOf(action.Type);
                 if (currentIndex < 0) currentIndex = 0;
@@ -727,6 +738,12 @@ namespace ProjectGuild.View.UI
                                 break;
                             case ActionType.GatherBestAvailable:
                                 onUpdate(AutomationAction.GatherBestAvailable(SkillType.Mining));
+                                break;
+                            case ActionType.FightHere:
+                                onUpdate(AutomationAction.FightHere());
+                                break;
+                            case ActionType.Wait:
+                                onUpdate(AutomationAction.Wait());
                                 break;
                             case ActionType.FinishTask:
                                 onUpdate(AutomationAction.FinishTask());

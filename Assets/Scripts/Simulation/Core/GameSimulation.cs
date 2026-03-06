@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ProjectGuild.Simulation.Automation;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Gathering;
 using ProjectGuild.Simulation.Items;
 using ProjectGuild.Simulation.Tutorial;
@@ -62,7 +63,7 @@ namespace ProjectGuild.Simulation.Core
             TickDeltaTime = 1f / tickRate;
             EventLog = new EventLogService(Config.EventLogMaxEntries, () => CurrentGameState);
             EventLog.SubscribeAll(Events);
-            Chronicle = new ChronicleService(Config.ChronicleMaxEntries, () => CurrentGameState);
+            Chronicle = new ChronicleService(Config.ChronicleMaxEntries, () => CurrentGameState, () => Config);
             Chronicle.SubscribeAll(Events);
             Tutorial = new TutorialService(() => CurrentGameState, Events, TickDeltaTime);
             Tutorial.SubscribeAll(Events);
@@ -195,6 +196,8 @@ namespace ProjectGuild.Simulation.Core
             CurrentGameState.TickCount++;
             CurrentGameState.TotalTimeElapsed += TickDeltaTime;
 
+            TickEncounters();
+
             for (int i = 0; i < CurrentGameState.Runners.Count; i++)
             {
                 TickRunner(CurrentGameState.Runners[i]);
@@ -205,6 +208,13 @@ namespace ProjectGuild.Simulation.Core
 
         private void TickRunner(Runner runner)
         {
+            // Dead runners tick their respawn timer only. No macro eval, no other processing.
+            if (runner.State == RunnerState.Dead)
+            {
+                TickDead(runner);
+                return;
+            }
+
             // Evaluate macro rules every tick for all active (non-Idle) runners.
             // Idle runners go through ExecuteCurrentStep which evaluates macros then executes the current step.
             // An Immediate rule that fires here will call AssignRunner, changing state — skip the rest of the tick.
@@ -230,6 +240,14 @@ namespace ProjectGuild.Simulation.Core
 
                 case RunnerState.Depositing:
                     TickDepositing(runner);
+                    break;
+
+                case RunnerState.Fighting:
+                    TickFighting(runner);
+                    break;
+
+                case RunnerState.Waiting:
+                    TickWaiting(runner);
                     break;
             }
         }
@@ -758,12 +776,18 @@ namespace ProjectGuild.Simulation.Core
                 }
             }
 
+            // If pulling a fighting runner out, clean up the encounter
+            string combatNodeId = runner.Fighting?.NodeId;
+
             runner.Gathering = null;
             runner.Travel = null;
             runner.Depositing = null;
             runner.Fighting = null;
             runner.Death = null;
             runner.State = RunnerState.Idle;
+
+            if (combatNodeId != null)
+                CleanupEncounterIfEmpty(combatNodeId);
             runner.RedirectWorldX = redirectWorldX;
             runner.RedirectWorldZ = redirectWorldZ;
 
@@ -901,6 +925,27 @@ namespace ProjectGuild.Simulation.Core
         private bool ExecuteWorkStep(Runner runner, TaskSequence seq)
         {
             var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
+
+            // Evaluate micro rules to decide what to do at this Work step
+            int gatherableIndex = EvaluateMicroRules(runner, node);
+
+            // FightHere signal — micro says "fight enemies at this node"
+            if (gatherableIndex == MicroResultFightHere)
+            {
+                StartFighting(runner, node);
+                return false; // async work started
+            }
+
+            // Wait signal — micro says "wait for conditions to change"
+            if (gatherableIndex == MicroResultWait)
+            {
+                runner.ActiveWarning = null;
+                runner.State = RunnerState.Waiting;
+                runner.Waiting = new WaitingState { NodeId = runner.CurrentNodeId };
+                return false; // async wait started
+            }
+
+            // For gathering results, node must have gatherables
             if (node == null || node.Gatherables.Length == 0)
             {
                 // No gatherables at this node — runner stays stuck. "Let it break."
@@ -913,9 +958,6 @@ namespace ProjectGuild.Simulation.Core
                 });
                 return false; // stuck
             }
-
-            // Evaluate micro rules to decide which resource to gather
-            int gatherableIndex = EvaluateMicroRules(runner, node);
 
             // FinishTask signal — micro says "done gathering, advance macro"
             if (gatherableIndex == MicroResultFinishTask)
@@ -1016,6 +1058,8 @@ namespace ProjectGuild.Simulation.Core
         private const int MicroResultFinishTask = -1;
         private const int MicroResultNoMatch = -2;
         private const int MicroResultNoEligibleGatherable = -3;
+        private const int MicroResultFightHere = -4;
+        private const int MicroResultWait = -5;
 
         /// <summary>
         /// Evaluate the micro ruleset for the current Work step to decide which resource to gather.
@@ -1102,6 +1146,21 @@ namespace ProjectGuild.Simulation.Core
 
                     if (index == MicroResultNoEligibleGatherable)
                         return MicroResultNoEligibleGatherable;
+                }
+
+                if (action.Type == ActionType.FightHere)
+                {
+                    LogDecision(runner, ruleIndex, rule, logSource,
+                        "Fight Here", false, DecisionLayer.Micro,
+                        wasInterrupted: interruptOnly && rule.CanInterrupt);
+                    return MicroResultFightHere;
+                }
+
+                if (action.Type == ActionType.Wait)
+                {
+                    LogDecision(runner, ruleIndex, rule, logSource,
+                        "Wait", false, DecisionLayer.Micro);
+                    return MicroResultWait;
                 }
 
                 // Rule matched but action is invalid (wrong type, out-of-bounds index).
@@ -1402,6 +1461,934 @@ namespace ProjectGuild.Simulation.Core
             // ExecuteCurrentStep handles pending application at step 0
             // and macro evaluation before each step.
             ExecuteCurrentStep(runner);
+        }
+
+        // ─── Combat ────────────────────────────────────────────────
+
+        private int _nextEnemyInstanceId;
+
+        private AbilityConfig FindAbilityDefinition(string id)
+        {
+            for (int i = 0; i < Config.AbilityDefinitions.Length; i++)
+            {
+                if (Config.AbilityDefinitions[i].Id == id)
+                    return Config.AbilityDefinitions[i];
+            }
+            return null;
+        }
+
+        private EnemyConfig FindEnemyDefinition(string id)
+        {
+            for (int i = 0; i < Config.EnemyDefinitions.Length; i++)
+            {
+                if (Config.EnemyDefinitions[i].Id == id)
+                    return Config.EnemyDefinitions[i];
+            }
+            return null;
+        }
+
+        private void StartFighting(Runner runner, WorldNode node)
+        {
+            if (node == null || node.EnemySpawns == null || node.EnemySpawns.Length == 0)
+            {
+                runner.ActiveWarning = RunnerWarnings.NoEnemiesAtNode;
+                return;
+            }
+
+            // Initialize HP/mana if uninitialized (-1 means first combat entry)
+            if (runner.CurrentHitpoints < 0f)
+            {
+                float hpLevel = runner.GetEffectiveLevel(SkillType.Hitpoints, Config);
+                runner.CurrentHitpoints = CombatFormulas.CalculateMaxHitpoints(hpLevel, Config);
+            }
+            if (runner.CurrentMana < 0f)
+            {
+                float restoLevel = runner.GetEffectiveLevel(SkillType.Restoration, Config);
+                runner.CurrentMana = CombatFormulas.CalculateMaxMana(restoLevel, Config);
+            }
+
+            // Get or create encounter for this node
+            if (!CurrentGameState.EncounterStates.TryGetValue(node.Id, out var encounter))
+            {
+                encounter = new EncounterState(node.Id);
+                CurrentGameState.EncounterStates[node.Id] = encounter;
+
+                // Spawn initial enemies
+                for (int s = 0; s < node.EnemySpawns.Length; s++)
+                {
+                    var spawnEntry = node.EnemySpawns[s];
+                    var enemyDef = FindEnemyDefinition(spawnEntry.EnemyConfigId);
+                    if (enemyDef == null) continue;
+
+                    int spawnCount = Math.Min(spawnEntry.InitialCount, spawnEntry.MaxCount);
+                    for (int i = 0; i < spawnCount; i++)
+                    {
+                        var instance = new EnemyInstance
+                        {
+                            InstanceId = $"enemy-{_nextEnemyInstanceId++}",
+                            ConfigId = spawnEntry.EnemyConfigId,
+                            CurrentHp = enemyDef.MaxHitpoints,
+                            SpawnEntryIndex = s,
+                        };
+                        encounter.Enemies.Add(instance);
+
+                        Events.Publish(new EnemySpawned
+                        {
+                            EnemyInstanceId = instance.InstanceId,
+                            EnemyConfigId = instance.ConfigId,
+                            NodeId = node.Id,
+                        });
+                    }
+                }
+            }
+
+            encounter.IsActive = true;
+            runner.ActiveWarning = null;
+            runner.State = RunnerState.Fighting;
+            runner.Fighting = new FightingState { NodeId = node.Id };
+
+            Events.Publish(new CombatStarted
+            {
+                RunnerId = runner.Id,
+                NodeId = node.Id,
+            });
+        }
+
+        private void TickFighting(Runner runner)
+        {
+            if (runner.Fighting == null) return;
+
+            // Death check: enemy damage from TickEncounters may have killed this runner
+            if (runner.CurrentHitpoints <= 0f)
+            {
+                HandleRunnerDeath(runner);
+                return;
+            }
+
+            var node = CurrentGameState.Map.GetNode(runner.Fighting.NodeId);
+            CurrentGameState.EncounterStates.TryGetValue(runner.Fighting.NodeId, out var encounter);
+
+            // Mana regen
+            float maxMana = CombatFormulas.CalculateMaxMana(
+                runner.GetEffectiveLevel(SkillType.Restoration, Config), Config);
+            runner.CurrentMana = Math.Min(runner.CurrentMana + Config.BaseManaRegenPerTick, maxMana);
+
+            // Decrement ability cooldowns
+            if (runner.Fighting.CooldownTrackers.Count > 0)
+            {
+                var keys = new List<string>(runner.Fighting.CooldownTrackers.Keys);
+                foreach (var key in keys)
+                {
+                    int cd = runner.Fighting.CooldownTrackers[key] - 1;
+                    if (cd <= 0)
+                        runner.Fighting.CooldownTrackers.Remove(key);
+                    else
+                        runner.Fighting.CooldownTrackers[key] = cd;
+                }
+            }
+
+            // Disengaging: count down, then exit combat
+            if (runner.Fighting.IsDisengaging)
+            {
+                runner.Fighting.DisengageTicksRemaining--;
+                if (runner.Fighting.DisengageTicksRemaining <= 0)
+                {
+                    string fightingNodeId = runner.Fighting.NodeId;
+                    runner.State = RunnerState.Idle;
+                    runner.Fighting = null;
+                    CleanupEncounterIfEmpty(fightingNodeId);
+
+                    var seq = GetRunnerTaskSequence(runner);
+                    if (seq != null && AdvanceRunnerStepIndex(runner, seq))
+                    {
+                        PublishStepAdvanced(runner, seq);
+                        ExecuteCurrentStep(runner);
+                    }
+                    else
+                    {
+                        HandleSequenceCompleted(runner);
+                    }
+                }
+                return;
+            }
+
+            // Mid-action: committed to an ability
+            if (runner.Fighting.IsActing)
+            {
+                // Interrupt-only micro check (e.g. FinishTask with CanInterrupt)
+                if (node != null)
+                    ReevaluateInterruptRulesDuringFighting(runner, node);
+
+                // Check if interrupt started disengage
+                if (runner.Fighting == null || runner.Fighting.IsDisengaging) return;
+
+                // Interrupt-only combat style ability check
+                if (encounter != null)
+                    ReevaluateInterruptAbilityDuringFighting(runner, encounter);
+                if (runner.Fighting == null) return;
+
+                runner.Fighting.ActionTicksRemaining--;
+                if (runner.Fighting.ActionTicksRemaining <= 0)
+                {
+                    // Action completed: resolve effects
+                    var ability = FindAbilityDefinition(runner.Fighting.CurrentAbilityId);
+                    if (ability != null && encounter != null)
+                    {
+                        var targetEnemy = encounter.FindEnemy(runner.Fighting.CurrentTargetEnemyId);
+                        ResolveAbilityEffects(runner, ability, targetEnemy, encounter);
+
+                        // Award combat XP
+                        var skill = runner.GetSkill(ability.SkillType);
+                        float xp = CombatFormulas.CalculateCombatXp(ability.ActionTimeTicks, Config);
+                        bool leveledUp = skill.AddXp(xp, Config);
+                        if (leveledUp)
+                        {
+                            Events.Publish(new RunnerSkillLeveledUp
+                            {
+                                RunnerId = runner.Id,
+                                Skill = ability.SkillType,
+                                NewLevel = skill.Level,
+                            });
+                        }
+
+                        // Set cooldown
+                        if (ability.CooldownTicks > 0)
+                            runner.Fighting.CooldownTrackers[ability.Id] = ability.CooldownTicks;
+                    }
+
+                    runner.Fighting.CurrentAbilityId = null;
+                    runner.Fighting.CurrentTargetEnemyId = null;
+                    runner.Fighting.ActionTicksTotal = 0;
+
+                    // Full micro re-eval at action completion
+                    if (node != null)
+                        ReevaluateMicroDuringFighting(runner, node);
+
+                    // Check if re-eval caused state change
+                    if (runner.State != RunnerState.Fighting || runner.Fighting == null) return;
+                    if (runner.Fighting.IsDisengaging) return;
+                }
+                else
+                {
+                    return; // still acting
+                }
+            }
+
+            // Free to act: select target and ability via combat style
+            if (encounter == null) return;
+            if (runner.Fighting.IsActing) return; // re-eval started new action
+
+            var combatStyle = FindCombatStyle(runner);
+            if (combatStyle == null)
+            {
+                runner.ActiveWarning = RunnerWarnings.NoCombatStyle;
+                return; // idle in combat
+            }
+
+            var combatCtx = new CombatEvaluationContext(runner, encounter, CurrentGameState, Config);
+            var target = CombatStyleEvaluator.EvaluateTargeting(combatStyle, combatCtx);
+            if (target == null) return; // no alive enemies or no matching targeting rule
+
+            var selectedAbility = CombatStyleEvaluator.EvaluateAbility(
+                combatStyle, combatCtx, Config.AbilityDefinitions);
+            if (selectedAbility == null) return; // no available ability, idle
+
+            runner.ActiveWarning = null;
+
+            // Start action commitment
+            runner.Fighting.CurrentTargetEnemyId = target.InstanceId;
+            runner.Fighting.CurrentAbilityId = selectedAbility.Id;
+            runner.Fighting.ActionTicksRemaining = selectedAbility.ActionTimeTicks;
+            runner.Fighting.ActionTicksTotal = selectedAbility.ActionTimeTicks;
+
+            // Consume mana
+            if (selectedAbility.ManaCost > 0f)
+            {
+                runner.CurrentMana -= selectedAbility.ManaCost;
+                runner.LastManaSpentTick = CurrentGameState.TickCount;
+            }
+
+            // Log combat decision
+            LogCombatDecision(runner, target, selectedAbility, combatStyle);
+        }
+
+        private void ResolveAbilityEffects(Runner runner, AbilityConfig ability,
+            EnemyInstance targetEnemy, EncounterState encounter)
+        {
+            float attackerLevel = runner.GetEffectiveLevel(ability.SkillType, Config);
+            float totalDamageDealt = 0f;
+            float totalHealingDone = 0f;
+            bool wasKill = false;
+
+            foreach (var effect in ability.Effects)
+            {
+                // Check condition
+                float targetHp = targetEnemy?.CurrentHp ?? 0f;
+                float targetMaxHp = 0f;
+                if (targetEnemy != null)
+                {
+                    var targetDef = FindEnemyDefinition(targetEnemy.ConfigId);
+                    targetMaxHp = targetDef?.MaxHitpoints ?? 100f;
+                }
+
+                switch (effect.Type)
+                {
+                    case EffectType.Damage:
+                    {
+                        if (targetEnemy == null || !targetEnemy.IsAlive) break;
+                        float dmg = CombatFormulas.CalculateDamage(effect, attackerLevel,
+                            FindEnemyDefinition(targetEnemy.ConfigId)?.BaseDefence ?? 0f, Config);
+                        if (CombatFormulas.IsEffectConditionMet(effect.Condition,
+                            targetEnemy.CurrentHp, targetMaxHp, false))
+                        {
+                            targetEnemy.CurrentHp -= dmg;
+                            totalDamageDealt += dmg;
+                        }
+                        if (!targetEnemy.IsAlive)
+                        {
+                            // Check kill condition effects (e.g. Bloodthirst heal on kill)
+                            wasKill = true;
+                            HandleEnemyKill(runner, targetEnemy, encounter);
+                        }
+                        break;
+                    }
+
+                    case EffectType.DamageAoe:
+                    {
+                        var aliveEnemies = encounter.GetAliveEnemies();
+                        int maxTargets = effect.MaxTargets < 0 ? aliveEnemies.Count
+                            : Math.Min(effect.MaxTargets, aliveEnemies.Count);
+                        for (int i = 0; i < maxTargets; i++)
+                        {
+                            var enemy = aliveEnemies[i];
+                            var enemyDef = FindEnemyDefinition(enemy.ConfigId);
+                            float dmg = CombatFormulas.CalculateDamage(effect, attackerLevel,
+                                enemyDef?.BaseDefence ?? 0f, Config);
+                            enemy.CurrentHp -= dmg;
+                            totalDamageDealt += dmg;
+                            if (!enemy.IsAlive)
+                            {
+                                wasKill = true;
+                                HandleEnemyKill(runner, enemy, encounter);
+                            }
+                        }
+                        break;
+                    }
+
+                    case EffectType.Taunt:
+                    {
+                        if (targetEnemy != null && targetEnemy.IsAlive)
+                            targetEnemy.TauntedByRunnerId = runner.Id;
+                        break;
+                    }
+
+                    case EffectType.TauntAoe:
+                    {
+                        var aliveEnemies = encounter.GetAliveEnemies();
+                        int maxTargets = effect.MaxTargets < 0 ? aliveEnemies.Count
+                            : Math.Min(effect.MaxTargets, aliveEnemies.Count);
+                        for (int i = 0; i < maxTargets; i++)
+                            aliveEnemies[i].TauntedByRunnerId = runner.Id;
+                        break;
+                    }
+
+                    case EffectType.TauntAll:
+                    {
+                        foreach (var enemy in encounter.GetAliveEnemies())
+                            enemy.TauntedByRunnerId = runner.Id;
+                        break;
+                    }
+
+                    case EffectType.Heal:
+                    {
+                        // Heal lowest-HP ally at node
+                        var healAmount = CombatFormulas.CalculateHeal(effect, attackerLevel, Config);
+                        Runner lowestHpAlly = null;
+                        float lowestHp = float.MaxValue;
+                        foreach (var r in CurrentGameState.Runners)
+                        {
+                            if (r.State != RunnerState.Fighting || r.Fighting?.NodeId != runner.Fighting.NodeId)
+                                continue;
+                            if (r.CurrentHitpoints < lowestHp)
+                            {
+                                lowestHp = r.CurrentHitpoints;
+                                lowestHpAlly = r;
+                            }
+                        }
+                        if (lowestHpAlly != null)
+                        {
+                            float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                                lowestHpAlly.GetEffectiveLevel(SkillType.Hitpoints, Config), Config);
+                            lowestHpAlly.CurrentHitpoints = Math.Min(
+                                lowestHpAlly.CurrentHitpoints + healAmount, maxHp);
+                            totalHealingDone += healAmount;
+                        }
+                        break;
+                    }
+
+                    case EffectType.HealSelf:
+                    {
+                        if (!CombatFormulas.IsEffectConditionMet(effect.Condition,
+                            targetHp, targetMaxHp, wasKill))
+                            break;
+                        var healAmount = CombatFormulas.CalculateHeal(effect, attackerLevel, Config);
+                        float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                            runner.GetEffectiveLevel(SkillType.Hitpoints, Config), Config);
+                        runner.CurrentHitpoints = Math.Min(
+                            runner.CurrentHitpoints + healAmount, maxHp);
+                        totalHealingDone += healAmount;
+                        break;
+                    }
+
+                    case EffectType.HealAoe:
+                    {
+                        var healAmount = CombatFormulas.CalculateHeal(effect, attackerLevel, Config);
+                        var allies = new List<Runner>();
+                        foreach (var r in CurrentGameState.Runners)
+                        {
+                            if (r.State == RunnerState.Fighting && r.Fighting?.NodeId == runner.Fighting.NodeId)
+                                allies.Add(r);
+                        }
+                        int maxTargets = effect.MaxTargets < 0 ? allies.Count
+                            : Math.Min(effect.MaxTargets, allies.Count);
+                        for (int i = 0; i < maxTargets; i++)
+                        {
+                            float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                                allies[i].GetEffectiveLevel(SkillType.Hitpoints, Config), Config);
+                            allies[i].CurrentHitpoints = Math.Min(
+                                allies[i].CurrentHitpoints + healAmount, maxHp);
+                            totalHealingDone += healAmount;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Publish action completed
+            Events.Publish(new CombatActionCompleted
+            {
+                RunnerId = runner.Id,
+                AbilityId = ability.Id,
+                TargetEnemyInstanceId = targetEnemy?.InstanceId,
+                PrimaryEffectType = ability.Effects.Count > 0 ? ability.Effects[0].Type : EffectType.Damage,
+                Value = totalHealingDone > 0f ? totalHealingDone : totalDamageDealt,
+                WasKill = wasKill,
+            });
+        }
+
+        private void HandleEnemyKill(Runner runner, EnemyInstance enemy, EncounterState encounter)
+        {
+            var enemyDef = FindEnemyDefinition(enemy.ConfigId);
+            if (enemyDef == null) return;
+
+            // Roll loot
+            foreach (var lootEntry in enemyDef.LootTable)
+            {
+                if (_random.NextDouble() > lootEntry.DropChance) continue;
+
+                int quantity = lootEntry.MinQuantity == lootEntry.MaxQuantity
+                    ? lootEntry.MinQuantity
+                    : _random.Next(lootEntry.MinQuantity, lootEntry.MaxQuantity + 1);
+
+                // Distribute to random fighting runner at this node
+                var fightersAtNode = new List<Runner>();
+                foreach (var r in CurrentGameState.Runners)
+                {
+                    if (r.State == RunnerState.Fighting && r.Fighting?.NodeId == encounter.NodeId)
+                        fightersAtNode.Add(r);
+                }
+
+                var recipient = fightersAtNode.Count > 0
+                    ? fightersAtNode[_random.Next(fightersAtNode.Count)]
+                    : runner;
+
+                var itemDef = ItemRegistry?.Get(lootEntry.ItemId);
+                if (itemDef != null)
+                {
+                    for (int i = 0; i < quantity; i++)
+                        recipient.Inventory.TryAdd(itemDef, 1);
+                }
+
+                Events.Publish(new LootDropped
+                {
+                    RunnerId = recipient.Id,
+                    ItemId = lootEntry.ItemId,
+                    Quantity = quantity,
+                });
+            }
+
+            // Start respawn timer
+            int spawnIdx = enemy.SpawnEntryIndex;
+            var node = CurrentGameState.Map.GetNode(encounter.NodeId);
+            if (node != null && spawnIdx >= 0 && spawnIdx < node.EnemySpawns.Length)
+                enemy.RespawnTicksRemaining = node.EnemySpawns[spawnIdx].RespawnTimeTicks;
+
+            Events.Publish(new EnemyDied
+            {
+                EnemyInstanceId = enemy.InstanceId,
+                EnemyConfigId = enemy.ConfigId,
+                NodeId = encounter.NodeId,
+                KillerRunnerId = runner.Id,
+            });
+        }
+
+        /// <summary>
+        /// Find the combat style for a runner. Checks per-step override first,
+        /// then runner's CombatStyleId. Returns null if none found.
+        /// </summary>
+        private CombatStyle FindCombatStyle(Runner runner)
+        {
+            // Check per-step override
+            var seq = GetRunnerTaskSequence(runner);
+            if (seq != null)
+            {
+                var step = GetCurrentStep(runner, seq);
+                if (step != null && !string.IsNullOrEmpty(step.CombatStyleOverrideId))
+                {
+                    var overrideStyle = FindCombatStyleInLibrary(step.CombatStyleOverrideId);
+                    if (overrideStyle != null) return overrideStyle;
+                }
+            }
+
+            // Fall back to runner-level combat style
+            if (string.IsNullOrEmpty(runner.CombatStyleId)) return null;
+            return FindCombatStyleInLibrary(runner.CombatStyleId);
+        }
+
+        public CombatStyle FindCombatStyleInLibrary(string styleId)
+        {
+            if (string.IsNullOrEmpty(styleId)) return null;
+            foreach (var style in CurrentGameState.CombatStyleLibrary)
+            {
+                if (style.Id == styleId) return style;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Tick a runner in the Waiting state. Re-evaluates micro rules each tick.
+        /// When conditions change (e.g. enough allies arrived), the runner proceeds.
+        /// </summary>
+        private void TickWaiting(Runner runner)
+        {
+            if (runner.Waiting == null) return;
+
+            var node = CurrentGameState.Map.GetNode(runner.CurrentNodeId);
+            if (node == null) return;
+
+            int result = EvaluateMicroRules(runner, node);
+
+            if (result == MicroResultWait)
+                return; // still waiting
+
+            // Conditions changed: clear waiting state and proceed
+            runner.State = RunnerState.Idle;
+            runner.Waiting = null;
+
+            if (result == MicroResultFightHere)
+            {
+                StartFighting(runner, node);
+                return;
+            }
+
+            if (result == MicroResultFinishTask)
+            {
+                var seq = GetRunnerTaskSequence(runner);
+                if (seq != null && AdvanceRunnerStepIndex(runner, seq))
+                {
+                    PublishStepAdvanced(runner, seq);
+                    ExecuteCurrentStep(runner);
+                }
+                else
+                {
+                    HandleSequenceCompleted(runner);
+                }
+                return;
+            }
+
+            // For gather results or no-match, re-execute from the current step
+            ExecuteCurrentStep(runner);
+        }
+
+        private void LogCombatDecision(Runner runner, EnemyInstance target,
+            AbilityConfig ability, CombatStyle style)
+        {
+            var targetDef = FindEnemyDefinition(target.ConfigId);
+            string targetName = targetDef?.Name ?? target.ConfigId;
+            string detail = $"{ability.Name} -> {targetName}";
+
+            CurrentGameState.MicroDecisionLog.Add(new DecisionLogEntry
+            {
+                TickNumber = CurrentGameState.TickCount,
+                GameTime = CurrentGameState.TotalTimeElapsed,
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+                NodeId = runner.CurrentNodeId,
+                Layer = DecisionLayer.Micro,
+                RuleIndex = -1,
+                RuleLabel = style.Name,
+                TriggerReason = "CombatStyle",
+                ActionType = ActionType.FightHere,
+                ActionDetail = detail,
+                WasDeferred = false,
+                WasInterrupted = false,
+                ConditionSnapshot = $"Target: {targetName}, Ability: {ability.Name}",
+            });
+        }
+
+        private void HandleRunnerDeath(Runner runner)
+        {
+            string deathNodeId = runner.Fighting?.NodeId ?? runner.CurrentNodeId;
+            runner.State = RunnerState.Dead;
+            runner.Fighting = null;
+
+            // Calculate respawn time based on distance to hub
+            float travelTimeToHub = 0f;
+            var map = CurrentGameState.Map;
+            if (map != null && deathNodeId != map.HubNodeId)
+            {
+                float distance = map.GetEuclideanDistance(deathNodeId, map.HubNodeId);
+                if (distance < 0f) distance = 0f;
+                float speed = GetTravelSpeed(runner);
+                if (speed > 0f) travelTimeToHub = distance / speed;
+            }
+
+            float respawnSeconds = CombatFormulas.CalculateRespawnTime(travelTimeToHub, Config);
+            int respawnTicks = Math.Max(1, (int)(respawnSeconds / TickDeltaTime));
+
+            runner.Death = new DeathState
+            {
+                RespawnTicksRemaining = respawnTicks,
+                DeathNodeId = deathNodeId,
+            };
+
+            // Reset task sequence step index to 0 so runner restarts sequence on respawn
+            runner.TaskSequenceCurrentStepIndex = 0;
+
+            Events.Publish(new RunnerDied
+            {
+                RunnerId = runner.Id,
+                NodeId = deathNodeId,
+            });
+
+            CleanupEncounterIfEmpty(deathNodeId);
+        }
+
+        private void TickDead(Runner runner)
+        {
+            if (runner.Death == null) return;
+
+            runner.Death.RespawnTicksRemaining--;
+            if (runner.Death.RespawnTicksRemaining > 0) return;
+
+            // Respawn at hub with full HP/mana
+            float hpLevel = runner.GetEffectiveLevel(SkillType.Hitpoints, Config);
+            float restoLevel = runner.GetEffectiveLevel(SkillType.Restoration, Config);
+            runner.CurrentHitpoints = CombatFormulas.CalculateMaxHitpoints(hpLevel, Config);
+            runner.CurrentMana = CombatFormulas.CalculateMaxMana(restoLevel, Config);
+
+            runner.State = RunnerState.Idle;
+            runner.CurrentNodeId = CurrentGameState.Map.HubNodeId;
+            runner.Death = null;
+
+            Events.Publish(new RunnerRespawned { RunnerId = runner.Id });
+
+            // Pick up sequence from step 0 (reset in HandleRunnerDeath)
+            ExecuteCurrentStep(runner);
+        }
+
+        private void TickEncounters()
+        {
+            if (CurrentGameState.EncounterStates.Count == 0) return;
+
+            // Collect keys to avoid modifying dictionary during iteration
+            var nodeIds = new List<string>(CurrentGameState.EncounterStates.Keys);
+
+            foreach (var nodeId in nodeIds)
+            {
+                var encounter = CurrentGameState.EncounterStates[nodeId];
+                if (!encounter.IsActive) continue;
+
+                // Check if any runners are still fighting at this node
+                bool hasActiveFighters = false;
+                foreach (var r in CurrentGameState.Runners)
+                {
+                    if (r.State == RunnerState.Fighting && r.Fighting?.NodeId == nodeId)
+                    {
+                        hasActiveFighters = true;
+                        break;
+                    }
+                }
+
+                if (!hasActiveFighters)
+                {
+                    encounter.IsActive = false;
+                    encounter.Enemies.Clear();
+                    CurrentGameState.EncounterStates.Remove(nodeId);
+                    continue;
+                }
+
+                var node = CurrentGameState.Map.GetNode(nodeId);
+                if (node == null) continue;
+
+                // Process dead enemy respawn timers
+                foreach (var enemy in encounter.Enemies)
+                {
+                    if (enemy.IsAlive) continue;
+                    if (enemy.RespawnTicksRemaining <= 0) continue;
+
+                    enemy.RespawnTicksRemaining--;
+                    if (enemy.RespawnTicksRemaining <= 0)
+                    {
+                        var enemyDef = FindEnemyDefinition(enemy.ConfigId);
+                        if (enemyDef != null)
+                        {
+                            enemy.CurrentHp = enemyDef.MaxHitpoints;
+                            enemy.ActionTicksRemaining = 0;
+                            enemy.TauntedByRunnerId = null;
+                            enemy.CooldownTrackers.Clear();
+
+                            Events.Publish(new EnemySpawned
+                            {
+                                EnemyInstanceId = enemy.InstanceId,
+                                EnemyConfigId = enemy.ConfigId,
+                                NodeId = nodeId,
+                            });
+                        }
+                    }
+                }
+
+                // Enemy AI: each alive enemy attacks runners
+                foreach (var enemy in encounter.Enemies)
+                {
+                    if (!enemy.IsAlive) continue;
+
+                    var enemyDef = FindEnemyDefinition(enemy.ConfigId);
+                    if (enemyDef == null) continue;
+
+                    // Decrement cooldowns
+                    if (enemy.CooldownTrackers.Count > 0)
+                    {
+                        var keys = new List<string>(enemy.CooldownTrackers.Keys);
+                        foreach (var key in keys)
+                        {
+                            int cd = enemy.CooldownTrackers[key] - 1;
+                            if (cd <= 0)
+                                enemy.CooldownTrackers.Remove(key);
+                            else
+                                enemy.CooldownTrackers[key] = cd;
+                        }
+                    }
+
+                    // Decrement action timer
+                    if (enemy.IsActing)
+                    {
+                        enemy.ActionTicksRemaining--;
+                        if (enemy.ActionTicksRemaining <= 0)
+                        {
+                            // Attack resolves: damage the target runner
+                            var targetRunner = SelectRunnerTargetForEnemy(enemy, nodeId);
+                            if (targetRunner != null)
+                            {
+                                float defenceLevel = targetRunner.GetEffectiveLevel(SkillType.Defence, Config);
+                                float runnerDefence = CombatFormulas.CalculateRunnerDefence(defenceLevel, Config);
+                                float damage = enemyDef.BaseDamage * (1f - runnerDefence / 100f);
+                                targetRunner.CurrentHitpoints -= damage;
+
+                                // Award defensive XP (proportional to pre-mitigation damage)
+                                AwardDefensiveXp(targetRunner, enemyDef.BaseDamage);
+
+                                Events.Publish(new RunnerTookDamage
+                                {
+                                    RunnerId = targetRunner.Id,
+                                    EnemyInstanceId = enemy.InstanceId,
+                                    Damage = damage,
+                                    RemainingHp = targetRunner.CurrentHitpoints,
+                                });
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Free to act: start basic attack
+                    var target = SelectRunnerTargetForEnemy(enemy, nodeId);
+                    if (target != null)
+                    {
+                        enemy.ActionTicksRemaining = enemyDef.AttackSpeedTicks;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Select a runner for an enemy to target. Taunted runners take priority,
+        /// then first fighting runner at the node.
+        /// </summary>
+        private Runner SelectRunnerTargetForEnemy(EnemyInstance enemy, string nodeId)
+        {
+            // Check taunt override
+            if (enemy.TauntedByRunnerId != null)
+            {
+                var taunted = FindRunner(enemy.TauntedByRunnerId);
+                if (taunted != null && taunted.State == RunnerState.Fighting
+                    && taunted.Fighting?.NodeId == nodeId)
+                    return taunted;
+                enemy.TauntedByRunnerId = null; // taunt expired (runner left/died)
+            }
+
+            // Default: first fighting runner at this node
+            foreach (var r in CurrentGameState.Runners)
+            {
+                if (r.State == RunnerState.Fighting && r.Fighting?.NodeId == nodeId)
+                    return r;
+            }
+            return null;
+        }
+
+        private void AwardDefensiveXp(Runner runner, float preMitigationDamage)
+        {
+            // Hitpoints XP: proportional to pre-mitigation damage
+            float hpXp = preMitigationDamage * Config.HitpointsXpPerDamage;
+            var hpSkill = runner.GetSkill(SkillType.Hitpoints);
+            bool hpLeveledUp = hpSkill.AddXp(hpXp, Config);
+            if (hpLeveledUp)
+            {
+                Events.Publish(new RunnerSkillLeveledUp
+                {
+                    RunnerId = runner.Id,
+                    Skill = SkillType.Hitpoints,
+                    NewLevel = hpSkill.Level,
+                });
+            }
+
+            // Defence XP: proportional to pre-mitigation damage
+            float defXp = preMitigationDamage * Config.DefenceXpPerDamage;
+            var defSkill = runner.GetSkill(SkillType.Defence);
+            bool defLeveledUp = defSkill.AddXp(defXp, Config);
+            if (defLeveledUp)
+            {
+                Events.Publish(new RunnerSkillLeveledUp
+                {
+                    RunnerId = runner.Id,
+                    Skill = SkillType.Defence,
+                    NewLevel = defSkill.Level,
+                });
+            }
+        }
+
+        private void CleanupEncounterIfEmpty(string nodeId)
+        {
+            if (nodeId == null) return;
+
+            bool hasActiveFighters = false;
+            foreach (var r in CurrentGameState.Runners)
+            {
+                if (r.State == RunnerState.Fighting && r.Fighting?.NodeId == nodeId)
+                {
+                    hasActiveFighters = true;
+                    break;
+                }
+            }
+
+            if (!hasActiveFighters && CurrentGameState.EncounterStates.ContainsKey(nodeId))
+            {
+                CurrentGameState.EncounterStates[nodeId].IsActive = false;
+                CurrentGameState.EncounterStates[nodeId].Enemies.Clear();
+                CurrentGameState.EncounterStates.Remove(nodeId);
+            }
+        }
+
+        /// <summary>
+        /// Re-evaluate micro rules at ability completion during combat.
+        /// If FightHere, continue fighting (pick new target/ability on next tick).
+        /// If FinishTask, start disengage.
+        /// </summary>
+        private void ReevaluateMicroDuringFighting(Runner runner, WorldNode node)
+        {
+            if (GetRunnerTaskSequence(runner) == null) return;
+
+            int result = EvaluateMicroRules(runner, node);
+
+            if (result == MicroResultFinishTask)
+            {
+                // Start disengage: Athletics reduces time, floor at MinDisengageTimeTicks
+                float athleticsLevel = runner.GetEffectiveLevel(SkillType.Athletics, Config);
+                runner.Fighting.IsDisengaging = true;
+                runner.Fighting.DisengageTicksRemaining = CombatFormulas.CalculateDisengageTicks(athleticsLevel, Config);
+                runner.Fighting.CurrentAbilityId = null;
+                runner.Fighting.CurrentTargetEnemyId = null;
+                runner.Fighting.ActionTicksRemaining = 0;
+                runner.Fighting.ActionTicksTotal = 0;
+                return;
+            }
+
+            if (result == MicroResultFightHere)
+            {
+                // Continue fighting, will pick target/ability on next tick
+                return;
+            }
+
+            // NoMatch or other: keep fighting (don't stop mid-combat on broken rules)
+        }
+
+        /// <summary>
+        /// Interrupt-only check during combat action commitment.
+        /// Only FinishTask with CanInterrupt triggers disengage.
+        /// </summary>
+        private void ReevaluateInterruptRulesDuringFighting(Runner runner, WorldNode node)
+        {
+            if (GetRunnerTaskSequence(runner) == null) return;
+
+            int result = EvaluateMicroRules(runner, node, itemJustProduced: false, interruptOnly: true);
+
+            if (result == MicroResultFinishTask)
+            {
+                float athleticsLevel = runner.GetEffectiveLevel(SkillType.Athletics, Config);
+                runner.Fighting.IsDisengaging = true;
+                runner.Fighting.DisengageTicksRemaining = CombatFormulas.CalculateDisengageTicks(athleticsLevel, Config);
+                runner.Fighting.CurrentAbilityId = null;
+                runner.Fighting.CurrentTargetEnemyId = null;
+                runner.Fighting.ActionTicksRemaining = 0;
+                runner.Fighting.ActionTicksTotal = 0;
+            }
+        }
+
+        /// <summary>
+        /// Interrupt-only check for combat style ability rules during action commitment.
+        /// If an interrupt ability rule matches (CanInterrupt=true), cancel current action
+        /// and start the new ability immediately.
+        /// </summary>
+        private void ReevaluateInterruptAbilityDuringFighting(Runner runner, EncounterState encounter)
+        {
+            var combatStyle = FindCombatStyle(runner);
+            if (combatStyle == null) return;
+
+            var combatCtx = new CombatEvaluationContext(runner, encounter, CurrentGameState, Config);
+            var interruptAbility = CombatStyleEvaluator.EvaluateAbility(
+                combatStyle, combatCtx, Config.AbilityDefinitions, interruptOnly: true);
+
+            if (interruptAbility == null) return;
+            if (interruptAbility.Id == runner.Fighting.CurrentAbilityId) return; // same ability
+
+            // Cancel current action and start interrupt ability
+            runner.Fighting.CurrentAbilityId = interruptAbility.Id;
+            runner.Fighting.ActionTicksRemaining = interruptAbility.ActionTimeTicks;
+            runner.Fighting.ActionTicksTotal = interruptAbility.ActionTimeTicks;
+
+            // Consume mana
+            if (interruptAbility.ManaCost > 0f)
+            {
+                runner.CurrentMana -= interruptAbility.ManaCost;
+                runner.LastManaSpentTick = CurrentGameState.TickCount;
+            }
+
+            // Re-target if needed (interrupt might need a different target)
+            var target = CombatStyleEvaluator.EvaluateTargeting(combatStyle, combatCtx);
+            if (target != null)
+                runner.Fighting.CurrentTargetEnemyId = target.InstanceId;
+
+            LogCombatDecision(runner, encounter.FindEnemy(runner.Fighting.CurrentTargetEnemyId)
+                ?? encounter.Enemies[0], interruptAbility, combatStyle);
         }
 
         private void PublishStepAdvanced(Runner runner, TaskSequence seq)
@@ -1911,6 +2898,155 @@ namespace ProjectGuild.Simulation.Core
             clone.Name = (source.Name ?? "Micro") + " (copy)";
             CurrentGameState.MicroRulesetLibrary.Add(clone);
             return clone.Id;
+        }
+
+        // ─── Combat Style Commands ───────────────────────────────────
+
+        /// <summary>Register a combat style in the library. Returns its Id.</summary>
+        public string CommandCreateCombatStyle(CombatStyle template)
+        {
+            if (string.IsNullOrEmpty(template.Id))
+                template.Id = Guid.NewGuid().ToString();
+            CurrentGameState.CombatStyleLibrary.Add(template);
+            return template.Id;
+        }
+
+        /// <summary>Create a new blank combat style with defaults.</summary>
+        public string CommandCreateCombatStyle()
+        {
+            var style = new CombatStyle
+            {
+                Name = GenerateNextName("Combat Style", CurrentGameState.CombatStyleLibrary, s => s.Name),
+            };
+            return CommandCreateCombatStyle(style);
+        }
+
+        /// <summary>Deep-copy a combat style into a new library entry. Returns new Id.</summary>
+        public string CommandCloneCombatStyle(string sourceStyleId)
+        {
+            var source = FindCombatStyleInLibrary(sourceStyleId);
+            if (source == null) return null;
+            var clone = source.DeepCopy();
+            clone.Name = (source.Name ?? "Combat Style") + " (copy)";
+            CurrentGameState.CombatStyleLibrary.Add(clone);
+            return clone.Id;
+        }
+
+        /// <summary>Remove a combat style from the library. Clears runner refs that point to it.</summary>
+        public void CommandDeleteCombatStyle(string styleId)
+        {
+            CurrentGameState.CombatStyleLibrary.RemoveAll(s => s.Id == styleId);
+            foreach (var runner in CurrentGameState.Runners)
+            {
+                if (runner.CombatStyleId == styleId)
+                    runner.CombatStyleId = null;
+            }
+            // Also clear combat style overrides in task sequences
+            foreach (var seq in CurrentGameState.TaskSequenceLibrary)
+            {
+                if (seq.Steps == null) continue;
+                foreach (var step in seq.Steps)
+                {
+                    if (step.CombatStyleOverrideId == styleId)
+                        step.CombatStyleOverrideId = null;
+                }
+            }
+        }
+
+        /// <summary>Rename a combat style.</summary>
+        public void CommandRenameCombatStyle(string styleId, string newName)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null) return;
+            style.Name = newName?.Trim() ?? "";
+        }
+
+        /// <summary>Assign a combat style to a runner by ID.</summary>
+        public void CommandAssignCombatStyleToRunner(string runnerId, string styleId)
+        {
+            var runner = FindRunner(runnerId);
+            if (runner == null) return;
+            runner.CombatStyleId = styleId;
+        }
+
+        // ─── Combat Style Rule Manipulation ─────────────────────────
+
+        /// <summary>Add a targeting rule to a combat style.</summary>
+        public void CommandAddTargetingRule(string styleId, TargetingRule rule, int insertIndex = -1)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null) return;
+            if (insertIndex < 0 || insertIndex >= style.TargetingRules.Count)
+                style.TargetingRules.Add(rule);
+            else
+                style.TargetingRules.Insert(insertIndex, rule);
+        }
+
+        /// <summary>Remove a targeting rule from a combat style by index.</summary>
+        public void CommandRemoveTargetingRule(string styleId, int ruleIndex)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null || ruleIndex < 0 || ruleIndex >= style.TargetingRules.Count) return;
+            style.TargetingRules.RemoveAt(ruleIndex);
+        }
+
+        /// <summary>Replace a targeting rule at a given index.</summary>
+        public void CommandUpdateTargetingRule(string styleId, int ruleIndex, TargetingRule rule)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null || ruleIndex < 0 || ruleIndex >= style.TargetingRules.Count) return;
+            style.TargetingRules[ruleIndex] = rule;
+        }
+
+        /// <summary>Move a targeting rule from one index to another.</summary>
+        public void CommandMoveTargetingRule(string styleId, int fromIndex, int toIndex)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null) return;
+            if (fromIndex < 0 || fromIndex >= style.TargetingRules.Count) return;
+            if (toIndex < 0 || toIndex >= style.TargetingRules.Count) return;
+            var rule = style.TargetingRules[fromIndex];
+            style.TargetingRules.RemoveAt(fromIndex);
+            style.TargetingRules.Insert(toIndex, rule);
+        }
+
+        /// <summary>Add an ability rule to a combat style.</summary>
+        public void CommandAddAbilityRule(string styleId, AbilityRule rule, int insertIndex = -1)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null) return;
+            if (insertIndex < 0 || insertIndex >= style.AbilityRules.Count)
+                style.AbilityRules.Add(rule);
+            else
+                style.AbilityRules.Insert(insertIndex, rule);
+        }
+
+        /// <summary>Remove an ability rule from a combat style by index.</summary>
+        public void CommandRemoveAbilityRule(string styleId, int ruleIndex)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null || ruleIndex < 0 || ruleIndex >= style.AbilityRules.Count) return;
+            style.AbilityRules.RemoveAt(ruleIndex);
+        }
+
+        /// <summary>Replace an ability rule at a given index.</summary>
+        public void CommandUpdateAbilityRule(string styleId, int ruleIndex, AbilityRule rule)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null || ruleIndex < 0 || ruleIndex >= style.AbilityRules.Count) return;
+            style.AbilityRules[ruleIndex] = rule;
+        }
+
+        /// <summary>Move an ability rule from one index to another.</summary>
+        public void CommandMoveAbilityRule(string styleId, int fromIndex, int toIndex)
+        {
+            var style = FindCombatStyleInLibrary(styleId);
+            if (style == null) return;
+            if (fromIndex < 0 || fromIndex >= style.AbilityRules.Count) return;
+            if (toIndex < 0 || toIndex >= style.AbilityRules.Count) return;
+            var rule = style.AbilityRules[fromIndex];
+            style.AbilityRules.RemoveAt(fromIndex);
+            style.AbilityRules.Insert(toIndex, rule);
         }
 
         // ─── Template Commands ──────────────────────────────────────

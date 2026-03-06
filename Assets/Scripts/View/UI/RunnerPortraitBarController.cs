@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
+using ProjectGuild.Simulation.Combat;
 using ProjectGuild.Simulation.Core;
 
 namespace ProjectGuild.View.UI
@@ -24,6 +25,10 @@ namespace ProjectGuild.View.UI
 
         // Portrait instances keyed by runner ID
         private readonly Dictionary<string, VisualElement> _portraits = new();
+        private readonly Dictionary<string, VisualElement> _hpBarFills = new();
+        private readonly Dictionary<string, VisualElement> _hpBarContainers = new();
+        private readonly Dictionary<string, VisualElement> _manaBarFills = new();
+        private readonly Dictionary<string, VisualElement> _manaBarContainers = new();
         private readonly List<VisualElement> _separators = new();
 
         // Runner IDs in player's preferred order. Modified by drag-to-reorder.
@@ -75,6 +80,39 @@ namespace ProjectGuild.View.UI
 
             instance.Q<Label>("portrait-name").text = runner.Name;
             instance.Q<Label>("portrait-state").text = FormatShortState(runner);
+
+            // HP bar (after label bar, at the very bottom of the portrait)
+            var hpBarContainer = new VisualElement();
+            hpBarContainer.AddToClassList("portrait-hp-bar");
+            hpBarContainer.pickingMode = PickingMode.Ignore;
+
+            var hpBarFill = new VisualElement();
+            hpBarFill.AddToClassList("portrait-hp-bar-fill");
+            hpBarFill.pickingMode = PickingMode.Ignore;
+            hpBarContainer.Add(hpBarFill);
+
+            var labelBar = instance.Q("portrait-label-bar");
+            int labelBarIdx = portraitRoot.IndexOf(labelBar);
+            portraitRoot.Insert(labelBarIdx + 1, hpBarContainer);
+
+            _hpBarContainers[runnerId] = hpBarContainer;
+            _hpBarFills[runnerId] = hpBarFill;
+
+            // Mana bar (below HP bar)
+            var manaBarContainer = new VisualElement();
+            manaBarContainer.AddToClassList("portrait-mana-bar");
+            manaBarContainer.pickingMode = PickingMode.Ignore;
+            manaBarContainer.style.display = DisplayStyle.None;
+
+            var manaBarFill = new VisualElement();
+            manaBarFill.AddToClassList("portrait-mana-bar-fill");
+            manaBarFill.pickingMode = PickingMode.Ignore;
+            manaBarContainer.Add(manaBarFill);
+
+            portraitRoot.Insert(labelBarIdx + 2, manaBarContainer);
+
+            _manaBarContainers[runnerId] = manaBarContainer;
+            _manaBarFills[runnerId] = manaBarFill;
 
             // Pointer events handle both click-to-select and drag-to-reorder.
             // We capture on PointerDown, then decide in PointerUp whether it was
@@ -168,6 +206,77 @@ namespace ProjectGuild.View.UI
                     bool hasConfigWarning = !string.IsNullOrEmpty(runner.MacroConfigWarning);
                     configBadge.style.display = hasConfigWarning ? DisplayStyle.Flex : DisplayStyle.None;
                     configBadge.pickingMode = hasConfigWarning ? PickingMode.Position : PickingMode.Ignore;
+                }
+
+                // HP bar: visibility depends on preference.
+                // "Always" = always show (100% green when uninitialized).
+                // "InCombat" = show only when CurrentHitpoints >= 0 (old behavior).
+                // "Never" = hidden.
+                // Dead runners show 0 HP.
+                var prefs = _uiManager.Preferences;
+                if (_hpBarContainers.TryGetValue(kvp.Key, out var hpContainer)
+                    && _hpBarFills.TryGetValue(kvp.Key, out var hpFill))
+                {
+                    string healthPref = prefs.PortraitHealthDisplay;
+                    bool showHp = healthPref != "Never"
+                        && (healthPref == "Always" || runner.CurrentHitpoints >= 0f);
+                    hpContainer.style.display = showHp ? DisplayStyle.Flex : DisplayStyle.None;
+
+                    if (showHp)
+                    {
+                        float hpPercent;
+                        if (runner.State == RunnerState.Dead)
+                        {
+                            hpPercent = 0f;
+                        }
+                        else if (runner.CurrentHitpoints < 0f)
+                        {
+                            hpPercent = 1f; // uninitialized = full health
+                        }
+                        else
+                        {
+                            float maxHp = CombatFormulas.CalculateMaxHitpoints(
+                                runner.GetEffectiveLevel(SkillType.Hitpoints, sim.Config), sim.Config);
+                            hpPercent = maxHp > 0f ? Mathf.Clamp01(runner.CurrentHitpoints / maxHp) : 0f;
+                        }
+                        hpFill.style.width = Length.Percent(hpPercent * 100f);
+
+                        // Color: green > 50%, yellow > 25%, red <= 25%
+                        hpFill.RemoveFromClassList("portrait-hp-bar-fill-green");
+                        hpFill.RemoveFromClassList("portrait-hp-bar-fill-yellow");
+                        hpFill.RemoveFromClassList("portrait-hp-bar-fill-red");
+
+                        if (hpPercent > 0.5f)
+                            hpFill.AddToClassList("portrait-hp-bar-fill-green");
+                        else if (hpPercent > 0.25f)
+                            hpFill.AddToClassList("portrait-hp-bar-fill-yellow");
+                        else
+                            hpFill.AddToClassList("portrait-hp-bar-fill-red");
+                    }
+                }
+
+                // Mana bar: visibility depends on preference and mana state
+                if (_manaBarContainers.TryGetValue(kvp.Key, out var manaContainer)
+                    && _manaBarFills.TryGetValue(kvp.Key, out var manaFill))
+                {
+                    string manaPref = prefs.PortraitManaDisplay;
+                    long tickCount = sim.CurrentGameState.TickCount;
+                    float maxMana = CombatFormulas.CalculateMaxMana(
+                        runner.GetEffectiveLevel(SkillType.Restoration, sim.Config), sim.Config);
+
+                    bool showMana = manaPref != "Never"
+                        && runner.CurrentMana >= 0f
+                        && (manaPref == "Always"
+                            || (runner.LastManaSpentTick >= 0 && tickCount - runner.LastManaSpentTick < 100)
+                            || runner.CurrentMana < maxMana);
+
+                    manaContainer.style.display = showMana ? DisplayStyle.Flex : DisplayStyle.None;
+
+                    if (showMana)
+                    {
+                        float manaPercent = maxMana > 0f ? Mathf.Clamp01(runner.CurrentMana / maxMana) : 0f;
+                        manaFill.style.width = Length.Percent(manaPercent * 100f);
+                    }
                 }
             }
 
@@ -569,7 +678,8 @@ namespace ProjectGuild.View.UI
         // ─── State display helpers ───────────────────────
 
         private static readonly string[] StateClasses =
-            { "state-idle", "state-traveling", "state-gathering", "state-depositing" };
+            { "state-idle", "state-traveling", "state-gathering", "state-depositing",
+              "state-fighting", "state-dead", "state-waiting" };
 
         private static void ApplyStateClass(VisualElement element, RunnerState state)
         {
@@ -582,6 +692,9 @@ namespace ProjectGuild.View.UI
                 RunnerState.Traveling => "state-traveling",
                 RunnerState.Gathering => "state-gathering",
                 RunnerState.Depositing => "state-depositing",
+                RunnerState.Fighting => "state-fighting",
+                RunnerState.Dead => "state-dead",
+                RunnerState.Waiting => "state-waiting",
                 _ => null,
             };
 
@@ -597,6 +710,11 @@ namespace ProjectGuild.View.UI
                 RunnerState.Traveling => $"-> {runner.Travel?.ToNodeId ?? "?"}",
                 RunnerState.Gathering => "Gathering",
                 RunnerState.Depositing => "Depositing",
+                RunnerState.Fighting => "Fighting",
+                RunnerState.Dead => runner.Death != null
+                    ? $"Dead ({Mathf.CeilToInt(runner.Death.RespawnTicksRemaining / 10f)}s)"
+                    : "Dead",
+                RunnerState.Waiting => "Waiting",
                 _ => runner.State.ToString(),
             };
         }

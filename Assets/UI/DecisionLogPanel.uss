@@ -101,6 +101,15 @@
     color: rgb(170, 190, 220);
 }
 
+/* Interrupt entries get orange accent */
+.entry-interrupted {
+    border-left-color: rgba(220, 140, 50, 0.9);
+}
+
+.entry-interrupted .entry-text {
+    color: rgb(220, 170, 100);
+}
+
 /* ─── New entries indicator ──────────────────────── */
 
 .new-entries-indicator {

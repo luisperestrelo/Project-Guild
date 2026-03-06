@@ -144,6 +144,65 @@ namespace ProjectGuild.Simulation.Core
         public Tutorial.TutorialPhase NextPhase;
     }
 
+    // ─── Combat Events ──────────────────────────────────────────
+
+    public struct CombatStarted
+    {
+        public string RunnerId;
+        public string NodeId;
+    }
+
+    public struct CombatActionCompleted
+    {
+        public string RunnerId;
+        public string AbilityId;
+        public string TargetEnemyInstanceId;
+        public Combat.EffectType PrimaryEffectType;
+        public float Value;
+        public bool WasKill;
+    }
+
+    public struct EnemyDied
+    {
+        public string EnemyInstanceId;
+        public string EnemyConfigId;
+        public string NodeId;
+        public string KillerRunnerId;
+    }
+
+    public struct EnemySpawned
+    {
+        public string EnemyInstanceId;
+        public string EnemyConfigId;
+        public string NodeId;
+    }
+
+    public struct RunnerDied
+    {
+        public string RunnerId;
+        public string NodeId;
+    }
+
+    public struct RunnerRespawned
+    {
+        public string RunnerId;
+    }
+
+    public struct LootDropped
+    {
+        public string RunnerId;
+        public string ItemId;
+        public int Quantity;
+    }
+
+    public struct RunnerTookDamage
+    {
+        public string RunnerId;
+        public string EnemyInstanceId;
+        public float Damage;
+        public float RemainingHp;
+    }
+
     // ─── Simulation Lifecycle ────────────────────────────────────
 
     public struct SimulationTickCompleted

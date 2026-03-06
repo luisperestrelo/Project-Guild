@@ -68,6 +68,65 @@
     color: rgb(220, 180, 60);
 }
 
+.state-fighting {
+    color: rgb(220, 80, 80);
+}
+
+.state-dead {
+    color: rgb(140, 140, 160);
+}
+
+.state-waiting {
+    color: rgb(180, 140, 220);
+}
+
+/* ─── HP bar on portrait ──────────────────────────── */
+
+.portrait-hp-bar {
+    height: 4px;
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-bottom: 2px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.portrait-hp-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+}
+
+.portrait-hp-bar-fill-green {
+    background-color: rgb(80, 200, 80);
+}
+
+.portrait-hp-bar-fill-yellow {
+    background-color: rgb(220, 180, 50);
+}
+
+.portrait-hp-bar-fill-red {
+    background-color: rgb(200, 60, 60);
+}
+
+/* ─── Mana bar on portrait ────────────────────────── */
+
+.portrait-mana-bar {
+    height: 3px;
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-bottom: 2px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.portrait-mana-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background-color: rgb(70, 130, 220);
+}
+
 /* ─── Warning badge ─────────────────────────────── */
 
 .portrait-warning-badge {
