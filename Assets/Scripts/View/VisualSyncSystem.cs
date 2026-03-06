@@ -4,6 +4,7 @@ using UnityEngine.AI;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
 using ProjectGuild.Simulation.World;
+using ProjectGuild.View.Combat;
 using ProjectGuild.View.Runners;
 using ProjectGuild.View.UI;
 
@@ -126,10 +127,15 @@ namespace ProjectGuild.View
                 CreateRunnerVisual(runner);
             }
 
-            // Subscribe to events for new runners and travel tracking
+            // Subscribe to events for new runners, travel tracking, and combat
             Sim.Events.Subscribe<RunnerCreated>(OnRunnerCreated);
             Sim.Events.Subscribe<RunnerStartedTravel>(OnRunnerStartedTravel);
             Sim.Events.Subscribe<RunnerArrivedAtNode>(OnRunnerArrivedAtNode);
+            Sim.Events.Subscribe<CombatStarted>(OnCombatStarted);
+            Sim.Events.Subscribe<CombatActionCompleted>(OnCombatAction);
+            Sim.Events.Subscribe<RunnerDied>(OnRunnerDied);
+            Sim.Events.Subscribe<RunnerRespawned>(OnRunnerRespawned);
+            Sim.Events.Subscribe<RunnerTookDamage>(OnRunnerHit);
 
             _worldBuilt = true;
         }
@@ -475,7 +481,7 @@ namespace ProjectGuild.View
 
         /// <summary>
         /// Position a runner inside a loaded node scene using gathering spots, deposit point,
-        /// or spawn points.
+        /// combat area, or spawn points.
         /// </summary>
         private Vector3 GetNodeScenePosition(Runner runner, NodeSceneRoot sceneRoot)
         {
@@ -493,9 +499,60 @@ namespace ProjectGuild.View
                 return sceneRoot.GetGatheringPosition(gatherableIndex, spotIndex) + RunnerYOffset;
             }
 
+            // Fighting: position around the combat area center
+            if (runner.State == RunnerState.Fighting)
+            {
+                return GetCombatPosition(runner, sceneRoot) + RunnerYOffset;
+            }
+
+            // Dead: hide at node (the visual will be toggled off by UpdateRunnerCombatState)
+            if (runner.State == RunnerState.Dead)
+            {
+                return sceneRoot.GetSpawnPosition(0) + RunnerYOffset;
+            }
+
             // Idle or other states: use a spawn point
             int runnerIndex = GetRunnerIndexAtNode(runner);
             return sceneRoot.GetSpawnPosition(runnerIndex) + RunnerYOffset;
+        }
+
+        /// <summary>
+        /// Position a fighting runner in the combat area. Runners spread in a semicircle
+        /// on one side of the combat center, facing the enemies.
+        /// </summary>
+        private Vector3 GetCombatPosition(Runner runner, NodeSceneRoot sceneRoot)
+        {
+            Vector3 center = sceneRoot.CombatAreaCenter;
+            int idx = GetFighterIndexAtNode(runner);
+            int total = GetFighterCountAtNode(runner.CurrentNodeId);
+
+            // Spread runners in an arc on the "player side" (negative Z relative to center)
+            float arcSpan = Mathf.Min(total * 0.8f, 3f); // max ~3m spread
+            float offset = total <= 1 ? 0f : -arcSpan / 2f + arcSpan * idx / (total - 1);
+            return center + new Vector3(offset, 0f, -2.5f);
+        }
+
+        private int GetFighterIndexAtNode(Runner runner)
+        {
+            int idx = 0;
+            foreach (var r in Sim.CurrentGameState.Runners)
+            {
+                if (r.Id == runner.Id) break;
+                if (r.State == RunnerState.Fighting && r.CurrentNodeId == runner.CurrentNodeId)
+                    idx++;
+            }
+            return idx;
+        }
+
+        private int GetFighterCountAtNode(string nodeId)
+        {
+            int count = 0;
+            foreach (var r in Sim.CurrentGameState.Runners)
+            {
+                if (r.State == RunnerState.Fighting && r.CurrentNodeId == nodeId)
+                    count++;
+            }
+            return count;
         }
 
         /// <summary>
@@ -678,6 +735,72 @@ namespace ProjectGuild.View
             _pendingArrivalFades.Remove(evt.RunnerId);
         }
 
+        // ─── Combat Event Handlers ──────────────────────────────────
+
+        private void OnCombatStarted(CombatStarted evt)
+        {
+            if (_runnerVisuals.TryGetValue(evt.RunnerId, out var visual) && visual != null)
+                visual.SetCombatState(true);
+        }
+
+        private void OnCombatAction(CombatActionCompleted evt)
+        {
+            if (!_runnerVisuals.TryGetValue(evt.RunnerId, out var visual) || visual == null) return;
+
+            // Pick animation based on ability type
+            bool isMelee = evt.PrimaryEffectType == Simulation.Combat.EffectType.Damage
+                || evt.PrimaryEffectType == Simulation.Combat.EffectType.Taunt
+                || evt.PrimaryEffectType == Simulation.Combat.EffectType.TauntAoe
+                || evt.PrimaryEffectType == Simulation.Combat.EffectType.TauntAll;
+            bool isCast = evt.PrimaryEffectType == Simulation.Combat.EffectType.DamageAoe
+                || evt.PrimaryEffectType == Simulation.Combat.EffectType.Heal
+                || evt.PrimaryEffectType == Simulation.Combat.EffectType.HealSelf
+                || evt.PrimaryEffectType == Simulation.Combat.EffectType.HealAoe;
+
+            // Melee abilities with magic abilityId override to cast
+            if (evt.AbilityId != null && (evt.AbilityId.Contains("fireball")
+                || evt.AbilityId.Contains("fire_nova") || evt.AbilityId.Contains("culling_frost")))
+                isCast = true;
+
+            if (isCast)
+                visual.PlayCastSpell();
+            else
+                visual.PlayMeleeAttack();
+
+            // Face the target
+            if (!string.IsNullOrEmpty(evt.TargetEnemyInstanceId))
+            {
+                var evm = FindAnyObjectByType<EnemyVisualManager>();
+                var ev = evm?.GetEnemyVisual(evt.TargetEnemyInstanceId);
+                if (ev != null)
+                    visual.FaceTarget(ev.transform.position);
+            }
+        }
+
+        private void OnRunnerHit(RunnerTookDamage evt)
+        {
+            if (_runnerVisuals.TryGetValue(evt.RunnerId, out var visual) && visual != null)
+                visual.PlayHitReact();
+        }
+
+        private void OnRunnerDied(RunnerDied evt)
+        {
+            if (_runnerVisuals.TryGetValue(evt.RunnerId, out var visual) && visual != null)
+            {
+                visual.SetDead(true);
+                visual.SetCombatState(false);
+            }
+        }
+
+        private void OnRunnerRespawned(RunnerRespawned evt)
+        {
+            if (_runnerVisuals.TryGetValue(evt.RunnerId, out var visual) && visual != null)
+            {
+                visual.SetDead(false);
+                visual.SetHidden(false);
+            }
+        }
+
         /// <summary>
         /// Compute the departure direction: from source node TOWARD destination.
         /// Opposite of approach direction (which is from destination toward source).
@@ -713,6 +836,11 @@ namespace ProjectGuild.View
                 Sim.Events.Unsubscribe<RunnerCreated>(OnRunnerCreated);
                 Sim.Events.Unsubscribe<RunnerStartedTravel>(OnRunnerStartedTravel);
                 Sim.Events.Unsubscribe<RunnerArrivedAtNode>(OnRunnerArrivedAtNode);
+                Sim.Events.Unsubscribe<CombatStarted>(OnCombatStarted);
+                Sim.Events.Unsubscribe<CombatActionCompleted>(OnCombatAction);
+                Sim.Events.Unsubscribe<RunnerDied>(OnRunnerDied);
+                Sim.Events.Unsubscribe<RunnerRespawned>(OnRunnerRespawned);
+                Sim.Events.Unsubscribe<RunnerTookDamage>(OnRunnerHit);
             }
         }
     }

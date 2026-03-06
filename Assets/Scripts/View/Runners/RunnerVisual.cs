@@ -47,6 +47,12 @@ namespace ProjectGuild.View.Runners
         // Animation
         private Animator _animator;
         private static readonly int SpeedParam = Animator.StringToHash("Speed");
+        private static readonly int AttackTrigger = Animator.StringToHash("Attack");
+        private static readonly int CastTrigger = Animator.StringToHash("Cast");
+        private static readonly int HitTrigger = Animator.StringToHash("Hit");
+        private static readonly int DieTrigger = Animator.StringToHash("Die");
+        private static readonly int InCombatParam = Animator.StringToHash("InCombat");
+        private static readonly int IsDeadParam = Animator.StringToHash("IsDead");
 
         // Ground snap: Y offset from ground surface to transform.position.
         // Capsule pivot is at center (1m), Synty character pivot is at feet (0m).
@@ -194,8 +200,69 @@ namespace ProjectGuild.View.Runners
                 ? _pathWaypoints[^1]
                 : _targetPosition;
 
+        // Combat visual state
+        private bool _isDead;
+        private bool _isHidden;
+
         // Track position for velocity-based animation
         private Vector3 _lastFramePosition;
+
+        // ─── Combat Animation API ──────────────────────────────
+
+        public void PlayMeleeAttack()
+        {
+            if (_animator != null && !_isDead)
+                _animator.SetTrigger(AttackTrigger);
+        }
+
+        public void PlayCastSpell()
+        {
+            if (_animator != null && !_isDead)
+                _animator.SetTrigger(CastTrigger);
+        }
+
+        public void PlayHitReact()
+        {
+            if (_animator != null && !_isDead)
+                _animator.SetTrigger(HitTrigger);
+        }
+
+        public void SetCombatState(bool inCombat)
+        {
+            if (_animator != null)
+                _animator.SetBool(InCombatParam, inCombat);
+        }
+
+        public void SetDead(bool dead)
+        {
+            _isDead = dead;
+            if (_animator != null)
+            {
+                if (dead)
+                    _animator.SetTrigger(DieTrigger);
+                _animator.SetBool(IsDeadParam, dead);
+            }
+        }
+
+        public void SetHidden(bool hidden)
+        {
+            _isHidden = hidden;
+            // Hide all renderers but keep the GO active for position tracking
+            foreach (var r in GetComponentsInChildren<Renderer>())
+                r.enabled = !hidden;
+            if (_nameLabel != null)
+                _nameLabel.gameObject.SetActive(!hidden);
+            if (_barGroup != null)
+                _barGroup.SetActive(!hidden);
+        }
+
+        public void FaceTarget(Vector3 targetPos)
+        {
+            Vector3 dir = targetPos - transform.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.01f)
+                transform.rotation = Quaternion.LookRotation(dir);
+        }
 
         private void Update()
         {

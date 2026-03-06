@@ -399,7 +399,7 @@ namespace ProjectGuild.View.UI
                         ? $" to up to <b>{(effect.MaxTargets < 0 ? "all" : effect.MaxTargets.ToString())}</b> enemies" : "";
                     parts.Add($"{condPrefix}Deals <b><color={DmgColor}>{dmg:F1}</color></b> damage{aoe}.");
                     if (showMath)
-                        parts.Add($"<color=#888888>  {effect.BaseValue} base x {effect.ScalingFactor}x x (1 + {level:F1} x {sim.Config.CombatDamageScalingPerLevel})</color>");
+                        parts.Add($"<color=#888888>  = BaseValue({effect.BaseValue}) x Scaling({effect.ScalingFactor}) x (1 + EffectiveLevel x {sim.Config.CombatDamageScalingPerLevel})</color>");
                 }
                 else if (isHeal)
                 {
@@ -410,7 +410,7 @@ namespace ProjectGuild.View.UI
                             : "";
                     parts.Add($"{condPrefix}Heals <b><color={HealColor}>{heal:F1}</color></b>{target}.");
                     if (showMath)
-                        parts.Add($"<color=#888888>  {effect.BaseValue} base x {effect.ScalingFactor}x x (1 + {level:F1} x {sim.Config.CombatDamageScalingPerLevel})</color>");
+                        parts.Add($"<color=#888888>  = BaseValue({effect.BaseValue}) x Scaling({effect.ScalingFactor}) x (1 + EffectiveLevel x {sim.Config.CombatDamageScalingPerLevel})</color>");
                 }
                 else if (isTaunt)
                 {
@@ -432,12 +432,9 @@ namespace ProjectGuild.View.UI
             string manaStr = ability.ManaCost > 0
                 ? $"  <b><color={ManaColor}>{ability.ManaCost}</color></b> mana" : "";
             parts.Add($"{actionTime} action{cdStr}{manaStr}");
-            if (showMath)
-                parts.Add($"<color=#888888>  {ability.ActionTimeTicks} ticks / 10 tps | CD: {ability.CooldownTicks} ticks</color>");
-
-            // Effective level info (math mode)
+            // Effective level (math mode)
             if (showMath && runner != null)
-                parts.Add($"<color=#888888>  {ability.SkillType} effective level: {level:F1} (base {runner.GetSkill(ability.SkillType).Level})</color>");
+                parts.Add($"<color=#888888>{ability.SkillType} effective level: {level:F1} (base {runner.GetSkill(ability.SkillType).Level} + passion)</color>");
 
             // Unlock
             if (!unlocked)

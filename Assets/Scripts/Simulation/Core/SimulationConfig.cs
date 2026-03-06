@@ -337,5 +337,15 @@ namespace ProjectGuild.Simulation.Core
         /// Tests can set these directly.
         /// </summary>
         public Combat.EnemyConfig[] EnemyDefinitions = Array.Empty<Combat.EnemyConfig>();
+
+        /// <summary>
+        /// Find an enemy config by its ID. Returns null if not found.
+        /// </summary>
+        public Combat.EnemyConfig GetEnemyConfig(string configId)
+        {
+            foreach (var e in EnemyDefinitions)
+                if (e.Id == configId) return e;
+            return null;
+        }
     }
 }

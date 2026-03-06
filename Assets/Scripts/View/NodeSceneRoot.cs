@@ -48,6 +48,15 @@ namespace ProjectGuild.View
             "Auto-generate these with the editor button, then nudge to sensible positions.")]
         [SerializeField] private Transform[] _directionalSpawnPoints = new Transform[0];
 
+        [Header("Combat")]
+        [Tooltip("Positions where enemies spawn in this node's combat area. " +
+            "Enemies are spread across these points. Leave empty for non-combat nodes.")]
+        [SerializeField] private Transform[] _enemySpawnPoints = new Transform[0];
+
+        [Tooltip("Center of the combat area. Runners in Fighting state are positioned around this point. " +
+            "Falls back to scene focal point if unset.")]
+        [SerializeField] private Transform _combatAreaCenter;
+
         [Header("Gathering")]
         [Tooltip("Gathering positions grouped by gatherable index. " +
             "Element 0 = spots for gatherable 0 (e.g. ore veins), element 1 = spots for gatherable 1, etc. " +
@@ -58,6 +67,14 @@ namespace ProjectGuild.View
         public Transform[] SpawnPoints => _spawnPoints;
         public Transform[] DirectionalSpawnPoints => _directionalSpawnPoints;
         public GatherableSpotGroup[] GatheringSpotGroups => _gatheringSpotGroups;
+        public Transform[] EnemySpawnPoints => _enemySpawnPoints;
+
+        /// <summary>
+        /// Center of the combat area. Runners fighting at this node are positioned around this point.
+        /// Falls back to SceneFocalPosition if not explicitly set.
+        /// </summary>
+        public Vector3 CombatAreaCenter =>
+            _combatAreaCenter != null ? _combatAreaCenter.position : SceneFocalPosition;
 
         /// <summary>
         /// True if this node has directional spawn points configured (circumference/area node).

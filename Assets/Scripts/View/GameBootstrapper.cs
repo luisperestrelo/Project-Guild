@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using ProjectGuild.Bridge;
 using ProjectGuild.Simulation.Core;
+using ProjectGuild.View.Combat;
 using ProjectGuild.View.Runners;
 
 namespace ProjectGuild.View
@@ -199,6 +200,12 @@ namespace ProjectGuild.View
             yield return WaitForNodeScenesToLoad();
 
             _visualSyncSystem.BuildWorld();
+
+            // Initialize enemy visuals for combat
+            var enemyVisualManager = FindAnyObjectByType<EnemyVisualManager>();
+            if (enemyVisualManager != null)
+                enemyVisualManager.Initialize();
+
             SelectRunner(0);
 
             if (_uiManager != null)

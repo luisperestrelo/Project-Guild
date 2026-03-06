@@ -5,8 +5,8 @@ using UnityEngine;
 namespace ProjectGuild.View
 {
     /// <summary>
-    /// Editor utility that creates simple Animator Controllers for runners.
-    /// Uses Synty Base Locomotion animation clips with a minimal Idle/Run state machine.
+    /// Editor utility that creates Animator Controllers for runners with locomotion
+    /// and combat states. Uses Synty animation clips.
     ///
     /// Menu: Tools > Project Guild > Build Runner Animator Controllers
     /// Creates two controllers (masculine + feminine) at Assets/Art/AnimatorControllers/.
@@ -25,6 +25,20 @@ namespace ProjectGuild.View
         private const string FemnRunPath =
             "Assets/Art/Synty/AnimationBaseLocomotion/Animations/Polygon/Feminine/Locomotion/Run/A_Run_F_Femn.fbx";
 
+        // Combat animation clip paths (shared between masculine/feminine, generic humanoid)
+        private const string CombatIdlePath =
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Idle/Base/A_Idle_Menacing_Sword.fbx";
+        private const string AttackPath =
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Attack/LightCombo01/A_Attack_LightCombo01A_Sword.fbx";
+        private const string HitReactPath =
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Hit/HitReact/A_Hit_React_R_Sword.fbx";
+        private const string DeathPath =
+            "Assets/Art/Synty/AnimationSwordCombat/Animations/Polygon/Death/A_Death_01_Sword.fbx";
+
+        // Cast animation: use the taunt/roar animation as a stand-in for spellcasting
+        private const string CastPath =
+            "Assets/Art/Synty/AnimationEmotesAndTaunts/Animations/Polygon/Aggressive/A_Aggressive_Roar_High.fbx";
+
         [MenuItem("Tools/Project Guild/Build Runner Animator Controllers")]
         public static void BuildControllers()
         {
@@ -40,7 +54,7 @@ namespace ProjectGuild.View
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[RunnerAnimatorControllerBuilder] Built masculine + feminine runner controllers.");
+            Debug.Log("[RunnerAnimatorControllerBuilder] Built masculine + feminine runner controllers with combat states.");
         }
 
         private static void BuildController(string name, string idleFbxPath, string runFbxPath)
@@ -59,37 +73,139 @@ namespace ProjectGuild.View
                 return;
             }
 
+            // Load combat clips (shared)
+            var combatIdleClip = LoadClipFromFbx(CombatIdlePath);
+            var attackClip = LoadClipFromFbx(AttackPath);
+            var hitReactClip = LoadClipFromFbx(HitReactPath);
+            var deathClip = LoadClipFromFbx(DeathPath);
+            var castClip = LoadClipFromFbx(CastPath);
+
             string path = $"{OutputFolder}/{name}.controller";
             var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
 
-            // Add Speed parameter (float, 0 = idle, > 0 = running)
+            // Parameters
             controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
+            controller.AddParameter("InCombat", AnimatorControllerParameterType.Bool);
+            controller.AddParameter("IsDead", AnimatorControllerParameterType.Bool);
+            controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
+            controller.AddParameter("Cast", AnimatorControllerParameterType.Trigger);
+            controller.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
+            controller.AddParameter("Die", AnimatorControllerParameterType.Trigger);
 
-            // Get the default layer's state machine
-            var rootStateMachine = controller.layers[0].stateMachine;
+            var rootSM = controller.layers[0].stateMachine;
 
-            // Create Idle state (default)
-            var idleState = rootStateMachine.AddState("Idle", new Vector3(300, 0, 0));
+            // ─── Locomotion states ───
+            var idleState = rootSM.AddState("Idle", new Vector3(300, 0, 0));
             idleState.motion = idleClip;
-            rootStateMachine.defaultState = idleState;
+            rootSM.defaultState = idleState;
 
-            // Create Run state
-            var runState = rootStateMachine.AddState("Run", new Vector3(300, 100, 0));
+            var runState = rootSM.AddState("Run", new Vector3(300, 100, 0));
             runState.motion = runClip;
 
-            // Transition: Idle -> Run when Speed > 0.1
-            var toRun = idleState.AddTransition(runState);
-            toRun.AddCondition(AnimatorConditionMode.Greater, 0.1f, "Speed");
-            toRun.duration = 0.15f;
-            toRun.hasExitTime = false;
+            // Idle <-> Run
+            AddTransition(idleState, runState, "Speed", AnimatorConditionMode.Greater, 0.1f);
+            AddTransition(runState, idleState, "Speed", AnimatorConditionMode.Less, 0.1f);
 
-            // Transition: Run -> Idle when Speed < 0.1
-            var toIdle = runState.AddTransition(idleState);
-            toIdle.AddCondition(AnimatorConditionMode.Less, 0.1f, "Speed");
-            toIdle.duration = 0.15f;
-            toIdle.hasExitTime = false;
+            // ─── Combat states ───
+            AnimatorState combatIdleState;
+            if (combatIdleClip != null)
+            {
+                combatIdleState = rootSM.AddState("CombatIdle", new Vector3(600, 0, 0));
+                combatIdleState.motion = combatIdleClip;
+            }
+            else
+            {
+                combatIdleState = rootSM.AddState("CombatIdle", new Vector3(600, 0, 0));
+                combatIdleState.motion = idleClip;
+            }
+
+            // Idle -> CombatIdle (enter combat)
+            AddTransition(idleState, combatIdleState, "InCombat", AnimatorConditionMode.If, 0f);
+            AddTransition(runState, combatIdleState, "InCombat", AnimatorConditionMode.If, 0f);
+            // CombatIdle -> Idle (exit combat)
+            AddTransition(combatIdleState, idleState, "InCombat", AnimatorConditionMode.IfNot, 0f);
+
+            // Attack state
+            if (attackClip != null)
+            {
+                var attackState = rootSM.AddState("Attack", new Vector3(600, 100, 0));
+                attackState.motion = attackClip;
+
+                var toAttack = combatIdleState.AddTransition(attackState);
+                toAttack.AddCondition(AnimatorConditionMode.If, 0f, "Attack");
+                toAttack.duration = 0.1f;
+                toAttack.hasExitTime = false;
+
+                // Return to combat idle after attack finishes
+                var fromAttack = attackState.AddTransition(combatIdleState);
+                fromAttack.hasExitTime = true;
+                fromAttack.exitTime = 0.9f;
+                fromAttack.duration = 0.1f;
+            }
+
+            // Cast state
+            if (castClip != null)
+            {
+                var castState = rootSM.AddState("Cast", new Vector3(600, 200, 0));
+                castState.motion = castClip;
+
+                var toCast = combatIdleState.AddTransition(castState);
+                toCast.AddCondition(AnimatorConditionMode.If, 0f, "Cast");
+                toCast.duration = 0.1f;
+                toCast.hasExitTime = false;
+
+                var fromCast = castState.AddTransition(combatIdleState);
+                fromCast.hasExitTime = true;
+                fromCast.exitTime = 0.9f;
+                fromCast.duration = 0.1f;
+            }
+
+            // Hit react state
+            if (hitReactClip != null)
+            {
+                var hitState = rootSM.AddState("HitReact", new Vector3(600, 300, 0));
+                hitState.motion = hitReactClip;
+
+                var toHit = combatIdleState.AddTransition(hitState);
+                toHit.AddCondition(AnimatorConditionMode.If, 0f, "Hit");
+                toHit.duration = 0.05f;
+                toHit.hasExitTime = false;
+
+                var fromHit = hitState.AddTransition(combatIdleState);
+                fromHit.hasExitTime = true;
+                fromHit.exitTime = 0.8f;
+                fromHit.duration = 0.1f;
+            }
+
+            // Death state
+            if (deathClip != null)
+            {
+                var deathState = rootSM.AddState("Death", new Vector3(300, 300, 0));
+                deathState.motion = deathClip;
+
+                // Any state -> Death
+                var toDeath = rootSM.AddAnyStateTransition(deathState);
+                toDeath.AddCondition(AnimatorConditionMode.If, 0f, "Die");
+                toDeath.duration = 0.1f;
+                toDeath.hasExitTime = false;
+
+                // Death -> Idle when no longer dead (respawn)
+                var fromDeath = deathState.AddTransition(idleState);
+                fromDeath.AddCondition(AnimatorConditionMode.IfNot, 0f, "IsDead");
+                fromDeath.duration = 0.2f;
+                fromDeath.hasExitTime = false;
+            }
 
             EditorUtility.SetDirty(controller);
+        }
+
+        private static void AddTransition(AnimatorState from, AnimatorState to,
+            string param, AnimatorConditionMode mode, float threshold)
+        {
+            var t = from.AddTransition(to);
+            t.AddCondition(mode, threshold, param);
+            t.duration = 0.15f;
+            t.hasExitTime = false;
         }
 
         /// <summary>
