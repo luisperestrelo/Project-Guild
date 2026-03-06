@@ -71,6 +71,30 @@ namespace ProjectGuild.Simulation.Core
             Chronicle.SubscribeAll(Events);
             Tutorial = new TutorialService(() => CurrentGameState, Events, TickDeltaTime);
             Tutorial.SubscribeAll(Events);
+
+            // Tutorial pawn award: spawn new runner when milestone completes
+            Events.Subscribe<TutorialMilestoneCompleted>(OnTutorialMilestone);
+        }
+
+        private void OnTutorialMilestone(TutorialMilestoneCompleted e)
+        {
+            if (e.MilestoneId == TutorialMilestones.NewPawnAwarded)
+            {
+                SpawnTutorialRewardRunner();
+                // Transition to Complete phase
+                var state = CurrentGameState;
+                if (state.Tutorial.CurrentPhase != TutorialPhase.Complete)
+                {
+                    state.Tutorial.CompleteMilestone(TutorialMilestones.TutorialFinished);
+                    var completed = state.Tutorial.CurrentPhase;
+                    state.Tutorial.CurrentPhase = TutorialPhase.Complete;
+                    Events.Publish(new TutorialPhaseCompleted
+                    {
+                        CompletedPhase = completed,
+                        NextPhase = TutorialPhase.Complete,
+                    });
+                }
+            }
         }
 
         /// <summary>
@@ -3141,6 +3165,51 @@ namespace ProjectGuild.Simulation.Core
             var runner = FindRunner(runnerId);
             if (runner == null) return;
             runner.Name = newName?.Trim() ?? "";
+        }
+
+        /// <summary>
+        /// Spawn the tutorial reward runner. Biased toward gathering skills.
+        /// Placed at hub idle.
+        /// </summary>
+        public Runner SpawnTutorialRewardRunner()
+        {
+            var bias = new RunnerFactory.BiasConstraints
+            {
+                PickOneSkillToBoostedAndPassionate = new[]
+                {
+                    SkillType.Mining, SkillType.Woodcutting, SkillType.Fishing, SkillType.Foraging
+                },
+                WeakenedSkills = new[]
+                {
+                    SkillType.Melee, SkillType.Magic, SkillType.Restoration, SkillType.Defence
+                },
+            };
+
+            var runner = RunnerFactory.CreateBiased(_random, Config, bias, CurrentGameState.Map.HubNodeId);
+
+            // Initialize HP/mana
+            float maxHp = CombatFormulas.CalculateMaxHp(
+                runner.GetEffectiveLevel(SkillType.Hitpoints, Config), Config);
+            float maxMana = CombatFormulas.CalculateMaxMana(
+                runner.GetEffectiveLevel(SkillType.Restoration, Config), Config);
+            runner.CurrentHitpoints = maxHp;
+            runner.CurrentMana = maxMana;
+
+            CurrentGameState.Runners.Add(runner);
+
+            Events.Publish(new RunnerCreated
+            {
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+            });
+
+            Events.Publish(new TutorialPawnAwarded
+            {
+                RunnerId = runner.Id,
+                RunnerName = runner.Name,
+            });
+
+            return runner;
         }
 
         // ─── Equipment Commands ──────────────────────────────────────

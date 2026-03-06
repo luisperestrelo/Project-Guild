@@ -15,6 +15,14 @@ namespace ProjectGuild.Simulation.Tutorial
 
         private long _sentRunnerTick = -1;
 
+        /// <summary>
+        /// Total goblin kills tracked for the tutorial pawn award.
+        /// 25 kills after Culling Frost unlock triggers new pawn.
+        /// </summary>
+        private int _killsSinceCullingFrost;
+        private bool _cullingFrostUnlocked;
+        private const int KillsForNewPawn = 50;
+
         public TutorialService(Func<GameState> getState, EventBus events, float tickDeltaTime)
         {
             _getState = getState;
@@ -53,15 +61,8 @@ namespace ProjectGuild.Simulation.Tutorial
             var state = _getState();
             if (state == null) return;
 
-            var tutorial = state.Tutorial;
-            if (!tutorial.IsActive) return;
-
-            tutorial.DiscoveredNodeIds.Clear();
-            tutorial.DiscoveredNodeIds.Add(state.Map.HubNodeId);
-            tutorial.DiscoveredNodeIds.Add("copper_mine");
-            tutorial.DiscoveredNodeIds.Add("pine_forest");
-            tutorial.DiscoveredNodeIds.Add("sunlit_pond");
-            tutorial.DiscoveredNodeIds.Add("herb_garden");
+            // Show all nodes from the start (empty list = show all)
+            state.Tutorial.DiscoveredNodeIds.Clear();
         }
 
         public void CompleteIntroMilestone()
@@ -194,9 +195,20 @@ namespace ProjectGuild.Simulation.Tutorial
         {
             var state = _getState();
             if (state == null || !state.Tutorial.IsActive) return;
-            if (state.Tutorial.CurrentPhase != TutorialPhase.Combat) return;
 
-            CompleteMilestone(TutorialMilestones.Combat_FirstKill);
+            if (state.Tutorial.CurrentPhase == TutorialPhase.Combat)
+                CompleteMilestone(TutorialMilestones.Combat_FirstKill);
+
+            // Track kills after Culling Frost unlock for new pawn
+            if (_cullingFrostUnlocked
+                && !state.Tutorial.IsMilestoneCompleted(TutorialMilestones.NewPawnAwarded))
+            {
+                _killsSinceCullingFrost++;
+                if (_killsSinceCullingFrost >= KillsForNewPawn)
+                {
+                    CompleteMilestone(TutorialMilestones.NewPawnAwarded);
+                }
+            }
         }
 
         private void OnSkillLeveledUp(RunnerSkillLeveledUp e)
@@ -207,13 +219,11 @@ namespace ProjectGuild.Simulation.Tutorial
             // Culling Frost unlock: Magic level 8 triggers Automation phase
             if (e.Skill == SkillType.Magic && e.NewLevel >= 8)
             {
-                if (state.Tutorial.CurrentPhase == TutorialPhase.Combat
-                    || state.Tutorial.CurrentPhase == TutorialPhase.Automation)
-                {
-                    // Complete combat phase if still in it
-                    if (state.Tutorial.CurrentPhase == TutorialPhase.Combat)
-                        TransitionPhase(TutorialPhase.Combat, TutorialPhase.Automation);
-                }
+                _cullingFrostUnlocked = true;
+                _killsSinceCullingFrost = 0;
+
+                if (state.Tutorial.CurrentPhase == TutorialPhase.Combat)
+                    TransitionPhase(TutorialPhase.Combat, TutorialPhase.Automation);
             }
         }
 
@@ -297,21 +307,7 @@ namespace ProjectGuild.Simulation.Tutorial
 
         private void OnPhaseTransition(TutorialPhase from, TutorialPhase to)
         {
-            var state = _getState();
-            if (state == null) return;
-
-            // Unlock goblin camp when entering combat phase
-            if (to == TutorialPhase.Combat)
-            {
-                if (!state.Tutorial.DiscoveredNodeIds.Contains("goblin_camp"))
-                    state.Tutorial.DiscoveredNodeIds.Add("goblin_camp");
-            }
-
-            // Unlock everything on automation phase (tutorial basically done for demo)
-            if (to == TutorialPhase.Automation || to == TutorialPhase.Complete)
-            {
-                state.Tutorial.DiscoveredNodeIds.Clear(); // empty = show all
-            }
+            // All nodes visible from start. Nothing to unlock.
         }
     }
 }

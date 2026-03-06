@@ -170,6 +170,11 @@ namespace ProjectGuild.View.UI
                 case TutorialMilestones.Automation_Intro:
                     ShowMessage("Your mage just learned Culling Frost! It deals massive damage to enemies below 35% HP, but is weak otherwise.\n\nOpen their Combat Style and add a rule: \"If enemy HP < 35%, use Culling Frost\" above the Fireball rule. Watch them switch spells mid-fight.");
                     break;
+
+                // ─── Tutorial Complete ───────────────────────────────
+                case TutorialMilestones.NewPawnAwarded:
+                    ShowMessage("A new runner has arrived at the Guild Hall! They seem to have a knack for gathering.\n\nPerhaps you could send them to gather resources while your fighters keep farming the goblins.");
+                    break;
             }
         }
 

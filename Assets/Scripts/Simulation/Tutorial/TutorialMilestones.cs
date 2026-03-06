@@ -29,5 +29,9 @@ namespace ProjectGuild.Simulation.Tutorial
         // ─── Automation Phase ───────────────────────────────────────
         public const string Automation_Intro = "Automation_Intro";
         public const string Automation_Complete = "Automation_Complete";
+
+        // ─── Tutorial Complete ──────────────────────────────────────
+        public const string NewPawnAwarded = "NewPawnAwarded";
+        public const string TutorialFinished = "TutorialFinished";
     }
 }

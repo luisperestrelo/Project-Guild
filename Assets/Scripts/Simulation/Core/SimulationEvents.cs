@@ -130,6 +130,12 @@ namespace ProjectGuild.Simulation.Core
         public int RuleCount;
     }
 
+    public struct TutorialPawnAwarded
+    {
+        public string RunnerId;
+        public string RunnerName;
+    }
+
     // ─── Crafting Events ──────────────────────────────────────────
 
     public struct CraftingStarted
