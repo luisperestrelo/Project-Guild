@@ -14,6 +14,12 @@ namespace ProjectGuild.Simulation.Combat
         public EncounterState Encounter;
         public GameState GameState;
         public SimulationConfig Config;
+        /// <summary>
+        /// The already-evaluated enemy target for this decision cycle.
+        /// Set after targeting rules run, before ability rules run.
+        /// Null if no enemy target (healer targeting ally only).
+        /// </summary>
+        public EnemyInstance EvaluatedTarget;
 
         public CombatEvaluationContext(Runner runner, EncounterState encounter,
             GameState gameState, SimulationConfig config)
@@ -22,6 +28,7 @@ namespace ProjectGuild.Simulation.Combat
             Encounter = encounter;
             GameState = gameState;
             Config = config;
+            EvaluatedTarget = null;
         }
     }
 
@@ -197,10 +204,12 @@ namespace ProjectGuild.Simulation.Combat
 
                 case CombatConditionType.TargetHpPercent:
                 {
-                    // Evaluate against the runner's current target
-                    if (ctx.Runner.Fighting == null) return false;
                     if (ctx.Encounter == null) return false;
-                    var target = ctx.Encounter.FindEnemy(ctx.Runner.Fighting.CurrentTargetEnemyId);
+                    // Use already-evaluated target from this decision cycle,
+                    // fall back to Fighting.CurrentTargetEnemyId (for interrupt checks)
+                    var target = ctx.EvaluatedTarget;
+                    if (target == null && ctx.Runner.Fighting != null)
+                        target = ctx.Encounter.FindEnemy(ctx.Runner.Fighting.CurrentTargetEnemyId);
                     if (target == null || !target.IsAlive) return false;
                     var targetDef = FindEnemyConfig(target.ConfigId, ctx.Config);
                     if (targetDef == null) return false;

@@ -68,6 +68,11 @@ namespace ProjectGuild.View.UI
 
         // ─── Public API ──────────────────────────────────
 
+        public VisualElement GetPortraitElement(string runnerId)
+        {
+            return _portraits.TryGetValue(runnerId, out var el) ? el : null;
+        }
+
         public void AddPortrait(string runnerId)
         {
             if (_portraits.ContainsKey(runnerId)) return;

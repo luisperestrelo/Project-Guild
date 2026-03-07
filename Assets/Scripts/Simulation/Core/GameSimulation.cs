@@ -1756,6 +1756,43 @@ namespace ProjectGuild.Simulation.Core
             return true;
         }
 
+        /// <summary>
+        /// Instant craft for demo: consume materials, produce item immediately. No runner needed.
+        /// </summary>
+        public bool InstantCraft(string recipeId)
+        {
+            CraftingRecipeRegistry.Initialize();
+            var recipe = CraftingRecipeRegistry.Get(recipeId);
+            if (recipe == null) return false;
+
+            // Check materials in bank
+            foreach (var ing in recipe.Ingredients)
+            {
+                if (CurrentGameState.Bank.CountItem(ing.ItemId) < ing.Quantity)
+                    return false;
+            }
+
+            // Consume materials
+            foreach (var ing in recipe.Ingredients)
+            {
+                for (int i = 0; i < ing.Quantity; i++)
+                    CurrentGameState.Bank.RemoveItem(ing.ItemId, 1);
+            }
+
+            // Produce item directly into bank
+            CurrentGameState.Bank.Deposit(recipe.ProducedItemId, 1);
+
+            Events.Publish(new CraftingCompleted
+            {
+                RunnerId = null,
+                RecipeId = recipeId,
+                ProducedItemId = recipe.ProducedItemId,
+                NodeId = CurrentGameState.Map.HubNodeId,
+            });
+
+            return true;
+        }
+
         // ─── Combat ────────────────────────────────────────────────
 
         private int _nextEnemyInstanceId;
@@ -2003,6 +2040,9 @@ namespace ProjectGuild.Simulation.Core
                 allyTarget = CombatStyleEvaluator.EvaluateTargetingForAlly(combatStyle, combatCtx, out allyTargetRuleIdx);
                 if (allyTarget == null) return; // no target at all
             }
+
+            // Set evaluated target so ability conditions (e.g. TargetHpPercent) can use it
+            combatCtx.EvaluatedTarget = target;
 
             int abilityRuleIdx;
             var selectedAbility = CombatStyleEvaluator.EvaluateAbility(

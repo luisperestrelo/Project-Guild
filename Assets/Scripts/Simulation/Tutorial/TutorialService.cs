@@ -21,7 +21,7 @@ namespace ProjectGuild.Simulation.Tutorial
         /// </summary>
         private int _killsSinceCullingFrost;
         private bool _cullingFrostUnlocked;
-        private const int KillsForNewPawn = 50;
+        private const int KillsForNewPawn = 10;
 
         public TutorialService(Func<GameState> getState, EventBus events, float tickDeltaTime)
         {

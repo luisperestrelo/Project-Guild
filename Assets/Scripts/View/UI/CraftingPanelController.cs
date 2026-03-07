@@ -170,7 +170,7 @@ namespace ProjectGuild.View.UI
             _currentStation = station;
             _stationLabel.text = station == CraftingStation.Engineering
                 ? "Engineering Station"
-                : "Alchemy Lab";
+                : "Alchemy Lab (using consumables not yet available)";
             Refresh();
         }
 
@@ -244,16 +244,17 @@ namespace ProjectGuild.View.UI
 
                 row.Add(infoCol);
 
-                // Craft button
+                // Craft button — instant for demo, no runner needed
+                string capturedRecipeId = recipe.Id;
                 var craftBtn = new Button(() =>
                 {
-                    if (sim.StartCrafting(GetIdleRunnerAtHub(sim), recipe.Id))
-                        Refresh();
+                    sim.InstantCraft(capturedRecipeId);
+                    Refresh();
                 }) { text = "Craft" };
                 craftBtn.style.width = 60;
                 craftBtn.style.height = 28;
-                craftBtn.SetEnabled(canCraft && GetIdleRunnerAtHub(sim) != null);
-                if (canCraft && GetIdleRunnerAtHub(sim) != null)
+                craftBtn.SetEnabled(canCraft);
+                if (canCraft)
                 {
                     craftBtn.style.backgroundColor = new Color(0.2f, 0.5f, 0.2f);
                     craftBtn.style.color = Color.white;
@@ -305,15 +306,5 @@ namespace ProjectGuild.View.UI
             }
         }
 
-        private Runner GetIdleRunnerAtHub(GameSimulation sim)
-        {
-            string hubId = sim.CurrentGameState.Map.HubNodeId;
-            foreach (var runner in sim.CurrentGameState.Runners)
-            {
-                if (runner.State == RunnerState.Idle && runner.CurrentNodeId == hubId)
-                    return runner;
-            }
-            return null;
-        }
     }
 }

@@ -61,6 +61,12 @@
             <ui:VisualElement name="skills-list" class="skills-list" />
         </ui:ScrollView>
 
+        <!-- ─── Equipment Tab ─────────────────────────────── -->
+        <ui:ScrollView name="tab-content-equipment" class="tab-content tab-content-hidden">
+            <ui:Label name="equipment-tab-header" class="section-label" text="Equipment" />
+            <ui:VisualElement name="equipment-slot-list" />
+        </ui:ScrollView>
+
         <!-- ─── Automation Tab ──────────────────────────────── -->
         <ui:VisualElement name="tab-content-automation" class="tab-content tab-content-hidden">
             <!-- AutomationTab.uxml content is instantiated here by RunnerDetailsPanelController -->

@@ -26,10 +26,13 @@ namespace ProjectGuild.View.UI
         private readonly Button _tabOverview;
         private readonly Button _tabInventory;
         private readonly Button _tabSkills;
+        private readonly Button _tabEquipment;
         private readonly Button _tabAutomation;
         private readonly ScrollView _contentOverview;
         private readonly ScrollView _contentInventory;
         private readonly ScrollView _contentSkills;
+        private readonly ScrollView _contentEquipment;
+        private readonly VisualElement _equipmentSlotList;
         private readonly VisualElement _contentAutomation;
         private AutomationTabController _automationTabController;
         private readonly VisualTreeAsset _automationTabAsset;
@@ -117,20 +120,25 @@ namespace ProjectGuild.View.UI
             _tabOverview = root.Q<Button>("tab-overview");
             _tabInventory = root.Q<Button>("tab-inventory");
             _tabSkills = root.Q<Button>("tab-skills");
+            _tabEquipment = root.Q<Button>("tab-equipment");
             _tabAutomation = root.Q<Button>("tab-automation");
 
             _tabOverview.clicked += () => SwitchTab("overview");
             _tabInventory.clicked += () => SwitchTab("inventory");
             _tabSkills.clicked += () => SwitchTab("skills");
+            _tabEquipment.clicked += () => SwitchTab("equipment");
             _tabAutomation.clicked += () => SwitchTab("automation");
 
-            // Enable the Automation tab (remove disabled class)
+            // Enable tabs (remove disabled class)
+            _tabEquipment.RemoveFromClassList("tab-disabled");
             _tabAutomation.RemoveFromClassList("tab-disabled");
 
             // ─── Tab content panels ─────────────────────
             _contentOverview = root.Q<ScrollView>("tab-content-overview");
             _contentInventory = root.Q<ScrollView>("tab-content-inventory");
             _contentSkills = root.Q<ScrollView>("tab-content-skills");
+            _contentEquipment = root.Q<ScrollView>("tab-content-equipment");
+            _equipmentSlotList = root.Q("equipment-slot-list");
             _contentAutomation = root.Q("tab-content-automation");
 
             // ─── Overview elements ──────────────────────
@@ -169,6 +177,9 @@ namespace ProjectGuild.View.UI
             uiManager.RegisterTickRefreshable(this);
         }
 
+        public VisualElement GetAutomationTabButton() => _tabAutomation;
+        public void SwitchToTab(string tabName) => SwitchTab(tabName);
+
         private void SwitchTab(string tabName)
         {
             _activeTab = tabName;
@@ -177,12 +188,14 @@ namespace ProjectGuild.View.UI
             SetTabActive(_tabOverview, tabName == "overview");
             SetTabActive(_tabInventory, tabName == "inventory");
             SetTabActive(_tabSkills, tabName == "skills");
+            SetTabActive(_tabEquipment, tabName == "equipment");
             SetTabActive(_tabAutomation, tabName == "automation");
 
             // Show/hide content panels
             _contentOverview.style.display = tabName == "overview" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentInventory.style.display = tabName == "inventory" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentSkills.style.display = tabName == "skills" ? DisplayStyle.Flex : DisplayStyle.None;
+            _contentEquipment.style.display = tabName == "equipment" ? DisplayStyle.Flex : DisplayStyle.None;
             _contentAutomation.style.display = tabName == "automation" ? DisplayStyle.Flex : DisplayStyle.None;
 
             // Lazy-init automation tab controller on first switch
@@ -309,6 +322,9 @@ namespace ProjectGuild.View.UI
                     break;
                 case "skills":
                     RefreshSkillsTab(runner, config);
+                    break;
+                case "equipment":
+                    RefreshEquipmentTab(runner);
                     break;
                 case "automation":
                     _automationTabController?.Refresh();
@@ -846,6 +862,115 @@ namespace ProjectGuild.View.UI
                     _inventorySlotLabels[i].text = "";
                     _inventorySlotQuantities[i].text = "";
                 }
+            }
+        }
+
+        // ─── Equipment Tab ────────────────────────────────
+
+        private void RefreshEquipmentTab(Runner runner)
+        {
+            _equipmentSlotList.Clear();
+
+            var slotNames = new[] { "Main Hand", "Off Hand", "Helmet", "Body Armour", "Gloves", "Boots", "Ring" };
+            var slotValues = (Simulation.Items.EquipmentSlot[])System.Enum.GetValues(typeof(Simulation.Items.EquipmentSlot));
+
+            for (int i = 0; i < slotValues.Length; i++)
+            {
+                var slot = slotValues[i];
+                var item = runner.Equipment?.GetSlot(slot);
+
+                var row = new VisualElement();
+                row.style.flexDirection = FlexDirection.Row;
+                row.style.alignItems = Align.Center;
+                row.style.marginBottom = 2;
+                row.style.paddingTop = 4;
+                row.style.paddingBottom = 4;
+                row.style.paddingLeft = 8;
+                row.style.paddingRight = 8;
+                row.style.backgroundColor = new Color(0.15f, 0.15f, 0.2f);
+                row.style.borderBottomLeftRadius = 3;
+                row.style.borderBottomRightRadius = 3;
+                row.style.borderTopLeftRadius = 3;
+                row.style.borderTopRightRadius = 3;
+
+                string slotLabel = i < slotNames.Length ? slotNames[i] : slot.ToString();
+                var nameLabel = new Label(slotLabel + ":");
+                nameLabel.style.width = 100;
+                nameLabel.style.color = new Color(0.6f, 0.6f, 0.6f);
+                nameLabel.style.fontSize = 12;
+                row.Add(nameLabel);
+
+                if (item != null)
+                {
+                    var itemLabel = new Label(item.Name);
+                    itemLabel.style.flexGrow = 1;
+                    itemLabel.style.color = new Color(0.9f, 0.8f, 0.4f);
+                    itemLabel.style.fontSize = 12;
+                    row.Add(itemLabel);
+
+                    // Show stat bonuses
+                    if (item.StatBonuses != null && item.StatBonuses.Count > 0)
+                    {
+                        var statsText = "";
+                        foreach (var kvp in item.StatBonuses)
+                            statsText += $"+{kvp.Value} {kvp.Key}  ";
+                        var statsLabel = new Label(statsText);
+                        statsLabel.style.color = new Color(0.5f, 0.7f, 1f);
+                        statsLabel.style.fontSize = 10;
+                        row.Add(statsLabel);
+                    }
+                }
+                else
+                {
+                    var emptyLabel = new Label("(empty)");
+                    emptyLabel.style.flexGrow = 1;
+                    emptyLabel.style.color = new Color(0.4f, 0.4f, 0.4f);
+                    emptyLabel.style.fontSize = 12;
+                    emptyLabel.style.unityFontStyleAndWeight = FontStyle.Italic;
+                    row.Add(emptyLabel);
+                }
+
+                _equipmentSlotList.Add(row);
+            }
+
+            // Effective skill levels section
+            var config = _uiManager.Simulation?.Config;
+            if (config == null) return;
+
+            var header = new Label("Effective Skill Levels");
+            header.style.fontSize = 13;
+            header.style.color = new Color(0.7f, 0.7f, 0.7f);
+            header.style.marginTop = 12;
+            header.style.marginBottom = 4;
+            header.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _equipmentSlotList.Add(header);
+
+            for (int i = 0; i < SkillTypeExtensions.SkillCount; i++)
+            {
+                var skillType = (SkillType)i;
+                int baseLevel = runner.Skills[i].Level;
+                int gearBonus = runner.Equipment?.GetTotalBonus(skillType) ?? 0;
+                if (gearBonus == 0) continue;
+
+                float effective = runner.GetEffectiveLevel(skillType, config);
+
+                var skillRow = new VisualElement();
+                skillRow.style.flexDirection = FlexDirection.Row;
+                skillRow.style.paddingLeft = 8;
+                skillRow.style.marginBottom = 1;
+
+                var skillLabel = new Label($"{skillType}:");
+                skillLabel.style.width = 100;
+                skillLabel.style.color = new Color(0.6f, 0.6f, 0.6f);
+                skillLabel.style.fontSize = 11;
+                skillRow.Add(skillLabel);
+
+                var valueLabel = new Label($"{baseLevel}  +{gearBonus} gear  = {effective:F0}");
+                valueLabel.style.color = new Color(0.5f, 0.8f, 0.5f);
+                valueLabel.style.fontSize = 11;
+                skillRow.Add(valueLabel);
+
+                _equipmentSlotList.Add(skillRow);
             }
         }
 

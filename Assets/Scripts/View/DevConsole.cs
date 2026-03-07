@@ -80,6 +80,7 @@ namespace ProjectGuild.View
             if (_simulationRunner?.Simulation != null)
             {
                 _simulationRunner.Simulation.Events.Subscribe<SimulationTickCompleted>(OnTick);
+                _simulationRunner.Simulation.Events.Subscribe<EnemyDied>(OnEnemyDiedTutorialLog);
             }
         }
 
@@ -99,6 +100,7 @@ namespace ProjectGuild.View
         {
             if (_simulationRunner?.Simulation != null)
             {
+                _simulationRunner.Simulation.Events.Unsubscribe<EnemyDied>(OnEnemyDiedTutorialLog);
                 _simulationRunner.Simulation.Events.Unsubscribe<SimulationTickCompleted>(OnTick);
             }
         }
@@ -1937,6 +1939,38 @@ namespace ProjectGuild.View
 
             _outputScroll.schedule.Execute(() =>
                 _outputScroll.scrollOffset = new Vector2(0, float.MaxValue));
+        }
+
+        // ─── Tutorial Kill Tracker (throwaway) ────────────────────
+
+        private int _tutorialKillCount;
+        private bool _tutorialCFUnlocked;
+
+        private void OnEnemyDiedTutorialLog(EnemyDied e)
+        {
+            var state = Sim?.CurrentGameState;
+            if (state == null || !state.Tutorial.IsActive) return;
+
+            // Detect Culling Frost unlock (any runner with Magic >= 8)
+            if (!_tutorialCFUnlocked)
+            {
+                foreach (var r in state.Runners)
+                {
+                    if (r.GetSkill(SkillType.Magic).Level >= 8)
+                    {
+                        _tutorialCFUnlocked = true;
+                        _tutorialKillCount = 0;
+                        Print("[Tutorial] Culling Frost unlocked! Kill counter started.");
+                        break;
+                    }
+                }
+            }
+
+            if (_tutorialCFUnlocked && !state.Tutorial.IsMilestoneCompleted(TutorialMilestones.NewPawnAwarded))
+            {
+                _tutorialKillCount++;
+                Print($"[Tutorial] Goblins killed: {_tutorialKillCount}/10 ({10 - _tutorialKillCount} until new pawn)");
+            }
         }
 
         // ─── Tick Handler ──────────────────────────────────────────

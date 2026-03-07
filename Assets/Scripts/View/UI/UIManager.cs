@@ -280,7 +280,7 @@ namespace ProjectGuild.View.UI
                 var craftingBtn = new Button(() => ToggleCraftingPanel());
                 craftingBtn.text = "Crafting";
                 craftingBtn.AddToClassList("guildhall-toggle-button");
-                craftingBtn.style.left = 240;
+                craftingBtn.style.left = 420;
                 root.Add(craftingBtn);
             }
 
@@ -392,9 +392,12 @@ namespace ProjectGuild.View.UI
             _initialized = true;
         }
 
+        public event System.Action<string> OnRunnerSelected;
+
         public void SelectRunner(string runnerId)
         {
             _selectedRunnerId = runnerId;
+            OnRunnerSelected?.Invoke(runnerId);
             _portraitBarController?.SetSelectedRunner(runnerId);
             _detailsPanelController?.ShowRunner(runnerId);
             _logbookPanelController?.OnRunnerSelected(runnerId);
@@ -543,6 +546,17 @@ namespace ProjectGuild.View.UI
         /// Returns the World (map toggle) button element for tutorial highlighting.
         /// </summary>
         public VisualElement GetWorldButtonElement() => _worldButton;
+
+        public VisualElement GetPortraitElement(string runnerId) =>
+            _portraitBarController?.GetPortraitElement(runnerId);
+
+        public VisualElement GetAutomationTabButton() => _detailsPanelController?.GetAutomationTabButton();
+
+        public void SelectRunnerAndOpenTab(string runnerId, string tab)
+        {
+            SelectRunner(runnerId);
+            _detailsPanelController?.SwitchToTab(tab);
+        }
 
         /// <summary>
         /// Returns a strategic map node element by node ID for tutorial highlighting.
